@@ -716,9 +716,10 @@ export class Editor extends EditorData {
    * @param {string} src - Image source path or URL
    * @param {string} href - Optional link URL (empty string for no link)
    * @param {string} [style] - Optional inline style
+   * @param {string} [className] - Optional class names
    */
-  insertOrUpdateImage(alt, src, href, style = ``) {
-    this.imageHelper.insertOrUpdateImage(alt, src, href, style);
+  insertOrUpdateImage(alt, src, href, style = ``, className = ``) {
+    this.imageHelper.insertOrUpdateImage(alt, src, href, style, className);
   }
 
   /**

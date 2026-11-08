@@ -53,9 +53,10 @@ export class TreeFormatter extends TreeFormatterData {
    * @param {string} src
    * @param {string} href
    * @param {string} [style]
+   * @param {string} [className]
    */
-  insertOrUpdateImage(alt, src, href, style = ``) {
-    this.editor.insertOrUpdateImage(alt, src, href, style);
+  insertOrUpdateImage(alt, src, href, style = ``, className = ``) {
+    this.editor.insertOrUpdateImage(alt, src, href, style, className);
   }
 
   /**

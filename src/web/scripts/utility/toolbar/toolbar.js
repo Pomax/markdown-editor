@@ -534,6 +534,7 @@ export class Toolbar extends ToolbarData {
         src: currentNode.attributes.url ?? ``,
         href: currentNode.attributes.href ?? ``,
         style: currentNode.attributes.style ?? ``,
+        className: currentNode.attributes.className ?? ``,
       };
     }
 
@@ -563,7 +564,7 @@ export class Toolbar extends ToolbarData {
     }
 
     if (formatter.restoreCursorPosition) formatter.restoreCursorPosition();
-    formatter.insertOrUpdateImage(result.alt, src, result.href, result.style);
+    formatter.insertOrUpdateImage(result.alt, src, result.href, result.style, result.className);
   }
 
   /**

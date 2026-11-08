@@ -532,6 +532,9 @@ export class WritingRenderer extends WritingRendererData {
     if (attrs.style) {
       img.setAttribute(`style`, attrs.style);
     }
+    if (attrs.className) {
+      img.setAttribute(`class`, attrs.className);
+    }
 
     if (attrs.href) {
       const link = document.createElement(`a`);

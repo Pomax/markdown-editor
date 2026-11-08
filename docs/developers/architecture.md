@@ -409,6 +409,7 @@ Settings dialog for user preferences:
 Modal for inserting and editing images:
 - Browse for image file
 - Set alt text and optional link URL
+- Set optional `class` and `style` attributes; an image with either one is written as an HTML `<img>` tag, and as markdown `![alt](src)` when both are empty
 - Rename image file on disk
 - Shows live image preview
 

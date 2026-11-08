@@ -21,6 +21,8 @@ let electronApp;
 let page;
 
 const HTML_IMG = `<img src="image.png" alt="HTML image" style="display: inline-block; zoom: 80%;" />`;
+const HTML_IMG_CLASS = `<img src="image.png" alt="HTML image" class="wide framed" />`;
+const HTML_IMG_CLASS_STYLE = `<img src="image.png" alt="HTML image" class="wide framed" style="zoom: 80%;" />`;
 
 test.beforeAll(async () => {
   ({ electronApp, page } = await launchApp());
@@ -157,4 +159,143 @@ test(`markdown image without style does not show style in modal`, async () => {
   const cancelBtn = page.locator(`.image-btn--cancel`);
   await cancelBtn.click();
   await expect(dialog).not.toBeVisible();
+});
+
+test(`HTML img class is applied to the rendered image in writing mode`, async () => {
+  await loadContent(page, HTML_IMG_CLASS);
+  await setWritingView(page);
+
+  const img = page.locator(`.md-image img`);
+  await expect(img).toBeVisible();
+  await expect(img).toHaveClass(`wide framed`);
+});
+
+test(`edit modal shows the class of an HTML img`, async () => {
+  await loadContent(page, HTML_IMG_CLASS_STYLE);
+  await setWritingView(page);
+
+  const image = page.locator(`.md-image img`);
+  await expect(image).toBeVisible();
+  await clickInEditor(page, image);
+
+  const dialog = page.locator(`.image-dialog`);
+  await expect(dialog).toBeVisible();
+
+  await expect(page.locator(`#image-class`)).toHaveValue(`wide framed`);
+  await expect(page.locator(`#image-style`)).toHaveValue(`zoom: 80%;`);
+
+  const cancelBtn = page.locator(`.image-btn--cancel`);
+  await cancelBtn.click();
+  await expect(dialog).not.toBeVisible();
+});
+
+test(`toolbar image modal shows the class of an HTML img`, async () => {
+  await loadContent(page, `some text\n\n${HTML_IMG_CLASS}`);
+  await setWritingView(page);
+
+  const firstLine = page.locator(`#editor [data-node-id]`).first();
+  await clickInEditor(page, firstLine);
+  await page.keyboard.press(`ArrowDown`);
+  await page.waitForTimeout(100);
+
+  const imageButton = page.locator(`[data-button-id="image"]`);
+  await imageButton.click();
+
+  const dialog = page.locator(`.image-dialog`);
+  await expect(dialog).toBeVisible();
+
+  await expect(page.locator(`#image-class`)).toHaveValue(`wide framed`);
+
+  const cancelBtn = page.locator(`.image-btn--cancel`);
+  await cancelBtn.click();
+  await expect(dialog).not.toBeVisible();
+});
+
+test(`editing class via modal updates the parse tree and the rendered image`, async () => {
+  await loadContent(page, HTML_IMG_CLASS);
+  await setWritingView(page);
+
+  const image = page.locator(`.md-image img`);
+  await expect(image).toBeVisible();
+  await clickInEditor(page, image);
+
+  const dialog = page.locator(`.image-dialog`);
+  await expect(dialog).toBeVisible();
+
+  await page.fill(`#image-class`, `narrow`);
+
+  const updateBtn = page.locator(`.image-btn--insert`);
+  await updateBtn.click();
+  await expect(dialog).not.toBeVisible();
+
+  const markdown = await page.evaluate(() => window.editorAPI?.getContent() ?? ``);
+  expect(markdown).toContain(`<img src=`);
+  expect(markdown).toContain(`class="narrow"`);
+  await expect(page.locator(`.md-image img`)).toHaveClass(`narrow`);
+});
+
+test(`adding a class to a markdown image converts it to an HTML img`, async () => {
+  await loadContent(page, `![Photo](image.png)`);
+  await setWritingView(page);
+
+  const image = page.locator(`.md-image img`);
+  await expect(image).toBeVisible();
+  await clickInEditor(page, image);
+
+  const dialog = page.locator(`.image-dialog`);
+  await expect(dialog).toBeVisible();
+  await expect(page.locator(`#image-class`)).toHaveValue(``);
+
+  await page.fill(`#image-class`, `wide`);
+
+  const updateBtn = page.locator(`.image-btn--insert`);
+  await updateBtn.click();
+  await expect(dialog).not.toBeVisible();
+
+  const markdown = await page.evaluate(() => window.editorAPI?.getContent() ?? ``);
+  expect(markdown).toContain(`<img src="image.png" alt="Photo" class="wide" />`);
+});
+
+test(`clearing style keeps the HTML img when a class is set`, async () => {
+  await loadContent(page, HTML_IMG_CLASS_STYLE);
+  await setWritingView(page);
+
+  const image = page.locator(`.md-image img`);
+  await expect(image).toBeVisible();
+  await clickInEditor(page, image);
+
+  const dialog = page.locator(`.image-dialog`);
+  await expect(dialog).toBeVisible();
+
+  await page.fill(`#image-style`, ``);
+
+  const updateBtn = page.locator(`.image-btn--insert`);
+  await updateBtn.click();
+  await expect(dialog).not.toBeVisible();
+
+  const markdown = await page.evaluate(() => window.editorAPI?.getContent() ?? ``);
+  expect(markdown).toContain(`<img src="image.png" alt="HTML image" class="wide framed" />`);
+  expect(markdown).not.toContain(`style=`);
+});
+
+test(`clearing class converts HTML img to markdown syntax`, async () => {
+  await loadContent(page, HTML_IMG_CLASS);
+  await setWritingView(page);
+
+  const image = page.locator(`.md-image img`);
+  await expect(image).toBeVisible();
+  await clickInEditor(page, image);
+
+  const dialog = page.locator(`.image-dialog`);
+  await expect(dialog).toBeVisible();
+
+  await page.fill(`#image-class`, ``);
+
+  const updateBtn = page.locator(`.image-btn--insert`);
+  await updateBtn.click();
+  await expect(dialog).not.toBeVisible();
+
+  const markdown = await page.evaluate(() => window.editorAPI?.getContent() ?? ``);
+  expect(markdown).toContain(`![HTML image](image.png)`);
+  expect(markdown).not.toContain(`<img`);
 });

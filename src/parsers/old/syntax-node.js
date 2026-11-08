@@ -269,9 +269,12 @@ export class SyntaxNode {
         const imgAlt = this.attributes.alt ?? this.content;
         const imgSrc = this.attributes.url ?? ``;
         const imgStyle = this.attributes.style ?? ``;
-        if (imgStyle) {
+        const imgClass = this.attributes.className ?? ``;
+        if (imgStyle || imgClass) {
           const altAttr = imgAlt ? ` alt="${imgAlt}"` : ``;
-          return `<img src="${imgSrc}"${altAttr} style="${imgStyle}" />`;
+          const classAttr = imgClass ? ` class="${imgClass}"` : ``;
+          const styleAttr = imgStyle ? ` style="${imgStyle}"` : ``;
+          return `<img src="${imgSrc}"${altAttr}${classAttr}${styleAttr} />`;
         }
         if (this.attributes.href) {
           return `[![${imgAlt}](${imgSrc})](${this.attributes.href})`;
