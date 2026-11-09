@@ -15,6 +15,7 @@ import {
   defocusEditor,
   launchApp,
   loadContent,
+  setSource2View,
   setWritingView,
 } from '../../test-utils.js';
 
@@ -144,6 +145,110 @@ test.describe(`style element injection`, () => {
       return h ? getComputedStyle(h).color : undefined;
     });
     expect(headingColor).not.toBe(`rgb(255, 0, 0)`);
+  });
+
+  test(`editing the style block replaces the old rules`, async () => {
+    await page.evaluate(() => {
+      window.electronAPI?.setSetting(`enableStyleElements`, true);
+      document.dispatchEvent(
+        new CustomEvent(`content:settingsChanged`, {
+          detail: { detailsClosed: false, enableStyleElements: true },
+        }),
+      );
+    });
+    await page.waitForTimeout(300);
+
+    await setSource2View(page);
+    await page
+      .locator(`#editor textarea`)
+      .fill(STYLE_FIXTURE.replace(`rgb(255, 0, 0)`, `rgb(0, 0, 255)`));
+    await setWritingView(page);
+    await page.waitForTimeout(300);
+
+    const headingColor = await page.evaluate(() => {
+      const h = document.querySelector(`#editor .md-heading1`);
+      return h ? getComputedStyle(h).color : undefined;
+    });
+    expect(headingColor).toBe(`rgb(0, 0, 255)`);
+
+    const injected = await page.evaluate(() =>
+      [...document.querySelectorAll(`[data-injected-style="true"]`)].map((s) => s.textContent),
+    );
+    expect(injected).toHaveLength(1);
+    expect(injected[0]).not.toContain(`rgb(255, 0, 0)`);
+  });
+
+  test(`typing a new rule in source view and toggling back replaces the old rule`, async () => {
+    await page.evaluate(() => {
+      window.electronAPI?.setSetting(`enableStyleElements`, true);
+      document.dispatchEvent(
+        new CustomEvent(`content:settingsChanged`, {
+          detail: { detailsClosed: false, enableStyleElements: true },
+        }),
+      );
+    });
+    await page.waitForTimeout(300);
+
+    await page.locator(`.toolbar-view-mode-toggle`).click();
+    await page.locator(`#editor[data-view-mode="source2"]`).waitFor();
+    const textarea = page.locator(`#editor textarea`);
+    await textarea.click();
+    await textarea.evaluate((/** @type {HTMLTextAreaElement} */ el) => {
+      const start = el.value.indexOf(`rgb(255, 0, 0)`);
+      el.setSelectionRange(start, start + `rgb(255, 0, 0)`.length);
+    });
+    await page.keyboard.type(`rgb(0, 0, 255)`);
+    await page.locator(`.toolbar-view-mode-toggle`).click();
+    await page.locator(`#editor[data-view-mode="writing"]`).waitFor();
+    await page.waitForTimeout(300);
+
+    const headingColor = await page.evaluate(() => {
+      const h = document.querySelector(`#editor .md-heading1`);
+      return h ? getComputedStyle(h).color : undefined;
+    });
+    expect(headingColor).toBe(`rgb(0, 0, 255)`);
+
+    const injected = await page.evaluate(() =>
+      [...document.querySelectorAll(`[data-injected-style="true"]`)].map((s) => s.textContent),
+    );
+    expect(injected).toHaveLength(1);
+    expect(injected[0]).not.toContain(`rgb(255, 0, 0)`);
+  });
+
+  test(`editing one of seven style blocks updates only its own style element`, async () => {
+    const blocks = [1, 2, 3, 4, 5, 6, 7].map(
+      (i) => `<style>\n.md-heading1 { --s${i}: old${i}; }\n</style>`,
+    );
+    const markdown = [`# Styled Document`, ...blocks, `Some body text.`].join(`\n\n`);
+    await loadContent(page, markdown);
+    await page.evaluate(() => {
+      window.electronAPI?.setSetting(`enableStyleElements`, true);
+      document.dispatchEvent(
+        new CustomEvent(`content:settingsChanged`, {
+          detail: { detailsClosed: false, enableStyleElements: true },
+        }),
+      );
+    });
+    await page.waitForTimeout(300);
+
+    await setSource2View(page);
+    await page.locator(`#editor textarea`).fill(markdown.replace(`old4`, `new4`));
+    await setWritingView(page);
+    await page.waitForTimeout(300);
+
+    const values = await page.evaluate(() => {
+      const h = document.querySelector(`#editor .md-heading1`);
+      if (!h) return [];
+      const style = getComputedStyle(h);
+      return [1, 2, 3, 4, 5, 6, 7].map((i) => style.getPropertyValue(`--s${i}`).trim());
+    });
+    expect(values).toEqual([`old1`, `old2`, `old3`, `new4`, `old5`, `old6`, `old7`]);
+
+    const injected = await page.evaluate(() =>
+      [...document.querySelectorAll(`[data-injected-style="true"]`)].map((s) => s.textContent),
+    );
+    expect(injected).toHaveLength(7);
+    expect(injected.join(``)).not.toContain(`old4`);
   });
 
   test(`syntax tree is not affected by the style injection preference`, async () => {
@@ -323,5 +428,61 @@ test.describe(`style injection does not wreck the ToC sidebar`, () => {
 
     // The title must still be visible.
     expect(tocAfter.titleVisible).toBe(true);
+  });
+});
+
+test.describe(`document style blocks apply to their own document only, and win`, () => {
+  test.beforeEach(async () => {
+    await page.evaluate(() => {
+      window.electronAPI?.setSetting(`enableStyleElements`, true);
+      document.dispatchEvent(
+        new CustomEvent(`content:settingsChanged`, {
+          detail: { detailsClosed: false, enableStyleElements: true },
+        }),
+      );
+    });
+  });
+
+  test(`a plain element rule in the document beats the app's own heading rules`, async () => {
+    await loadContent(
+      page,
+      `# Heading\n\n<style>\nh1 { font-size: 10px; border-bottom-width: 0px; }\n</style>`,
+    );
+    await setWritingView(page);
+    await defocusEditor(page);
+
+    const heading = await page.evaluate(() => {
+      const h = /** @type {any} */ (window).__editor.container.querySelector(`h1`);
+      const style = getComputedStyle(h);
+      return { fontSize: style.fontSize, borderBottomWidth: style.borderBottomWidth };
+    });
+    expect(heading).toEqual({ fontSize: `10px`, borderBottomWidth: `0px` });
+  });
+
+  test(`each tab's style blocks apply to that tab and not to the other`, async () => {
+    await loadContent(page, `# One\n\n<style>\nimg { --tab: one; }\n</style>\n\n![a](a.png)`);
+    await setWritingView(page);
+
+    await page.evaluate(() => document.dispatchEvent(new CustomEvent(`file:new`)));
+    await page.waitForTimeout(300);
+    await page.evaluate(() =>
+      window.editorAPI?.setContent(
+        `# Two\n\n<style>\nimg { --tab: two; }\n</style>\n\n![b](b.png)`,
+      ),
+    );
+    await page.waitForFunction(() =>
+      /** @type {any} */ (window).__editor.container.querySelector(`img`),
+    );
+
+    const tabValue = () =>
+      page.evaluate(() => {
+        const img = /** @type {any} */ (window).__editor.container.querySelector(`img`);
+        return getComputedStyle(img).getPropertyValue(`--tab`).trim();
+      });
+    expect(await tabValue()).toBe(`two`);
+
+    await page.locator(`#tab-bar .tab-button`).first().click();
+    await page.waitForTimeout(300);
+    expect(await tabValue()).toBe(`one`);
   });
 });

@@ -45,7 +45,5 @@ test(`typing "# main" letter by letter creates a heading with correct content`, 
   const headingLine = editor.locator(`.md-heading1`);
   await expect(headingLine).toBeVisible();
 
-  // The heading content span should contain "main"
-  const contentSpan = headingLine.locator(`.md-content`);
-  await expect(contentSpan).toHaveText(`main`);
+  await expect(headingLine).toHaveText(`main`);
 });

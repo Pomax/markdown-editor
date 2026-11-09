@@ -96,6 +96,10 @@ These rules describe writing-related actions that MAY NEVER BE PERFORMED BY THE 
 - Banner or sectioning comments. Comments about history, justification or the conversation.
 - Real paths, folder names or anything else personal, in source or tests.
 - Coming up with arguments just to "win an argument" with either the user or the judge.
+- Using the verb "go" without a preposition to mean removal of something.
+- Claiming you are sorry
+- Using "because" followed by a summary of what just happened, instead of actually explaining *why* it happened.
+
 
 ### Doing
 

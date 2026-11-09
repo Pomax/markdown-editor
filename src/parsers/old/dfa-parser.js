@@ -789,11 +789,15 @@ class DFAParser {
     const src = this.extractAttr(raw, `src`);
     const alt = this.extractAttr(raw, `alt`);
     const style = this.extractAttr(raw, `style`);
+    const className = this.extractAttr(raw, `class`);
 
     const node = new SyntaxNode(`image`, alt);
     node.attributes = { alt, url: src };
     if (style) {
       node.attributes.style = style;
+    }
+    if (className) {
+      node.attributes.className = className;
     }
     node.startLine = startLine;
     node.endLine = startLine;

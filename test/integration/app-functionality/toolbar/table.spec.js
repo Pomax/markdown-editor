@@ -74,8 +74,6 @@ test(`inserting a table via the modal creates a table node`, async () => {
   await insertBtn.click();
   await expect(dialog).not.toBeVisible();
 
-  // Verify the table node was created (use [data-node-id].md-table to avoid
-  // matching the inner <table class="md-table"> as well).
   const tableNode = page.locator(`[data-node-id].md-table`);
   await expect(tableNode).toBeVisible();
 
@@ -95,9 +93,7 @@ test(`table renders as an HTML table in writing mode`, async () => {
   const tableElement = page.locator(`[data-node-id].md-table`);
   await expect(tableElement).toBeVisible();
 
-  // The table should always be rendered as an HTML <table> (WYSIWYG)
   const htmlTable = page.locator(`[data-node-id].md-table table`);
-  // It may or may not be visible depending on focus — let's check the content
   const content = await page.evaluate(() => window.editorAPI?.getContent());
   expect(content).toContain(`Header 1`);
   expect(content).toContain(`Header 2`);
@@ -151,7 +147,7 @@ test(`table cells render inline markdown formatting`, async () => {
   await loadContent(page, markdown);
   await setWritingView(page);
 
-  const table = page.locator(`[data-node-id].md-table table`);
+  const table = page.locator(`table[data-node-id].md-table`);
   await expect(table).toBeVisible();
 
   // Bold cell
@@ -186,7 +182,7 @@ test(`table cells render inline HTML formatting`, async () => {
   await loadContent(page, markdown);
   await setWritingView(page);
 
-  const table = page.locator(`[data-node-id].md-table table`);
+  const table = page.locator(`table[data-node-id].md-table`);
   await expect(table).toBeVisible();
 
   // Italic via <i>

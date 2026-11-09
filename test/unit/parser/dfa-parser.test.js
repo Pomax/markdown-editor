@@ -540,6 +540,40 @@ describe(`DFAParser`, () => {
       const tree = await parser.parse(`<img src="pic.jpg" alt="test" />`);
       assert.strictEqual(tree.children[0].toMarkdown(), `![test](pic.jpg)`);
     });
+
+    it(`should parse an HTML img tag with a class`, async () => {
+      const tree = await parser.parse(`<img src="pic.jpg" alt="test" class="wide framed" />`);
+      assert.strictEqual(tree.children.length, 1);
+      assert.strictEqual(tree.children[0].type, `image`);
+      assert.strictEqual(tree.children[0].attributes.url, `pic.jpg`);
+      assert.strictEqual(tree.children[0].attributes.alt, `test`);
+      assert.strictEqual(tree.children[0].attributes.className, `wide framed`);
+      assert.strictEqual(tree.children[0].attributes.style, undefined);
+    });
+
+    it(`should parse an HTML img tag with both class and style`, async () => {
+      const tree = await parser.parse(`<img src="pic.jpg" class="wide" style="zoom: 80%;" />`);
+      assert.strictEqual(tree.children[0].type, `image`);
+      assert.strictEqual(tree.children[0].attributes.className, `wide`);
+      assert.strictEqual(tree.children[0].attributes.style, `zoom: 80%;`);
+    });
+
+    it(`should parse an HTML img tag without class`, async () => {
+      const tree = await parser.parse(`<img src="pic.jpg" alt="test" style="zoom: 80%;" />`);
+      assert.strictEqual(tree.children[0].attributes.className, undefined);
+    });
+
+    it(`should serialize an image with a class as an HTML img tag`, async () => {
+      const html = `<img src="pic.jpg" alt="test" class="wide framed" />`;
+      const tree = await parser.parse(html);
+      assert.strictEqual(tree.children[0].toMarkdown(), html);
+    });
+
+    it(`should serialize an image with class and style as an HTML img tag`, async () => {
+      const html = `<img src="pic.jpg" alt="test" class="wide" style="zoom: 80%;" />`;
+      const tree = await parser.parse(html);
+      assert.strictEqual(tree.children[0].toMarkdown(), html);
+    });
   });
 
   describe(`html blocks`, () => {

@@ -6,6 +6,7 @@
 /// <reference path="../../../types.d.ts" />
 
 import { SyntaxNode } from '../../../parsers/old/syntax-node.js';
+import { endOfOwnContent, getContentElement } from './managers/cursor-manager.js';
 import { RangeOperationsData } from './types.js';
 
 /**
@@ -232,12 +233,14 @@ export class RangeOperations extends RangeOperationsData {
     const nodeEl = this.editor.container.querySelector(`[data-node-id="${node.id}"]`);
     if (!nodeEl) return;
 
-    const contentEl = nodeEl.querySelector(`.md-content`) ?? nodeEl;
+    const contentEl = getContentElement(nodeEl);
     const sel = window.getSelection();
     if (!sel) return;
 
+    const end = endOfOwnContent(contentEl);
     const domRange = document.createRange();
-    domRange.selectNodeContents(contentEl);
+    domRange.setStart(contentEl, 0);
+    domRange.setEnd(end.node, end.offset);
     sel.removeAllRanges();
     sel.addRange(domRange);
 
@@ -323,15 +326,16 @@ export class RangeOperations extends RangeOperationsData {
     const lastEl = this.editor.container.querySelector(`[data-node-id="${lastNode.id}"]`);
     if (!firstEl || !lastEl) return;
 
-    const firstContent = firstEl.querySelector(`.md-content`) ?? firstEl;
-    const lastContent = lastEl.querySelector(`.md-content`) ?? lastEl;
+    const firstContent = getContentElement(firstEl);
+    const lastContent = getContentElement(lastEl);
 
     const sel = window.getSelection();
     if (!sel) return;
 
+    const end = endOfOwnContent(lastContent);
     const domRange = document.createRange();
     domRange.setStart(firstContent, 0);
-    domRange.setEndAfter(lastContent.lastChild ?? lastContent);
+    domRange.setEnd(end.node, end.offset);
     sel.removeAllRanges();
     sel.addRange(domRange);
 

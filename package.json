@@ -78,7 +78,8 @@
     },
     "nsis": {
       "script": "launcher.nsi",
-      "differentialPackage": false
+      "differentialPackage": false,
+      "packElevateHelper": false
     },
     "mac": {
       "target": "dir",

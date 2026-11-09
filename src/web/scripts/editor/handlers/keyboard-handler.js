@@ -52,6 +52,8 @@ export class KeyboardHandler extends KeyboardHandlerData {
 
       // Search
       { key: `f`, ctrl: true, action: `search:open` },
+
+      { key: `/`, ctrl: true, action: `view:toggle` },
     ];
   }
 
@@ -151,6 +153,13 @@ export class KeyboardHandler extends KeyboardHandlerData {
 
     if (actionType === `search`) {
       document.dispatchEvent(new CustomEvent(`search:open`));
+      return;
+    }
+
+    if (actionType === `view`) {
+      /** @type {HTMLElement | null} */ (
+        document.querySelector(`.toolbar-view-mode-toggle`)
+      )?.click();
       return;
     }
 

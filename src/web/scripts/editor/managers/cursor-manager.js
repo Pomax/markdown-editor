@@ -6,7 +6,71 @@
 /// <reference path="../../../../types.d.ts" />
 
 import { rawOffsetToRenderedOffset, renderedOffsetToRawOffset } from '../offset-mapping.js';
+import { isListElement } from '../renderers/writing/index.js';
 import { CursorManagerData } from '../types.js';
+
+/**
+ * @param {Node} node
+ * @returns {number}
+ */
+function filterOwnText(node) {
+  if (node.nodeType === Node.TEXT_NODE) return NodeFilter.FILTER_ACCEPT;
+  if (isListElement(/** @type {Element} */ (node))) return NodeFilter.FILTER_REJECT;
+  return NodeFilter.FILTER_SKIP;
+}
+
+/**
+ * Returns the element that holds a block's own editable content.
+ * @param {Element} nodeElement - The element with `data-node-id`
+ * @returns {Element}
+ */
+export function getContentElement(nodeElement) {
+  return nodeElement.querySelector(`:scope > .md-content`) ?? nodeElement;
+}
+
+/**
+ * Creates a walker over the text nodes of a block's own content, in
+ * document order, skipping nested lists.
+ * @param {Node} contentEl
+ * @returns {TreeWalker}
+ */
+export function createOwnTextWalker(contentEl) {
+  return document.createTreeWalker(
+    contentEl,
+    NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_TEXT,
+    filterOwnText,
+  );
+}
+
+/**
+ * Returns the DOM position at the end of a block's own content: after
+ * its last own text node, or, without text, before its first nested
+ * list (or at its end when there is none).
+ * @param {Element} contentEl
+ * @returns {{ node: Node, offset: number }}
+ */
+export function endOfOwnContent(contentEl) {
+  const walker = createOwnTextWalker(contentEl);
+  /** @type {Node | undefined} */
+  let last;
+  let node = walker.nextNode();
+  while (node) {
+    last = node;
+    node = walker.nextNode();
+  }
+  if (last) return { node: last, offset: last.textContent?.length ?? 0 };
+
+  const children = contentEl.childNodes;
+  let index = 0;
+  while (index < children.length) {
+    const child = children[index];
+    if (child.nodeType === Node.ELEMENT_NODE && isListElement(/** @type {Element} */ (child))) {
+      break;
+    }
+    index++;
+  }
+  return { node: contentEl, offset: index };
+}
 
 /**
  * Manages cursor synchronization between the DOM and the syntax tree.
@@ -149,7 +213,7 @@ export class CursorManager extends CursorManagerData {
    */
   computeOffsetInContent(nodeElement, cursorNode, cursorOffset) {
     // Determine which sub-element holds the editable content
-    const contentEl = nodeElement.querySelector(`.md-content`) ?? nodeElement;
+    const contentEl = getContentElement(nodeElement);
 
     if (!contentEl.contains(cursorNode)) {
       return 0;
@@ -157,7 +221,7 @@ export class CursorManager extends CursorManagerData {
 
     // Walk the text nodes inside the content element and sum up lengths
     // until we reach the cursor node.
-    const walker = document.createTreeWalker(contentEl, NodeFilter.SHOW_TEXT, null);
+    const walker = createOwnTextWalker(contentEl);
     let offset = 0;
     let node = walker.nextNode();
 
@@ -186,7 +250,11 @@ export class CursorManager extends CursorManagerData {
       const children = cursorNode.childNodes;
       let charOffset = 0;
       for (let i = 0; i < cursorOffset && i < children.length; i++) {
-        charOffset += children[i].textContent?.length ?? 0;
+        const child = children[i];
+        if (child.nodeType === Node.ELEMENT_NODE && isListElement(/** @type {Element} */ (child))) {
+          continue;
+        }
+        charOffset += child.textContent?.length ?? 0;
       }
       // Clamp to total text length in case cursorOffset >= child count.
       const total = cursorNode.textContent?.length ?? 0;
@@ -297,7 +365,7 @@ export class CursorManager extends CursorManagerData {
       return;
     }
 
-    const contentEl = nodeElement.querySelector(`.md-content`) ?? nodeElement;
+    const contentEl = getContentElement(nodeElement);
 
     // In writing mode the DOM shows rendered text (no markdown syntax),
     // so we must convert the raw tree offset to a rendered offset.
@@ -312,7 +380,7 @@ export class CursorManager extends CursorManagerData {
       }
     }
 
-    const walker = document.createTreeWalker(contentEl, NodeFilter.SHOW_TEXT, null);
+    const walker = createOwnTextWalker(contentEl);
     let remaining = cursorOffset;
     let textNode = walker.nextNode();
     let placed = false;
@@ -341,12 +409,12 @@ export class CursorManager extends CursorManagerData {
     }
 
     if (!placed) {
-      // Offset is beyond available text — place at end
       const sel = window.getSelection();
       if (sel) {
+        const end = endOfOwnContent(contentEl);
         const range = document.createRange();
-        range.selectNodeContents(contentEl);
-        range.collapse(false);
+        range.setStart(end.node, end.offset);
+        range.collapse(true);
         sel.removeAllRanges();
         sel.addRange(range);
       }
@@ -398,7 +466,7 @@ export class CursorManager extends CursorManagerData {
     const nodeElement = this.editor.container.querySelector(`[data-node-id="${nodeId}"]`);
     if (!nodeElement) return undefined;
 
-    const contentEl = nodeElement.querySelector(`.md-content`) ?? nodeElement;
+    const contentEl = getContentElement(nodeElement);
 
     // Convert raw tree offset to rendered offset in writing mode.
     let cursorOffset = offset;
@@ -409,7 +477,7 @@ export class CursorManager extends CursorManagerData {
       }
     }
 
-    const walker = document.createTreeWalker(contentEl, NodeFilter.SHOW_TEXT, null);
+    const walker = createOwnTextWalker(contentEl);
     let remaining = cursorOffset;
     let textNode = walker.nextNode();
 
@@ -422,12 +490,7 @@ export class CursorManager extends CursorManagerData {
       textNode = walker.nextNode();
     }
 
-    // Offset is beyond available text — return end of content.
-    const lastChild = contentEl.lastChild;
-    if (lastChild && lastChild.nodeType === Node.TEXT_NODE) {
-      return { node: lastChild, offset: lastChild.textContent?.length ?? 0 };
-    }
-    return undefined;
+    return endOfOwnContent(contentEl);
   }
 
   /** @type {Set<string>} */

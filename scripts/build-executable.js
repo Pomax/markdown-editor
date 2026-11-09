@@ -44,6 +44,9 @@ await build({
   publish: `never`,
   config: {
     artifactName: `Markdown-Editor-\${version}-\${os}.\${ext}`,
+    afterPack: async ({ appOutDir }) => {
+      rmSync(join(appOutDir, `LICENSES.chromium.html`), { force: true });
+    },
   },
 });
 

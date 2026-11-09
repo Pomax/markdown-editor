@@ -74,8 +74,9 @@ export class ImageHelper extends ImageHelperData {
    * @param {string} src - Image source path or URL
    * @param {string} href - Optional link URL (empty string for no link)
    * @param {string} [style] - Optional inline style
+   * @param {string} [className] - Optional class names
    */
-  insertOrUpdateImage(alt, src, href, style = ``) {
+  insertOrUpdateImage(alt, src, href, style = ``, className = ``) {
     if (!this.editor.syntaxTree) return;
 
     const before = this.editor.syntaxTree.toMarkdown();
@@ -92,6 +93,9 @@ export class ImageHelper extends ImageHelperData {
       if (style) {
         currentNode.attributes.style = style;
       }
+      if (className) {
+        currentNode.attributes.className = className;
+      }
       this.editor.syntaxTree.treeCursor = { nodeId: currentNode.id, offset: alt.length };
       renderHints = { updated: [currentNode.id] };
     } else {
@@ -103,6 +107,9 @@ export class ImageHelper extends ImageHelperData {
       }
       if (style) {
         imageNode.attributes.style = style;
+      }
+      if (className) {
+        imageNode.attributes.className = className;
       }
 
       if (currentNode) {
@@ -158,6 +165,7 @@ export class ImageHelper extends ImageHelperData {
       src: node.attributes.url ?? node.attributes.src ?? ``,
       href: node.attributes.href ?? ``,
       style: node.attributes.style ?? ``,
+      className: node.attributes.className ?? ``,
     };
 
     const result = await modal.open(existing);
@@ -202,6 +210,9 @@ export class ImageHelper extends ImageHelperData {
     }
     if (result.style) {
       node.attributes.style = result.style;
+    }
+    if (result.className) {
+      node.attributes.className = result.className;
     }
     this.editor.syntaxTree.treeCursor = { nodeId: node.id, offset: result.alt.length };
     this.editor.recordAndRender(before, { updated: [node.id] });

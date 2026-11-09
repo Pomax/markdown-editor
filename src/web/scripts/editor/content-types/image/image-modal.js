@@ -50,6 +50,10 @@ export class ImageModal extends BaseModal {
                         <input type="text" id="image-href" name="imageHref" autocomplete="off">
                     </div>
                     <div class="image-field">
+                        <label for="image-class">Class <span class="image-field-hint">(optional)</span></label>
+                        <input type="text" id="image-class" name="imageClass" autocomplete="off">
+                    </div>
+                    <div class="image-field">
                         <label for="image-style">Style <span class="image-field-hint">(optional)</span></label>
                         <input type="text" id="image-style" name="imageStyle" autocomplete="off">
                     </div>
@@ -92,6 +96,7 @@ export class ImageModal extends BaseModal {
     const renameInput = this.getInput(`image-rename`);
     const altInput = this.getInput(`image-alt`);
     const hrefInput = this.getInput(`image-href`);
+    const classInput = this.getInput(`image-class`);
     const styleInput = this.getInput(`image-style`);
     const insertBtn = this.getInsertBtn();
     const heading = this.getHeading();
@@ -101,6 +106,7 @@ export class ImageModal extends BaseModal {
       renameInput.value = this.extractFilename(existing.src ?? ``);
       altInput.value = existing.alt ?? ``;
       hrefInput.value = existing.href ?? ``;
+      classInput.value = existing.className ?? ``;
       styleInput.value = existing.style ?? ``;
       if (insertBtn) insertBtn.textContent = `Update`;
       if (heading) heading.textContent = `Edit Image`;
@@ -109,6 +115,7 @@ export class ImageModal extends BaseModal {
       renameInput.value = ``;
       altInput.value = ``;
       hrefInput.value = ``;
+      classInput.value = ``;
       styleInput.value = ``;
       if (insertBtn) insertBtn.textContent = `Insert`;
       if (heading) heading.textContent = `Insert Image`;
@@ -130,13 +137,14 @@ export class ImageModal extends BaseModal {
     const alt = this.getInput(`image-alt`).value.trim();
     const href = this.getInput(`image-href`).value.trim();
     const style = this.getInput(`image-style`).value.trim();
+    const className = this.getInput(`image-class`).value.trim();
 
     if (!src) {
       this.getInput(`image-src`).focus();
       return;
     }
 
-    this.closeWithResult({ alt, src, href, style, rename });
+    this.closeWithResult({ alt, src, href, style, className, rename });
   }
 
   /**

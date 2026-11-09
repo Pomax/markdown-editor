@@ -1,15 +1,12 @@
 /**
- * Writing-view styles — rich presentation of markdown elements.
+ * Writing view styles.
  */
 
 .writing-view {
-  /* Focused-line highlight — only visible when the editor has DOM focus */
   &.focused [data-node-id][data-has-focus] {
     background-color: rgba(13, 110, 253, 0.05);
-    border-radius: 4px;
   }
 
-  /* Headings */
   .md-heading1,
   .md-heading2,
   .md-heading3,
@@ -23,27 +20,27 @@
   }
 
   .md-heading1 {
-    font-size: 2em;
+    font-size: 2.25em;
     border-bottom: 2px solid var(--color-border);
     padding-bottom: var(--spacing-xs);
   }
 
   .md-heading2 {
-    font-size: 1.75em;
-    border-bottom: 1px solid var(--color-border);
+    font-size: 2em;
+    border-bottom: var(--border);
     padding-bottom: var(--spacing-xs);
   }
 
   .md-heading3 {
-    font-size: 1.5em;
+    font-size: 1.75em;
   }
 
   .md-heading4 {
-    font-size: 1.25em;
+    font-size: 1.5em;
   }
 
   .md-heading5 {
-    font-size: 1.1em;
+    font-size: 1.25em;
   }
 
   .md-heading6 {
@@ -56,7 +53,6 @@
     font-weight: normal;
   }
 
-  /* Blockquote */
   .md-blockquote {
     border-left: 4px solid var(--color-border);
     padding-left: var(--spacing-md);
@@ -67,16 +63,20 @@
     .md-blockquote-marker {
       color: var(--color-syntax);
     }
+
+    .md-content {
+      display: block;
+      margin: 0;
+    }
   }
 
-  /* Code blocks */
   .md-code-block {
     background-color: var(--color-code-bg);
-    border-radius: 4px;
     padding: 1em;
     margin: 0;
     overflow-x: auto;
     position: relative;
+    font: inherit;
 
     &.tall [data-lang].bottom {
       display: block;
@@ -92,7 +92,7 @@
       cursor: pointer;
       user-select: none;
       padding: 0 0.25em;
-      border-radius: 2px;
+      border-radius: var(--radius-xs);
       z-index: 1;
 
       &:hover {
@@ -121,7 +121,7 @@
 
     .md-content {
       font-family: var(--font-family-mono);
-      font-size: 0.9em;
+      font-size: var(--font-size-code);
       white-space: pre-wrap;
       word-break: break-word;
 
@@ -132,10 +132,9 @@
     }
   }
 
-  /* Code syntax highlighting */
   .sh-keyword {
     color: var(--sh-keyword);
-    font-weight: 600;
+    font-weight: var(--font-weight-semibold);
   }
   .sh-string {
     color: var(--sh-string);
@@ -167,17 +166,15 @@
   }
   .sh-tag {
     color: var(--sh-tag);
-    font-weight: 600;
+    font-weight: var(--font-weight-semibold);
   }
 
-  /* Inline formatting */
   .md-inline {
     &.md-code {
       background-color: var(--color-code-bg);
-      padding: 0.1em 0.3em;
-      border-radius: 3px;
+      padding: var(--code-padding);
       font-family: var(--font-family-mono);
-      font-size: 0.9em;
+      font-size: var(--font-size-code);
     }
 
     &.md-bold {
@@ -198,14 +195,16 @@
     }
   }
 
-  /* List items — focused-line offsets must not interfere with
-       margin-left set via inline styles. */
   .md-list-item {
     &[data-has-focus] {
       margin-left: unset;
       padding-left: unset;
       margin-right: unset;
       padding-right: unset;
+    }
+
+    &.md-checklist-item {
+      list-style-type: none;
     }
 
     .md-list-marker {
@@ -227,21 +226,13 @@
     }
   }
 
-  /* Horizontal rule */
   .md-horizontal-rule {
-    display: block;
-    border: none;
-    min-height: 2px;
-    height: 2px;
-    margin: 0 !important;
-    padding: 0 !important;
-
-    hr {
-        margin-top: 1em;
-    }
+    min-height: 0;
+    height: 0;
+    margin: 1em 0 var(--spacing-sm);
+    padding: 0;
   }
 
-  /* Tables */
   .md-table {
     border-collapse: collapse;
     margin: var(--spacing-md) 0;
@@ -249,7 +240,7 @@
 
     th,
     td {
-      border: 1px solid var(--color-border);
+      border: var(--border);
       padding: var(--spacing-sm) var(--spacing-md);
       text-align: left;
     }
@@ -262,29 +253,22 @@
 
   .md-table-row {
     font-family: var(--font-family-mono);
-    font-size: 0.9em;
+    font-size: var(--font-size-code);
   }
 
-  /* Placeholder for empty content */
   .writing-placeholder::before {
     content: "Start typing...";
     color: var(--color-text-secondary);
     font-style: italic;
   }
 
-  /* Details/summary disclosure widget */
   .html-details {
-    border: 1px solid var(--color-border);
-    border-radius: 6px;
+    border: var(--border);
     padding: 0;
     margin: var(--spacing-xs) 0;
 
-    &:not([data-open]) .html-summary {
-      border-radius: 6px;
-    }
-
     &[data-open] .html-summary {
-      border-bottom: 1px solid var(--color-border);
+      border-bottom: var(--border);
     }
 
     &:not([data-open]) > div:not(.html-summary) {
@@ -314,13 +298,12 @@
     align-items: baseline;
     gap: var(--spacing-xs);
     background: color-mix(in srgb, var(--color-border) 30%, transparent);
-    border-radius: 6px 6px 0 0;
     padding: var(--spacing-sm) var(--spacing-md);
 
     > div {
       flex: 1;
       min-width: 0;
-      font-weight: 600;
+      font-weight: var(--font-weight-semibold);
 
       [data-node-id] {
         margin-bottom: 0;
@@ -335,7 +318,7 @@
     font-size: 0.65em;
     line-height: 1;
     color: var(--color-text-secondary);
-    padding: 2px;
+    padding: var(--spacing-2xs);
 
     &:hover {
       color: var(--color-text);

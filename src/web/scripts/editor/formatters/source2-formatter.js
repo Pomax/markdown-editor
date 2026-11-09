@@ -728,14 +728,18 @@ export class Source2Formatter extends Source2FormatterData {
    * @param {string} src
    * @param {string} href
    * @param {string} [style]
+   * @param {string} [className]
    */
-  insertOrUpdateImage(alt, src, href, style = ``) {
+  insertOrUpdateImage(alt, src, href, style = ``, className = ``) {
     const textarea = this.getTextarea();
     if (!textarea) return;
 
     let markdown;
-    if (style) {
-      markdown = `<img src="${src}" alt="${alt}"${href ? ` href="${href}"` : ``} style="${style}">`;
+    if (style || className) {
+      const hrefAttr = href ? ` href="${href}"` : ``;
+      const classAttr = className ? ` class="${className}"` : ``;
+      const styleAttr = style ? ` style="${style}"` : ``;
+      markdown = `<img src="${src}" alt="${alt}"${hrefAttr}${classAttr}${styleAttr}>`;
     } else if (href) {
       markdown = `[![${alt}](${src})](${href})`;
     } else {

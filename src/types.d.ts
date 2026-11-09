@@ -124,6 +124,8 @@ interface ImageData {
     href: string;
     /** Optional inline CSS style string. */
     style: string;
+    /** Optional space-separated CSS class names. */
+    className: string;
     /** New filename for the image (empty string if unchanged). */
     rename: string;
 }
@@ -212,6 +214,19 @@ interface ElectronAPI {
 }
 
 /**
+ * One list item of a run of consecutive list items, as laid out by the
+ * writing renderer.
+ */
+interface ListLayoutEntry {
+    node: SyntaxNode;
+    /** Nesting depth, counted from 1. */
+    depth: number;
+    ordered: boolean;
+    /** Whether this item opens a new list element. */
+    startsList: boolean;
+}
+
+/**
  * Node attributes for syntax tree nodes.
  */
 interface NodeAttributes {
@@ -239,6 +254,8 @@ interface NodeAttributes {
     tag?: string;
     /** Inline CSS style string for HTML images. */
     style?: string;
+    /** Space-separated CSS class names for HTML images. */
+    className?: string;
     /** HTML tag name for html-block nodes. */
     tagName?: string;
     /** Full opening tag line for html-block nodes. */
@@ -591,7 +608,13 @@ interface Formatter {
     /** Toggles list formatting on the current node. */
     toggleList(kind: 'unordered' | 'ordered' | 'checklist'): Promise<void>;
     /** Inserts or updates an image at the cursor. */
-    insertOrUpdateImage(alt: string, src: string, href: string, style?: string): void;
+    insertOrUpdateImage(
+        alt: string,
+        src: string,
+        href: string,
+        style?: string,
+        className?: string,
+    ): void;
     /** Inserts or updates a table at the cursor. */
     insertOrUpdateTable(tableData: TableData): void;
     /** Inserts or updates a link at the cursor (source2 only). */

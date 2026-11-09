@@ -8,6 +8,40 @@ import { highlight } from '../../syntax-highlighter/index.js';
 import { cursorToAbsoluteOffset } from '../../managers/cursor-persistence.js';
 import { WritingRendererData } from '../../types.js';
 
+let styleScopeCounter = 0;
+
+/**
+ * @param {Element} el
+ * @returns {boolean}
+ */
+export function isListElement(el) {
+  return el.tagName === `UL` || el.tagName === `OL`;
+}
+
+/**
+ * @param {Element} el
+ * @returns {boolean}
+ */
+function isListPart(el) {
+  return isListElement(el) || el.tagName === `LI`;
+}
+
+/**
+ * @param {Element} el
+ * @param {Element} blockParent
+ */
+function removeEmptyLists(el, blockParent) {
+  /** @type {Element | null} */
+  let current = el;
+  while (current && current !== blockParent) {
+    if (!isListElement(current) || current.querySelector(`li`)) break;
+    /** @type {Element | null} */
+    const parent = current.parentElement;
+    current.remove();
+    current = parent;
+  }
+}
+
 /**
  * Renders the syntax tree in writing mode.
  */
@@ -62,43 +96,13 @@ export class WritingRenderer extends WritingRendererData {
 
     const fragment = document.createDocumentFragment();
 
-    // Pre-compute 1-based visual positions for ordered list items so
-    // that each consecutive run of ordered items at the same indent
-    // level always numbers from 1.
-    const children = syntaxTree.children;
-    /** @type {Map<string, number>} nodeId → visual number */
-    const listNumbers = new Map();
-    let runCount = 0;
-    let runIndent = -1;
-    for (let i = 0; i < children.length; i++) {
-      const node = children[i];
-      const attrs = node.attributes;
-      if (node.type === `list-item` && attrs.ordered) {
-        const indent = attrs.indent || 0;
-        if (indent === runIndent) {
-          runCount++;
-        } else {
-          runCount = 1;
-          runIndent = indent;
-        }
-        listNumbers.set(node.id, runCount);
-      } else {
-        runCount = 0;
-        runIndent = -1;
-      }
-    }
-
-    for (const node of children) {
-      const isFocused = node.id === currentNodeId;
-      const element = this.renderNode(node, isFocused, listNumbers.get(node.id));
-      if (element) {
-        fragment.appendChild(element);
-      }
+    for (const element of this.renderBlockSequence(syntaxTree.children, currentNodeId)) {
+      fragment.appendChild(element);
     }
 
     // If empty, add a placeholder paragraph
     if (syntaxTree.children.length === 0) {
-      const placeholder = document.createElement(`div`);
+      const placeholder = document.createElement(`p`);
       placeholder.className = `md-paragraph writing-placeholder`;
       placeholder.appendChild(document.createElement(`br`));
       fragment.appendChild(placeholder);
@@ -110,6 +114,164 @@ export class WritingRenderer extends WritingRendererData {
     // user has somewhere to place the cursor.  This element is not
     // backed by a tree node — it is promoted on first interaction.
     this.ensurePhantomParagraph(container, syntaxTree);
+  }
+
+  /**
+   * @param {SyntaxNode[]} nodes
+   * @param {string | undefined} currentNodeId - The focused node's id
+   * @returns {HTMLElement[]} The top-level elements, in order
+   */
+  renderBlockSequence(nodes, currentNodeId) {
+    /** @type {HTMLElement[]} */
+    const elements = [];
+    let i = 0;
+    while (i < nodes.length) {
+      if (nodes[i].type === `list-item`) {
+        /** @type {SyntaxNode[]} */
+        const run = [];
+        while (i < nodes.length && nodes[i].type === `list-item`) {
+          run.push(nodes[i]);
+          i++;
+        }
+        elements.push(...this.renderListRun(run, currentNodeId));
+        continue;
+      }
+      const element = this.renderNode(nodes[i], nodes[i].id === currentNodeId);
+      if (element) elements.push(element);
+      i++;
+    }
+    return elements;
+  }
+
+  /**
+   * Computes, for each item of a run of consecutive list items, how deep
+   * it nests and whether it starts a new list.  An item indented further
+   * than the previous one opens a list inside the previous item; an item
+   * indented less closes lists until the depth matches; a change between
+   * ordered and unordered at the same depth starts a sibling list.
+   *
+   * @param {SyntaxNode[]} items
+   * @returns {ListLayoutEntry[]}
+   */
+  layoutListRun(items) {
+    /** @type {{ indent: number, ordered: boolean }[]} */
+    const stack = [];
+    /** @type {ListLayoutEntry[]} */
+    const entries = [];
+    for (const node of items) {
+      const indent = node.attributes.indent || 0;
+      const ordered = !!node.attributes.ordered;
+      while (stack.length > 0 && stack[stack.length - 1].indent > indent) {
+        stack.pop();
+      }
+      const top = stack[stack.length - 1];
+      let startsList = false;
+      if (top && top.indent === indent && top.ordered !== ordered) {
+        stack.pop();
+        stack.push({ indent, ordered });
+        startsList = true;
+      } else if (!top || top.indent < indent) {
+        stack.push({ indent, ordered });
+        startsList = true;
+      }
+      entries.push({ node, depth: stack.length, ordered, startsList });
+    }
+    return entries;
+  }
+
+  /**
+   * @param {SyntaxNode[]} items
+   * @param {string | undefined} currentNodeId - The focused node's id
+   * @returns {HTMLElement[]} The top-level list elements
+   */
+  renderListRun(items, currentNodeId) {
+    /** @type {HTMLElement[]} */
+    const roots = [];
+    /** @type {HTMLElement[]} open list elements, index = depth - 1 */
+    const lists = [];
+    for (const entry of this.layoutListRun(items)) {
+      if (entry.startsList) {
+        lists.length = entry.depth - 1;
+        const list = document.createElement(entry.ordered ? `ol` : `ul`);
+        if (entry.depth === 1) {
+          roots.push(list);
+        } else {
+          const parentList = lists[entry.depth - 2];
+          (parentList.lastElementChild ?? parentList).appendChild(list);
+        }
+        lists.push(list);
+      } else {
+        lists.length = entry.depth;
+      }
+      const li = this.renderNode(entry.node, entry.node.id === currentNodeId);
+      if (li) lists[entry.depth - 1].appendChild(li);
+    }
+    return roots;
+  }
+
+  /**
+   * Counted from 1.
+   *
+   * @param {SyntaxNode[]} siblings
+   * @param {SyntaxNode} node
+   * @returns {number}
+   */
+  computeListDepth(siblings, node) {
+    const idx = siblings.indexOf(node);
+    let start = idx;
+    while (start > 0 && siblings[start - 1].type === `list-item`) start--;
+    const entries = this.layoutListRun(siblings.slice(start, idx + 1));
+    return entries[entries.length - 1].depth;
+  }
+
+  /**
+   * Counted from 1.
+   *
+   * @param {Element} li
+   * @returns {number}
+   */
+  domListDepth(li) {
+    let depth = 0;
+    /** @type {Element | null} */
+    let el = li.parentElement;
+    while (el && isListPart(el)) {
+      if (isListElement(el)) depth++;
+      el = el.parentElement;
+    }
+    return depth;
+  }
+
+  /**
+   * Returns the element whose direct children are the block elements of
+   * a sibling sequence: the editor container, or the html-block content
+   * element, found by walking out of any enclosing lists.
+   *
+   * @param {Element} blockEl - A rendered block element
+   * @returns {HTMLElement}
+   */
+  blockParentOf(blockEl) {
+    /** @type {Element} */
+    let parent = /** @type {Element} */ (blockEl.parentElement);
+    while (isListPart(parent)) {
+      parent = /** @type {Element} */ (parent.parentElement);
+    }
+    return /** @type {HTMLElement} */ (parent);
+  }
+
+  /**
+   * Returns the direct child of `blockParent` that contains `el`: the
+   * element itself, or the top-level list it sits in.
+   *
+   * @param {Element} el
+   * @param {Element} blockParent
+   * @returns {Element}
+   */
+  topLevelBlockOf(el, blockParent) {
+    let top = el;
+    while (top.parentElement && top.parentElement !== blockParent) {
+      top = top.parentElement;
+    }
+    return top;
   }
 
   /**
@@ -128,16 +290,50 @@ export class WritingRenderer extends WritingRendererData {
 
     const currentNodeId = this.editor.getFocusedNodeId();
 
+    /** @type {Set<string>} node ids whose list run must be re-rendered */
+    const listTouched = new Set();
+
     // 1. Remove DOM elements for deleted nodes.
     for (const nodeId of removed) {
       const el = container.querySelector(`[data-node-id="${nodeId}"]`);
-      if (el) el.remove();
+      if (!el) continue;
+      const blockParent = this.blockParentOf(el);
+      const top = this.topLevelBlockOf(el, blockParent);
+      const items = [...el.querySelectorAll(`li[data-node-id]`)];
+      for (const neighbour of [top.previousElementSibling, top.nextElementSibling]) {
+        const li =
+          neighbour && isListElement(neighbour) && neighbour.querySelector(`li[data-node-id]`);
+        if (li) items.push(li);
+      }
+      for (const li of items) {
+        const id = /** @type {HTMLElement} */ (li).dataset.nodeId;
+        if (id && tree.findNodeById(id)) listTouched.add(id);
+      }
+      el.remove();
+      removeEmptyLists(top, blockParent);
     }
 
     // 2. Re-render existing nodes in-place.
     for (const nodeId of updated) {
-      const isFocused = nodeId === currentNodeId;
-      this.replaceNodeElement(container, tree, nodeId, isFocused);
+      const node = tree.findNodeById(nodeId);
+      const existing = container.querySelector(`[data-node-id="${nodeId}"]`);
+      if (!node || !existing) continue;
+      const isListItem = node.type === `list-item`;
+      const wasListItem = existing.tagName === `LI`;
+      if (!isListItem && !wasListItem) {
+        this.replaceNodeElement(container, tree, nodeId, nodeId === currentNodeId);
+        continue;
+      }
+      if (isListItem && wasListItem && this.listShapeUnchanged(tree, node, existing)) {
+        const fresh = this.renderNode(node, nodeId === currentNodeId);
+        if (!fresh) continue;
+        for (const child of [...existing.children]) {
+          if (isListElement(child)) fresh.appendChild(child);
+        }
+        existing.replaceWith(fresh);
+        continue;
+      }
+      listTouched.add(nodeId);
     }
 
     // 3. Insert DOM elements for newly added nodes.
@@ -145,11 +341,17 @@ export class WritingRenderer extends WritingRendererData {
       const node = tree.findNodeById(nodeId);
       if (!node) continue;
 
-      const isFocused = nodeId === currentNodeId;
       const siblings = node.parent ? node.parent.children : tree.children;
       const idx = siblings.indexOf(node);
-      const visualNumber = this.computeVisualNumber(tree, node);
-      const element = this.renderNode(node, isFocused, visualNumber);
+      const nextToList =
+        (idx > 0 && siblings[idx - 1].type === `list-item`) ||
+        (idx < siblings.length - 1 && siblings[idx + 1].type === `list-item`);
+      if (node.type === `list-item` || nextToList) {
+        listTouched.add(nodeId);
+        continue;
+      }
+
+      const element = this.renderNode(node, nodeId === currentNodeId);
       if (!element) continue;
 
       // Insert after the previous sibling's DOM element.
@@ -162,8 +364,6 @@ export class WritingRenderer extends WritingRendererData {
         }
       }
 
-      // No previous sibling — if inside an html-block, re-render
-      // the parent instead; otherwise prepend to the container.
       if (node.parent && node.parent.type === `html-block`) {
         const parentFocused = node.parent.id === currentNodeId;
         this.replaceNodeElement(container, tree, node.parent.id, parentFocused);
@@ -172,37 +372,93 @@ export class WritingRenderer extends WritingRendererData {
       }
     }
 
+    if (listTouched.size > 0) {
+      this.rebuildListRegions(container, tree, listTouched, currentNodeId);
+    }
+
     // Refresh the phantom paragraph after incremental updates.
     this.ensurePhantomParagraph(container, tree);
   }
 
   /**
-   * Computes the 1-based visual position for an ordered list item within
-   * its consecutive run of ordered items at the same indent level.
-   *
    * @param {SyntaxTree} tree
    * @param {SyntaxNode} node
-   * @returns {number|undefined}
+   * @param {Element} existing
+   * @returns {boolean}
    */
-  computeVisualNumber(tree, node) {
-    if (node.type !== `list-item` || !node.attributes.ordered) return undefined;
-    const children = tree.children;
-    const indent = node.attributes.indent || 0;
-    let count = 0;
-    for (const child of children) {
-      if (child.type === `list-item` && child.attributes.ordered) {
-        const childIndent = child.attributes.indent || 0;
-        if (childIndent === indent) {
-          count++;
-        } else {
-          count = 1;
-        }
-      } else {
-        count = 0;
-      }
-      if (child.id === node.id) return count;
+  listShapeUnchanged(tree, node, existing) {
+    const parentList = existing.parentElement;
+    if (!parentList || !isListElement(parentList)) return false;
+    const ordered = !!node.attributes.ordered;
+    if (parentList.tagName !== (ordered ? `OL` : `UL`)) return false;
+    const siblings = node.parent ? node.parent.children : tree.children;
+    return this.computeListDepth(siblings, node) === this.domListDepth(existing);
+  }
+
+  /**
+   * Re-renders the stretches of sibling nodes that contain the given
+   * nodes, widened to whole runs of list items on both sides.
+   *
+   * @param {HTMLElement} container
+   * @param {SyntaxTree} tree
+   * @param {Set<string>} nodeIds
+   * @param {string | undefined} currentNodeId
+   */
+  rebuildListRegions(container, tree, nodeIds, currentNodeId) {
+    /** @type {Map<SyntaxNode | undefined, SyntaxNode[]>} touched nodes per parent */
+    const groups = new Map();
+    for (const id of nodeIds) {
+      const node = tree.findNodeById(id);
+      if (!node) continue;
+      const group = groups.get(node.parent) ?? [];
+      group.push(node);
+      groups.set(node.parent, group);
     }
-    return undefined;
+
+    for (const [parent, nodes] of groups) {
+      const siblings = parent ? parent.children : tree.children;
+      let lo = siblings.length;
+      let hi = -1;
+      for (const node of nodes) {
+        const idx = siblings.indexOf(node);
+        if (idx < lo) lo = idx;
+        if (idx > hi) hi = idx;
+      }
+      while (lo > 0 && siblings[lo - 1].type === `list-item`) lo--;
+      while (hi < siblings.length - 1 && siblings[hi + 1].type === `list-item`) hi++;
+
+      /** @type {HTMLElement | undefined} */
+      let blockParent;
+      for (let i = lo; i <= hi && !blockParent; i++) {
+        const el = container.querySelector(`[data-node-id="${siblings[i].id}"]`);
+        if (el) blockParent = this.blockParentOf(el);
+      }
+      if (!blockParent && lo > 0) {
+        const prevEl = container.querySelector(`[data-node-id="${siblings[lo - 1].id}"]`);
+        if (prevEl) blockParent = this.blockParentOf(prevEl);
+      }
+      if (!blockParent) {
+        if (parent && parent.type === `html-block`) {
+          this.replaceNodeElement(container, tree, parent.id, parent.id === currentNodeId);
+          continue;
+        }
+        blockParent = container;
+      }
+
+      for (let i = lo; i <= hi; i++) {
+        const el = container.querySelector(`[data-node-id="${siblings[i].id}"]`);
+        if (el?.isConnected) this.topLevelBlockOf(el, blockParent).remove();
+      }
+
+      const fresh = this.renderBlockSequence(siblings.slice(lo, hi + 1), currentNodeId);
+      const prevEl =
+        lo > 0 ? container.querySelector(`[data-node-id="${siblings[lo - 1].id}"]`) : undefined;
+      if (prevEl) {
+        this.topLevelBlockOf(prevEl, blockParent).after(...fresh);
+      } else {
+        blockParent.prepend(...fresh);
+      }
+    }
   }
 
   /**
@@ -222,7 +478,7 @@ export class WritingRenderer extends WritingRendererData {
     const needsPhantom = last?.type === `code-block`;
 
     if (needsPhantom && !existing) {
-      const phantom = document.createElement(`div`);
+      const phantom = document.createElement(`p`);
       phantom.className = `md-paragraph`;
       phantom.dataset.isPhantom = ``;
       phantom.setAttribute(`contenteditable`, `true`);
@@ -249,10 +505,47 @@ export class WritingRenderer extends WritingRendererData {
     const existing = container.querySelector(`[data-node-id="${nodeId}"]`);
     if (!existing) return;
 
-    const visualNumber = this.computeVisualNumber(tree, node);
-    const updated = this.renderNode(node, isFocused, visualNumber);
+    const updated = this.renderNode(node, isFocused);
     if (updated) {
       existing.replaceWith(updated);
+    }
+  }
+
+  /**
+   * @param {SyntaxNode} node
+   * @returns {number}
+   */
+  headingLevel(node) {
+    return Number.parseInt(node.type.replace(`heading`, ``), 10);
+  }
+
+  /**
+   * @param {SyntaxNode} node
+   * @returns {string}
+   */
+  blockTagName(node) {
+    switch (node.type) {
+      case `heading1`:
+      case `heading2`:
+      case `heading3`:
+      case `heading4`:
+      case `heading5`:
+      case `heading6`:
+        return `h${this.headingLevel(node)}`;
+      case `blockquote`:
+        return `blockquote`;
+      case `code-block`:
+        return `pre`;
+      case `list-item`:
+        return `li`;
+      case `horizontal-rule`:
+        return `hr`;
+      case `table`:
+        return `table`;
+      case `html-block`:
+        return `div`;
+      default:
+        return `p`;
     }
   }
 
@@ -260,11 +553,10 @@ export class WritingRenderer extends WritingRendererData {
    * Renders a syntax tree node to an HTML element.
    * @param {SyntaxNode} node - The node to render
    * @param {boolean} isFocused - Whether this node has focus
-   * @param {number} [visualNumber] - 1-based position for ordered list items
    * @returns {HTMLElement | undefined}
    */
-  renderNode(node, isFocused, visualNumber) {
-    const element = document.createElement(`div`);
+  renderNode(node, isFocused) {
+    const element = document.createElement(this.blockTagName(node));
     element.className = node.type === `html-block` ? `html-element` : `md-${node.type}`;
     element.dataset.nodeId = node.id;
 
@@ -291,7 +583,7 @@ export class WritingRenderer extends WritingRendererData {
         return this.renderCodeBlock(node, element, isFocused);
 
       case `list-item`:
-        return this.renderListItem(node, element, isFocused, visualNumber);
+        return this.renderListItem(node, element, isFocused);
 
       case `horizontal-rule`:
         return this.renderHorizontalRule(node, element);
@@ -319,17 +611,7 @@ export class WritingRenderer extends WritingRendererData {
    * @returns {HTMLElement}
    */
   renderHeading(node, element, isFocused) {
-    const level = Number.parseInt(node.type.replace(`heading`, ``), 10);
-
-    const contentSpan = document.createElement(`span`);
-    contentSpan.className = `md-content`;
-    this.renderInlineContent(node, contentSpan);
-    element.appendChild(contentSpan);
-
-    // Apply heading styling
-    element.style.fontSize = `${2.5 - level * 0.25}em`;
-    element.style.fontWeight = `bold`;
-
+    this.renderInlineContent(node, element);
     return element;
   }
 
@@ -353,10 +635,10 @@ export class WritingRenderer extends WritingRendererData {
    * @returns {HTMLElement}
    */
   renderBlockquote(node, element, isFocused) {
-    const contentSpan = document.createElement(`span`);
-    contentSpan.className = `md-content`;
-    this.renderInlineContent(node, contentSpan);
-    element.appendChild(contentSpan);
+    const paragraph = document.createElement(`p`);
+    paragraph.className = `md-content`;
+    this.renderInlineContent(node, paragraph);
+    element.appendChild(paragraph);
 
     // Apply blockquote styling
     element.style.borderLeft = `3px solid #ccc`;
@@ -406,10 +688,8 @@ export class WritingRenderer extends WritingRendererData {
       tagBottom.classList.add(`empty`);
     }
 
-    const codeContent = document.createElement(`pre`);
-    codeContent.className = `md-content`;
-
     const code = document.createElement(`code`);
+    code.className = `md-content`;
     if (isFocused) {
       // Plain text when focused so cursor positions map 1:1.
       // Append a trailing newline so the last line always has
@@ -418,7 +698,6 @@ export class WritingRenderer extends WritingRendererData {
     } else {
       code.appendChild(highlight(node.content, language));
     }
-    codeContent.appendChild(code);
 
     // Only show the bottom tag when the code block is tall (>= 20 lines).
     const lineCount = (node.content.match(/\n/g) || []).length + 1;
@@ -427,7 +706,7 @@ export class WritingRenderer extends WritingRendererData {
     }
 
     element.appendChild(tagTop);
-    element.appendChild(codeContent);
+    element.appendChild(code);
     element.appendChild(tagBottom);
 
     return element;
@@ -438,24 +717,18 @@ export class WritingRenderer extends WritingRendererData {
    * @param {SyntaxNode} node
    * @param {HTMLElement} element
    * @param {boolean} isFocused
-   * @param {number} [visualNumber] - 1-based position within the list run
    * @returns {HTMLElement}
    */
-  renderListItem(node, element, isFocused, visualNumber) {
+  renderListItem(node, element, isFocused) {
     const attrs = /** @type {NodeAttributes} */ (node.attributes);
-    const indent = attrs.indent || 0;
-    const isOrdered = attrs.ordered;
     const isChecklist = typeof attrs.checked === `boolean`;
-    const number = attrs.number || 1;
 
     /** @type {HTMLInputElement | undefined} */
     let checkbox;
 
     if (isChecklist) {
       // Checklist: no bullet/number, show a checkbox
-      element.style.listStyleType = `none`;
-      element.style.display = `block`;
-      element.style.marginLeft = `${(indent + 1) * 1.5}em`;
+      element.classList.add(`md-checklist-item`);
 
       checkbox = document.createElement(`input`);
       checkbox.type = `checkbox`;
@@ -483,23 +756,12 @@ export class WritingRenderer extends WritingRendererData {
         this.editor.setUnsavedChanges(true);
       });
 
-      // Append checkbox AFTER content span (below) so the browser
-      // doesn't create a caret position before it. Absolute
-      // positioning keeps it visually to the left.
-    } else {
-      // Regular bullet or numbered list
-      element.style.listStyleType = isOrdered ? `decimal` : `disc`;
-      element.style.display = `list-item`;
-      element.style.marginLeft = `${(indent + 1) * 1.5}em`;
-      if (isOrdered && visualNumber !== undefined) {
-        element.style.counterSet = `list-item ${visualNumber}`;
-      }
+      // Append checkbox AFTER the content so the browser doesn't
+      // create a caret position before it. Absolute positioning
+      // keeps it visually to the left.
     }
 
-    const contentSpan = document.createElement(`span`);
-    contentSpan.className = `md-content`;
-    this.renderInlineContent(node, contentSpan);
-    element.appendChild(contentSpan);
+    this.renderInlineContent(node, element);
 
     // Append checkbox inside a non-editable wrapper so the browser
     // never creates caret positions around it.
@@ -532,6 +794,9 @@ export class WritingRenderer extends WritingRendererData {
     if (attrs.style) {
       img.setAttribute(`style`, attrs.style);
     }
+    if (attrs.className) {
+      img.setAttribute(`class`, attrs.className);
+    }
 
     if (attrs.href) {
       const link = document.createElement(`a`);
@@ -552,9 +817,6 @@ export class WritingRenderer extends WritingRendererData {
    * @returns {HTMLElement}
    */
   renderHorizontalRule(node, element) {
-    // Always show as a visual rule (WYSIWYG)
-    const hr = document.createElement(`hr`);
-    element.appendChild(hr);
     return element;
   }
 
@@ -565,21 +827,17 @@ export class WritingRenderer extends WritingRendererData {
    * @returns {HTMLElement}
    */
   renderTable(node, element) {
-    // Always render as HTML table (WYSIWYG)
-    const table = this.parseTableToHTML(node.content);
-    element.appendChild(table);
+    this.parseTableToHTML(node.content, /** @type {HTMLTableElement} */ (element));
     return element;
   }
 
   /**
    * Parses markdown table content into an HTML table.
    * @param {string} content - The table content
+   * @param {HTMLTableElement} table - The table to fill
    * @returns {HTMLTableElement}
    */
-  parseTableToHTML(content) {
-    const table = document.createElement(`table`);
-    table.className = `md-table`;
-
+  parseTableToHTML(content, table) {
     const lines = content.split(`\n`).filter((line) => line.trim());
 
     for (let i = 0; i < lines.length; i++) {
@@ -646,16 +904,15 @@ export class WritingRenderer extends WritingRendererData {
     const isVoid = attrs.closingTag === `` && node.children.length === 0;
     const isRawContent = attrs.rawContent !== undefined;
 
-    // If this is a <style> block and the user has enabled style injection,
-    // create a real <style> element so the CSS applies to the page.
-    // The rules are wrapped in @scope (#editor) so they only affect the
-    // document content and cannot leak into the ToC, toolbar, or tab bar.
+    // The scope root is the editor container that holds this style element,
+    // so the rules apply to this document only.
     if (tagName === `style` && isRawContent && this.editor.enableStyleElements) {
       const styleEl = document.createElement(`style`);
       styleEl.dataset.nodeId = node.id;
       styleEl.dataset.injectedStyle = `true`;
+      styleEl.dataset.scope = `${++styleScopeCounter}`;
       const raw = attrs.rawContent || ``;
-      styleEl.textContent = `@scope (#editor) { ${raw} }`;
+      styleEl.textContent = `@scope (.editor:has(style[data-scope="${styleEl.dataset.scope}"])) { ${raw} }`;
       element.appendChild(styleEl);
       element.hidden = true;
       return element;
@@ -676,12 +933,8 @@ export class WritingRenderer extends WritingRendererData {
     // Determine which child (if any) is focused
     const currentNodeId = this.editor.getFocusedNodeId();
 
-    for (const child of node.children) {
-      const childFocused = child.id === currentNodeId;
-      const childElement = this.renderNode(child, childFocused);
-      if (childElement) {
-        container.appendChild(childElement);
-      }
+    for (const childElement of this.renderBlockSequence(node.children, currentNodeId)) {
+      container.appendChild(childElement);
     }
 
     // If no children, add a placeholder so the element is visible
@@ -768,10 +1021,8 @@ export class WritingRenderer extends WritingRendererData {
       const summaryContent = document.createElement(`div`);
       const summaryFocused = summaryNode.id === currentNodeId;
       // Render summary's own children (the bareText paragraph)
-      for (const sc of summaryNode.children) {
-        const scFocused = sc.id === currentNodeId;
-        const scEl = this.renderNode(sc, scFocused);
-        if (scEl) summaryContent.appendChild(scEl);
+      for (const scEl of this.renderBlockSequence(summaryNode.children, currentNodeId)) {
+        summaryContent.appendChild(scEl);
       }
       summaryRow.appendChild(summaryContent);
       element.appendChild(summaryRow);
@@ -780,12 +1031,8 @@ export class WritingRenderer extends WritingRendererData {
     // Collapsible body
     const body = document.createElement(`div`);
 
-    for (const child of bodyChildren) {
-      const childFocused = child.id === currentNodeId;
-      const childElement = this.renderNode(child, childFocused);
-      if (childElement) {
-        body.appendChild(childElement);
-      }
+    for (const childElement of this.renderBlockSequence(bodyChildren, currentNodeId)) {
+      body.appendChild(childElement);
     }
 
     if (bodyChildren.length === 0) {
