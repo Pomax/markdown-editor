@@ -214,6 +214,19 @@ interface ElectronAPI {
 }
 
 /**
+ * One list item of a run of consecutive list items, as laid out by the
+ * writing renderer.
+ */
+interface ListLayoutEntry {
+    node: SyntaxNode;
+    /** Nesting depth, counted from 1. */
+    depth: number;
+    ordered: boolean;
+    /** Whether this item opens a new list element. */
+    startsList: boolean;
+}
+
+/**
  * Node attributes for syntax tree nodes.
  */
 interface NodeAttributes {

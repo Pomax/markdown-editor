@@ -14,6 +14,7 @@ import {
   defocusEditor,
   launchApp,
   loadContent,
+  MOD,
   projectRoot,
 } from '../../test-utils.js';
 
@@ -89,5 +90,22 @@ test(`toggle stays in sync when view mode changes via menu`, async () => {
   await page.evaluate(() => window.editorAPI?.setViewMode(`writing`));
   await page.locator(`#editor[data-view-mode="writing"]`).waitFor();
 
+  await expect(toggle).toHaveText(`Writing View`);
+});
+
+test(`Ctrl+/ toggles from writing view to source view and back`, async () => {
+  const toggle = page.locator(`.toolbar-view-mode-toggle`);
+  const editor = page.locator(`#editor`);
+
+  await page.evaluate(() => window.editorAPI?.setViewMode(`writing`));
+  await page.locator(`#editor[data-view-mode="writing"]`).waitFor();
+  await page.locator(`#editor [data-node-id]`).first().click();
+
+  await page.keyboard.press(`${MOD}+/`);
+  await expect(editor).toHaveAttribute(`data-view-mode`, `source2`);
+  await expect(toggle).toHaveText(`Source View`);
+
+  await page.keyboard.press(`${MOD}+/`);
+  await expect(editor).toHaveAttribute(`data-view-mode`, `writing`);
   await expect(toggle).toHaveText(`Writing View`);
 });

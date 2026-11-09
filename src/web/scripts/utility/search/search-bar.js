@@ -8,6 +8,7 @@
  * highlighting.
  */
 
+import { createOwnTextWalker, getContentElement } from '../../editor/managers/cursor-manager.js';
 import { SearchBarData } from '../../editor/types.js';
 
 export class SearchBar extends SearchBarData {
@@ -605,10 +606,10 @@ export class SearchBar extends SearchBarData {
     if (!el) return;
 
     const isFocused = this.editor.viewMode === `writing`;
-    const walkRoot = el.querySelector(`.md-content`) ?? el;
+    const walkRoot = getContentElement(el);
 
     // Collect text nodes in document order via TreeWalker.
-    const walker = document.createTreeWalker(walkRoot, NodeFilter.SHOW_TEXT);
+    const walker = createOwnTextWalker(walkRoot);
     /** @type {{ node: Text, start: number, end: number }[]} */
     const textRuns = [];
     let offset = 0;

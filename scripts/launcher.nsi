@@ -1,6 +1,6 @@
 !include "common.nsh"
-!include "extractAppPackage.nsh"
 
+SetCompress off
 CRCCheck off
 WindowIcon Off
 AutoCloseWindow True
@@ -18,7 +18,6 @@ Function .onInit
 FunctionEnd
 
 Section
-  InitPluginsDir
   StrCpy $appDir "$LOCALAPPDATA\${APP_FILENAME}\${VERSION}"
 
   ClearErrors
@@ -29,10 +28,15 @@ Section
   StrCmp $1 "${APP_64_HASH}" launch
 
   extract:
-  RMDir /r "$LOCALAPPDATA\${APP_FILENAME}"
-  StrCpy $INSTDIR $appDir
-  SetOutPath $INSTDIR
-  !insertmacro extractEmbeddedAppPackage
+  IfFileExists "$appDir\${APP_EXECUTABLE_FILENAME}" 0 unpack
+  ClearErrors
+  FileOpen $0 "$appDir\${APP_EXECUTABLE_FILENAME}" a
+  IfErrors running
+  FileClose $0
+
+  unpack:
+  SetOutPath $appDir
+  File /r "${PROJECT_DIR}\dist\win-unpacked\*.*"
   FileOpen $0 "$appDir\.ready" w
   FileWrite $0 "${APP_64_HASH}"
   FileClose $0
@@ -45,4 +49,9 @@ Section
   SetOutPath $appDir
   Exec '"$appDir\${APP_EXECUTABLE_FILENAME}" $R0'
   SetErrorLevel 0
+  Return
+
+  running:
+  MessageBox MB_OK|MB_ICONEXCLAMATION "Can't run, close other instances first."
+  SetErrorLevel 1
 SectionEnd

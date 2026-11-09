@@ -141,6 +141,7 @@ function createWindow() {
       // Allow the renderer to load file:// resources (e.g. images)
       // from any directory, not just the application's own folder.
       webSecurity: false,
+      offscreen: !!process.env.TESTING,
     },
     show: false,
   };
@@ -163,6 +164,13 @@ function createWindow() {
   const win = mainWindow;
 
   win.once(`ready-to-show`, () => {
+    if (process.env.STARTUP_TIMING) {
+      const now = new Date();
+      const ms = String(now.getMilliseconds()).padStart(3, `0`);
+      fs.writeFileSync(process.env.STARTUP_TIMING, `${now.toTimeString().slice(0, 8)}.${ms}`);
+      app.exit(0);
+      return;
+    }
     if (!process.env.TESTING) {
       win.show();
     }

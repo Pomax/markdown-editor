@@ -1,15 +1,14 @@
 /**
- * Universal editor styles — shared by both writing view and source view.
+ * Editor styles shared by the writing view and the source view.
  */
 
-/* Main editor element */
 .editor {
     width: 100%;
     max-width: var(--page-max-width);
     min-height: calc(var(--page-max-width) * 1.414); /* A4 aspect ratio */
     background: var(--page-bg);
     padding: var(--page-padding-top) var(--page-padding-right) var(--page-padding-bottom) var(--page-padding-left);
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    box-shadow: var(--shadow-page);
     font-family: var(--font-family);
     font-size: var(--font-size-base);
     line-height: var(--line-height);
@@ -18,15 +17,25 @@
 
     &:focus {
         outline: none;
-        box-shadow: 0 2px 12px rgba(0, 0, 0, 0.15);
+        box-shadow: var(--shadow-page-focused);
     }
 
     &.focused {
-        box-shadow: 0 2px 12px rgba(0, 0, 0, 0.15);
+        box-shadow: var(--shadow-page-focused);
+    }
+
+    ul,
+    ol {
+        margin: var(--spacing-sm) 0;
+        padding-left: 1.5em;
+    }
+
+    li > ul,
+    li > ol {
+        margin: 0;
     }
 }
 
-/* Page resize handles */
 .editor-resize-handle {
     position: fixed;
     width: 6px;
@@ -36,15 +45,14 @@
     &:hover,
     &.dragging {
         background: var(--color-primary);
-        opacity: 0.3;
-        border-radius: 3px;
+        opacity: var(--handle-hover-opacity);
+        border-radius: var(--radius-sm);
     }
 }
 
-/* Line styling */
 [data-node-id] {
     margin-bottom: var(--spacing-sm);
-    min-height: 1.6em;
+    min-height: calc(var(--line-height) * 1em);
     white-space: pre-wrap;
     word-break: break-word;
 
@@ -53,31 +61,19 @@
     }
 }
 
-/* Paragraph */
 .md-paragraph {
     margin: calc(var(--spacing-md) / 2) 0;
 }
 
-/* Lists — base spacing */
 .md-list-item {
     margin-bottom: var(--spacing-xs);
     position: relative;
 }
 
-[data-node-id]:not(.md-list-item) + .md-list-item {
-    margin-top: var(--spacing-sm);
-}
-
-.md-list-item + [data-node-id]:not(.md-list-item) {
-    margin-top: var(--spacing-sm);
-}
-
-/* Content region */
 .md-content {
     display: inline;
 }
 
-/* HTML element defaults */
 a {
     color: var(--color-primary);
     text-decoration: none;
@@ -101,13 +97,12 @@ del {
 
 code {
     background-color: var(--color-code-bg);
-    padding: 0.1em 0.3em;
-    border-radius: 3px;
+    padding: var(--code-padding);
     font-family: var(--font-family-mono);
-    font-size: 0.9em;
-}
+    font-size: var(--font-size-code);
 
-pre code {
-    background: none;
-    padding: 0;
+    pre & {
+        background: none;
+        padding: 0;
+    }
 }

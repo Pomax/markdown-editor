@@ -242,5 +242,5 @@ With `fullyParallel: true`, tests within a single spec file may run in any order
 - Source view intentionally shows plain text with no presentation styling — no bold headings, no italic blockquotes, no borders, no font-size changes. Only a subtle background tint on code blocks.
 - The fake details widget uses `.html-details`, `[data-open]`, `.html-summary`, `.dropdown` classes. The summary content and body divs are targeted positionally (`.html-summary > div` and `.html-details > div:not(.html-summary)`).
 - Collapse is achieved via `.html-details:not([data-open]) > div:not(.html-summary) { display: none; }`.
-- Checklist items use `.md-list-item input[type="checkbox"]` for styling. They render with `display: block` and `list-style-type: none` so the checkbox replaces the bullet.
+- Checklist items are `li.md-list-item.md-checklist-item` and use `.md-list-item input[type="checkbox"]` for styling. `.md-checklist-item` sets `list-style-type: none` so the checkbox replaces the bullet.
 - `.writing-view .md-list-item[data-has-focus]` unsets `margin-left`, `padding-left`, `margin-right`, and `padding-right` to prevent the general focused-line padding shift from visually misaligning list items.

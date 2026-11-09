@@ -137,11 +137,13 @@ html-block (type: 'html-block', tagName: 'details')
     div.html-summary
       span.dropdown   ← clickable ▶/▼
       div
-        div.md-paragraph[data-node-id]
+        p.md-paragraph[data-node-id]
     div
-      div.md-heading2[data-node-id]
-      div.md-paragraph[data-node-id]
+      h2.md-heading2[data-node-id]
+      p.md-paragraph[data-node-id]
   ```
+
+- Markdown blocks render as their semantic HTML elements (`h1` to `h6`, `p`, `blockquote > p.md-content`, `pre > code.md-content`, `table`, `hr`, `ul`/`ol > li`), each carrying `data-node-id` and its `md-<type>` class. List items nest: an indented item's `li` sits in a `ul`/`ol` inside the previous `li`, so code that reads a block's text uses `getContentElement()` and `createOwnTextWalker()` from `cursor-manager.js`; the walker skips nested lists.
 
 - Collapse/expand state is stored as `node.runtime.detailsOpen` (runtime-only — not serialized to markdown).
 - Default open/closed state is controlled by a user preference (`detailsClosed` setting in the Content preferences section).
@@ -290,6 +292,6 @@ With `fullyParallel: true`, tests within a single spec file may run in any order
 - Editor styles are in `src/web/styles/editor.css`.
 - The fake details widget uses `.html-details`, `[data-open]`, `.html-summary`, `.dropdown` classes. The summary content and body divs are targeted positionally (`.html-summary > div` and `.html-details > div:not(.html-summary)`).
 - Collapse is achieved via `.html-details:not([data-open]) > div:not(.html-summary) { display: none; }`.
-- Checklist items use `.md-list-item input[type="checkbox"]` for styling. They render with `display: block` and `list-style-type: none` so the checkbox replaces the bullet.
+- Checklist items are `li.md-list-item.md-checklist-item` and use `.md-list-item input[type="checkbox"]` for styling. `.md-checklist-item` sets `list-style-type: none` so the checkbox replaces the bullet.
 - The focused-line highlight (`.writing-view.focused [data-node-id][data-has-focus]`) is scoped to the `.focused` class on the editor container, so it disappears when the editor loses DOM focus without requiring a re-render.
 - `.writing-view .md-list-item[data-has-focus]` unsets `margin-left`, `padding-left`, `margin-right`, and `padding-right` to prevent the general focused-line padding shift from visually misaligning list items.

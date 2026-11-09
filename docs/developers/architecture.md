@@ -302,6 +302,10 @@ Textarea-based source editing surface (the active source view):
 
 #### WritingRenderer
 WYSIWYG-style display:
+- Renders every block as the HTML element its markdown stands for, with `data-node-id` and the `md-<type>` class on that element itself: `<h1>` to `<h6>`, `<p>` (also for images, as `<p class="md-image"><img></p>`), `<blockquote>` containing a `<p class="md-content">`, `<pre class="md-code-block">` containing `<code class="md-content">`, `<table>`, `<hr>`, and `<li>`. HTML blocks keep a wrapper `<div class="html-element">`.
+- `renderBlockSequence()` renders a sibling sequence, grouping consecutive `list-item` nodes into `<ul>`/`<ol>` elements through `layoutListRun()`: an item indented further than the previous one opens a nested list inside the previous `<li>`, a change between ordered and unordered at the same depth starts a sibling list. Numbering comes from the `<ol>` itself. Checklist items carry the `md-checklist-item` class.
+- Incremental rendering (`renderNodes()`) replaces an updated `<li>` in place when its list type and depth are unchanged, moving its nested list into the new element; any other change touching a list item (added, removed, re-indented, converted) re-renders the whole run of list items it belongs to through `rebuildListRegions()`.
+- Cursor placement, range selection and search highlighting read a block's own text through `getContentElement()` and `createOwnTextWalker()` (exported from `cursor-manager.js`). The walker skips nested lists, since a parent `<li>` also contains its nested items' text.
 - Hides syntax when not focused
 - Shows formatted output (rendered images, tables, horizontal rules, etc.)
 - Reveals raw markdown syntax on element focus (click to edit)
