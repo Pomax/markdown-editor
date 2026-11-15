@@ -191,6 +191,20 @@ test.describe(`Source2 toolbar — block formatting via button click`, () => {
     expect(value).toBe(`### plain paragraph`);
   });
 
+  test(`heading4 button adds #### prefix to the current line`, async () => {
+    await loadContent(page, `plain paragraph`);
+    await setSource2View(page);
+
+    const textarea = page.locator(`#editor.source-view-v2 textarea`);
+    await textarea.focus();
+    await textarea.evaluate((/** @type {HTMLTextAreaElement} */ el) => el.setSelectionRange(3, 3));
+
+    await clickToolbarButton(page, `heading4`);
+
+    const value = await getTextareaValue(page);
+    expect(value).toBe(`#### plain paragraph`);
+  });
+
   test(`paragraph button removes heading prefix`, async () => {
     await loadContent(page, `## a heading`);
     await setSource2View(page);

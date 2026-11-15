@@ -1,6 +1,6 @@
 /**
  * @fileoverview Table of Contents sidebar.
- * Reads h1–h3 headings from the editor's syntax tree and renders a nested,
+ * Reads h1–h4 headings from the editor's syntax tree and renders a nested,
  * clickable outline.  Clicking a heading scrolls the editor to that element.
  */
 
@@ -76,7 +76,7 @@ export class TableOfContents extends TableOfContentsData {
   }
 
   /**
-   * Extracts h1–h3 headings from the syntax tree and re-renders the TOC.
+   * Extracts h1–h4 headings from the syntax tree and re-renders the TOC.
    */
   refresh() {
     const nav = this.container.querySelector(`.toc-nav`);
@@ -98,7 +98,7 @@ export class TableOfContents extends TableOfContentsData {
   }
 
   /**
-   * Reads the editor's syntax tree and returns an ordered array of h1–h3
+   * Reads the editor's syntax tree and returns an ordered array of h1–h4
    * headings with their node IDs and plain-text content.
    * @returns {TocHeading[]}
    */
@@ -113,7 +113,7 @@ export class TableOfContents extends TableOfContentsData {
   }
 
   /**
-   * Recursively collects h1–h3 headings from a list of nodes.
+   * Recursively collects h1–h4 headings from a list of nodes.
    * Descends into container nodes (e.g. html-block) so that headings
    * nested inside HTML elements appear in the table of contents.
    * @param {SyntaxNode[]} nodes
@@ -122,7 +122,7 @@ export class TableOfContents extends TableOfContentsData {
   collectHeadings(nodes, headings) {
     for (const node of nodes) {
       const level = this.headingLevel(node.type);
-      if (level >= 1 && level <= 3) {
+      if (level >= 1 && level <= 4) {
         headings.push({
           id: node.id,
           level,
@@ -149,7 +149,7 @@ export class TableOfContents extends TableOfContentsData {
 
   /**
    * Walks the syntax tree in document order and maps every node ID to
-   * the ID of the most recent h1–h3 heading that precedes it.  Nodes
+   * the ID of the most recent h1–h4 heading that precedes it.  Nodes
    * that appear before the first heading are mapped to `''` (no heading).
    * @param {TocHeading[]} headings - The heading list produced by
    *   `extractHeadings()` (used to build a fast heading-ID set).
@@ -260,7 +260,7 @@ export class TableOfContents extends TableOfContentsData {
 
   /**
    * Builds a nested `<ul>` list from the flat heading array.
-   * Lower-level headings (h2 inside h1, h3 inside h2) are nested.
+   * Lower-level headings (h2 inside h1, h3 inside h2, h4 inside h3) are nested.
    * @param {TocHeading[]} headings
    * @returns {HTMLUListElement}
    */

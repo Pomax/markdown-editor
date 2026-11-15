@@ -82,6 +82,23 @@ export class Toolbar extends ToolbarData {
         ],
       },
       {
+        id: `heading4`,
+        label: `Heading 4`,
+        icon: `H4`,
+        action: `changeType:heading4`,
+        shortcut: `Mod+Alt+4`,
+        applicableTo: [
+          `paragraph`,
+          `heading1`,
+          `heading2`,
+          `heading3`,
+          `heading4`,
+          `heading5`,
+          `heading6`,
+          `list-item`,
+        ],
+      },
+      {
         id: `paragraph`,
         label: `Paragraph`,
         icon: `¶`,

@@ -133,6 +133,17 @@
             color: var(--color-primary);
         }
     }
+
+    .toc-level-4 > & {
+        font-weight: 400;
+        font-size: var(--font-size-sm);
+        color: var(--color-text-secondary);
+
+        &:hover,
+        &.toc-active {
+            color: var(--color-primary);
+        }
+    }
 }
 
 .toc-empty {

@@ -311,12 +311,6 @@ export class PreferencesModal extends PreferencesModalData {
       if (linkTB.checked) {
         this.syncValue(dialog, `margin-top`, `margin-bottom`);
       }
-      // If both TB and LR are on, turn on All
-      if (linkTB.checked && linkLR.checked) {
-        linkAll.checked = true;
-        this.linkAll = true;
-        this.syncAllToValue(dialog, this.getInput(dialog, `margin-top`).value);
-      }
       if (!linkTB.checked && linkAll.checked) {
         linkAll.checked = false;
         this.linkAll = false;
@@ -328,11 +322,6 @@ export class PreferencesModal extends PreferencesModalData {
       this.linkLeftRight = linkLR.checked;
       if (linkLR.checked) {
         this.syncValue(dialog, `margin-left`, `margin-right`);
-      }
-      if (linkTB.checked && linkLR.checked) {
-        linkAll.checked = true;
-        this.linkAll = true;
-        this.syncAllToValue(dialog, this.getInput(dialog, `margin-top`).value);
       }
       if (!linkLR.checked && linkAll.checked) {
         linkAll.checked = false;

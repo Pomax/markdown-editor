@@ -381,7 +381,7 @@ WYSIWYG formatting toolbar using a CSS grid layout with three areas (`left`, `ce
 - **Content toolbar** (centred): formatting and element-type buttons
 - Lucide SVG icons with per-button coloring
 - Context-aware button visibility (buttons only shown when applicable to current element type)
-- Element type buttons (H1–H3, paragraph, blockquote, code block)
+- Element type buttons (H1–H4, paragraph, blockquote, code block)
 - Format buttons (bold, italic, strikethrough, inline code, link, image, table)
 - List buttons (unordered, ordered, checklist)
 - View mode dropdown selector
@@ -391,7 +391,7 @@ WYSIWYG formatting toolbar using a CSS grid layout with three areas (`left`, `ce
 ### TableOfContents
 
 Sidebar showing a navigable document outline:
-- Extracts h1–h3 headings from the syntax tree
+- Extracts h1–h4 headings from the syntax tree
 - Renders a nested, clickable tree of links
 - Scrolls the editor to the clicked heading
 - Auto-refreshes via MutationObserver when the document changes

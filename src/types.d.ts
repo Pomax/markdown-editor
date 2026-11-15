@@ -617,9 +617,9 @@ interface Formatter {
     ): void;
     /** Inserts or updates a table at the cursor. */
     insertOrUpdateTable(tableData: TableData): void;
-    /** Inserts or updates a link at the cursor (source2 only). */
+    /** Inserts a link at the cursor or replaces the selection with one. */
     insertOrUpdateLink?(text: string, url: string): void;
-    /** Returns prefill data for the link modal (source2 only). */
+    /** Returns prefill data for the link modal (selected text or word under cursor). */
     getLinkPrefill?(): Partial<LinkData>;
     /** Saves the textarea cursor position before a modal steals focus (source2 only). */
     saveCursorPosition?(): void;
