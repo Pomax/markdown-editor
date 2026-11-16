@@ -2,6 +2,7 @@
 .claude/state
 dist/
 node_modules/
+tauri/
 test-results/
 *.log
 .DS_Store
