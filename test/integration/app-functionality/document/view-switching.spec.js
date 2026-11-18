@@ -13,18 +13,18 @@ import {
   setWritingView,
 } from '../../test-utils.js';
 
-/** @type {import('@playwright/test').ElectronApplication} */
-let electronApp;
+/** @type {import('../../tauri-app.js').TauriApp} */
+let app;
 
 /** @type {import('@playwright/test').Page} */
 let page;
 
 test.beforeAll(async () => {
-  ({ electronApp, page } = await launchApp());
+  ({ app, page } = await launchApp());
 });
 
 test.afterAll(async () => {
-  await closeApp(electronApp);
+  await closeApp(app);
 });
 
 test(`switching to source2 does not scroll a short document`, async () => {

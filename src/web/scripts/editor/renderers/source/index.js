@@ -60,6 +60,13 @@ export class SourceRendererV2 extends SourceRendererV2Data {
 
     textarea.addEventListener(`input`, () => {
       this.mirrorDirty = true;
+      this.editor.undoManager.recordChange({
+        type: `input`,
+        before: this.lastValue,
+        after: textarea.value,
+        caret: textarea.selectionStart,
+      });
+      this.lastValue = textarea.value;
     });
     textarea.addEventListener(`scroll`, () => syncScroll(textarea, pre));
 
@@ -71,6 +78,7 @@ export class SourceRendererV2 extends SourceRendererV2Data {
     this.pre = pre;
     this.mirrorDirty = false;
     this.originalMarkdown = markdown;
+    this.lastValue = markdown;
   }
 
   /**
@@ -97,6 +105,20 @@ export class SourceRendererV2 extends SourceRendererV2Data {
    */
   getContent() {
     return this.textarea?.value ?? ``;
+  }
+
+  /**
+   * Puts markdown into the textarea in place, keeping its focus, with the
+   * caret at the given offset, as an undo or redo does.
+   * @param {string} markdown
+   * @param {number} caret
+   */
+  showContent(markdown, caret) {
+    if (!this.textarea) return;
+    this.textarea.value = markdown;
+    this.textarea.setSelectionRange(caret, caret);
+    this.lastValue = markdown;
+    this.mirrorDirty = true;
   }
 
   /**

@@ -14,8 +14,8 @@ import {
   setWritingView,
 } from '../../test-utils.js';
 
-/** @type {import('@playwright/test').ElectronApplication} */
-let electronApp;
+/** @type {import('../../tauri-app.js').TauriApp} */
+let app;
 
 /** @type {import('@playwright/test').Page} */
 let page;
@@ -25,11 +25,11 @@ const HTML_IMG_CLASS = `<img src="image.png" alt="HTML image" class="wide framed
 const HTML_IMG_CLASS_STYLE = `<img src="image.png" alt="HTML image" class="wide framed" style="zoom: 80%;" />`;
 
 test.beforeAll(async () => {
-  ({ electronApp, page } = await launchApp());
+  ({ app, page } = await launchApp());
 });
 
 test.afterAll(async () => {
-  await closeApp(electronApp);
+  await closeApp(app);
 });
 
 test(`HTML img tag is parsed as an image node in writing mode`, async () => {

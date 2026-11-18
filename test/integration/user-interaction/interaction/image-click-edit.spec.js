@@ -9,8 +9,8 @@
 import { expect, test } from '@playwright/test';
 import { clickInEditor, closeApp, launchApp, loadContent } from '../../test-utils.js';
 
-/** @type {import('@playwright/test').ElectronApplication} */
-let electronApp;
+/** @type {import('../../tauri-app.js').TauriApp} */
+let app;
 
 /** @type {import('@playwright/test').Page} */
 let page;
@@ -18,11 +18,11 @@ let page;
 const IMAGE_MD = `![Photo](picture.png)`;
 
 test.beforeAll(async () => {
-  ({ electronApp, page } = await launchApp());
+  ({ app, page } = await launchApp());
 });
 
 test.afterAll(async () => {
-  await closeApp(electronApp);
+  await closeApp(app);
 });
 
 test.describe(`Image click-to-edit`, () => {

@@ -10,6 +10,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { expect, test } from '@playwright/test';
 import {
+  VIEWPORT,
   clickInEditor,
   closeApp,
   launchApp,
@@ -21,19 +22,24 @@ import {
 const readmePath = path.join(projectRoot, `README.md`);
 const readmeContent = fs.readFileSync(readmePath, `utf-8`);
 
-/** @type {import('@playwright/test').ElectronApplication} */
-let electronApp;
+/**
+ * The narrowest page `fit_main_window` in main.rs allows.
+ */
+const MIN_PAGE_WIDTH = 998;
+
+/** @type {import('../../tauri-app.js').TauriApp} */
+let app;
 
 /** @type {import('@playwright/test').Page} */
 let page;
 
 test.beforeAll(async () => {
-  ({ electronApp, page } = await launchApp());
+  ({ app, page } = await launchApp());
   await loadContent(page, readmeContent);
 });
 
 test.afterAll(async () => {
-  await closeApp(electronApp);
+  await closeApp(app);
 });
 
 test(`file-button group exists and contains three buttons`, async () => {
@@ -80,6 +86,38 @@ test(`file-button group is left-aligned, content toolbar is centred`, async () =
   const containerCentreX = containerBox.x + containerBox.width / 2;
   const toolbarCentreX = toolbarBox.x + toolbarBox.width / 2;
   expect(Math.abs(toolbarCentreX - containerCentreX)).toBeLessThan(containerBox.width * 0.15);
+});
+
+test(`at the minimum page width the toolbar fits at full size beside the file buttons`, async () => {
+  await page.setViewportSize({ width: MIN_PAGE_WIDTH, height: VIEWPORT.height });
+  try {
+    await page.evaluate(
+      () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))),
+    );
+    const layout = await page.evaluate(() => {
+      /** @param {string} selector */
+      const rect = (selector) =>
+        /** @type {Element} */ (document.querySelector(selector)).getBoundingClientRect();
+      const container = rect(`#toolbar-container`);
+      const containerStyle = getComputedStyle(
+        /** @type {Element} */ (document.querySelector(`#toolbar-container`)),
+      );
+      const style = getComputedStyle(/** @type {Element} */ (document.querySelector(`.toolbar`)));
+      return {
+        transform: style.transform,
+        containerRight: container.right - Number.parseFloat(containerStyle.paddingRight),
+        fileGroupRight: rect(`.toolbar-file-group`).right,
+        itemsLeft: rect(`.toolbar > :first-child`).left,
+        itemsRight: rect(`.toolbar > :last-child`).right,
+      };
+    });
+
+    expect(layout.transform, JSON.stringify(layout)).toBe(`none`);
+    expect(layout.itemsLeft, JSON.stringify(layout)).toBeGreaterThanOrEqual(layout.fileGroupRight);
+    expect(layout.itemsRight, JSON.stringify(layout)).toBeLessThanOrEqual(layout.containerRight);
+  } finally {
+    await page.setViewportSize(VIEWPORT);
+  }
 });
 
 test(`toolbar heading button activates after switching back to a tab with a heading`, async () => {

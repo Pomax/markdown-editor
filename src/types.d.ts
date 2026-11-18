@@ -2,29 +2,6 @@
  * Global type declarations for the markdown editor.
  */
 
-declare module 'better-sqlite3' {
-    interface Statement {
-        run(...params: any[]): { changes: number; lastInsertRowid: number };
-        get(...params: any[]): any;
-        all(...params: any[]): any[];
-    }
-
-    interface Database {
-        prepare(sql: string): Statement;
-        exec(sql: string): this;
-        pragma(sql: string, options?: object): any;
-        close(): void;
-    }
-
-    interface DatabaseConstructor {
-        new(filename: string, options?: object): Database;
-        (filename: string, options?: object): Database;
-    }
-
-    const Database: DatabaseConstructor;
-    export default Database;
-}
-
 /**
  * View mode of the editor.
  */
@@ -182,15 +159,18 @@ interface EditorAPI {
 }
 
 /**
- * Electron API exposed via preload script.
+ * The page-to-backend bridge that src/tauri/preload.js defines on
+ * window.pageToBackendBridge.
  */
-interface ElectronAPI {
+interface PageToBackendBridge {
+    toDisplayUrl(url: string): string;
+    fromDisplayUrl(url: string): string;
     onMenuAction(callback: (action: string, ...args: any[]) => void): () => void;
-    onExternalAPI(callback: (method: string, ...args: any[]) => void): () => void;
     setUnsavedChanges(hasChanges: boolean): void;
     confirmClose(): Promise<{ action: 'save' | 'saveAs' | 'discard' | 'cancel' }>;
     saveFile(content: string): Promise<{ success: boolean; filePath?: string; message?: string }>;
     saveFileAs(content: string): Promise<{ success: boolean; filePath?: string; message?: string }>;
+    exportHtml(html: string, extraCss: string): Promise<{ success: boolean; filePath?: string; message?: string }>;
     loadFile(): Promise<{ success: boolean; content?: string; filePath?: string; message?: string }>;
     loadFilePath(filePath: string): Promise<{ success: boolean; content?: string; filePath?: string; message?: string }>;
     newFile(): Promise<{ success: boolean }>;
@@ -409,6 +389,8 @@ interface Change {
     before: string;
     /** The content after the change. */
     after: string;
+    /** The caret's offset into `after` when the change was recorded. */
+    caret?: number;
     /** When the change occurred. */
     timestamp: number;
 }
@@ -443,41 +425,6 @@ interface TableData {
     columns: number;
     /** 2-D array [row][col] including the header row. */
     cells: string[][];
-}
-
-/**
- * An external API command definition.
- */
-interface APICommand {
-    /** The command name. */
-    name: string;
-    /** Description of what the command does. */
-    description: string;
-    /** Command category (file, document, view, element, etc.). */
-    category: string;
-    /** Parameter definitions. */
-    params: Record<string, ParamDefinition>;
-    /** The command handler function. */
-    handler: APIHandler;
-}
-
-/**
- * Handler function for an API command.
- */
-type APIHandler = (params: Record<string, any>, webContents: any) => Promise<{ success: boolean, [key: string]: any }>;
-
-/**
- * Definition of a single API command parameter.
- */
-interface ParamDefinition {
-    /** The parameter type (string, number, boolean, object). */
-    type: string;
-    /** Description of the parameter. */
-    description: string;
-    /** Whether the parameter is required. */
-    required: boolean;
-    /** Default value if not provided. */
-    defaultValue?: any;
 }
 
 /**
@@ -571,16 +518,6 @@ type SyntaxNode = import('./parsers/old/syntax-node.js').SyntaxNode;
 type SyntaxTree = import('./parsers/old/syntax-tree.js').SyntaxTree;
 
 /**
- * Manages file operations (open, save, recent files).
- */
-type FileManager = import('./electron/file-manager.js').FileManager;
-
-/**
- * The application menu builder.
- */
-type MenuBuilder = import('./electron/menu-builder.js').MenuBuilder;
-
-/**
  * The editor toolbar.
  */
 type Toolbar = import('./web/scripts/utility/toolbar/toolbar.js').Toolbar;
@@ -629,5 +566,5 @@ interface Formatter {
 
 interface Window {
     editorAPI?: EditorAPI;
-    electronAPI?: ElectronAPI;
+    pageToBackendBridge?: PageToBackendBridge;
 }

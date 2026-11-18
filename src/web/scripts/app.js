@@ -8,6 +8,7 @@ import { KeyboardHandler } from './editor/handlers/keyboard-handler.js';
 import { MenuHandler } from './editor/handlers/menu-handler.js';
 import {
   applyColors,
+  applyHighlightActiveElement,
   applyMargins,
   applyPageWidth,
 } from './utility/preferences/preferences-modal.js';
@@ -47,6 +48,7 @@ class App extends AppData {
     // Initialize editor with the original contenteditable div
     this.editor = new Editor(editorContainer);
     await this.editor.initialize();
+    await this.loadStyleElementsSetting();
 
     // Initialize page resize handles (writing mode only).
     // Store the retarget function so tab switches can update the handles.
@@ -58,7 +60,6 @@ class App extends AppData {
 
     // Initialize handlers
     this.menuHandler = new MenuHandler(this.editor, this.toolbar);
-    this.menuHandler.initialize();
 
     this.keyboardHandler = new KeyboardHandler(this.editor);
     this.keyboardHandler.initialize();
@@ -259,8 +260,10 @@ class App extends AppData {
     // Expose API for main process queries
     this.exposeEditorAPI();
 
-    // Set up external API handler
-    this.setupExternalAPIHandler();
+    // Menu actions sent before now, such as a file named on the command
+    // line, are delivered as soon as the handler registers, so it
+    // registers once every listener they reach exists.
+    this.menuHandler.initialize();
 
     await this.loadSettings();
   }
@@ -657,24 +660,24 @@ class App extends AppData {
       ? this.editor.hasUnsavedChanges
       : (this.documentStates.get(tabId)?.modified ?? false);
 
-    if (isModified && window.electronAPI) {
+    if (isModified && window.pageToBackendBridge) {
       // If we're closing a background tab, switch to it first so
       // the user can see what they're being asked about.
       if (!isActive) {
         this.switchToTab(tabId);
       }
 
-      const { action } = await window.electronAPI.confirmClose();
+      const { action } = await window.pageToBackendBridge.confirmClose();
 
       if (action === `cancel`) return;
 
       if (action === `save`) {
         const content = this.editor.getMarkdown();
-        const result = await window.electronAPI.saveFile(content);
+        const result = await window.pageToBackendBridge.saveFile(content);
         if (!result.success) return; // save dialog was cancelled
       } else if (action === `saveAs`) {
         const content = this.editor.getMarkdown();
-        const result = await window.electronAPI.saveFileAs(content);
+        const result = await window.pageToBackendBridge.saveFileAs(content);
         if (!result.success) return;
       }
       // 'discard' falls through to the removal below
@@ -730,7 +733,7 @@ class App extends AppData {
    * content hash for session restore.
    */
   notifyOpenFiles() {
-    if (!this.tabBar || !window.electronAPI) return;
+    if (!this.tabBar || !window.pageToBackendBridge) return;
 
     const labels = getDisambiguatedLabels(this.tabBar.tabs);
     const activeTabId = this.tabBar.activeTabId;
@@ -785,17 +788,17 @@ class App extends AppData {
       return entry;
     });
 
-    return window.electronAPI.notifyOpenFiles(files);
+    return window.pageToBackendBridge.notifyOpenFiles(files);
   }
 
   /**
    * Loads persisted settings from the database and applies them.
    */
   async loadSettings() {
-    if (!window.electronAPI) return;
+    if (!window.pageToBackendBridge) return;
 
     try {
-      const result = await window.electronAPI.getSetting(`defaultView`);
+      const result = await window.pageToBackendBridge.getSetting(`defaultView`);
       if (result.success && result.value) {
         await this.editor?.setViewMode(result.value);
         this.toolbar?.setViewMode(result.value);
@@ -805,7 +808,7 @@ class App extends AppData {
     }
 
     try {
-      const result = await window.electronAPI.getSetting(`pageWidth`);
+      const result = await window.pageToBackendBridge.getSetting(`pageWidth`);
       if (result.success && result.value) {
         applyPageWidth(result.value);
       }
@@ -814,7 +817,7 @@ class App extends AppData {
     }
 
     try {
-      const result = await window.electronAPI.getSetting(`margins`);
+      const result = await window.pageToBackendBridge.getSetting(`margins`);
       if (result.success && result.value) {
         applyMargins(result.value);
       }
@@ -823,7 +826,7 @@ class App extends AppData {
     }
 
     try {
-      const result = await window.electronAPI.getSetting(`colors`);
+      const result = await window.pageToBackendBridge.getSetting(`colors`);
       if (result.success && result.value) {
         applyColors(result.value);
       }
@@ -832,7 +835,16 @@ class App extends AppData {
     }
 
     try {
-      const result = await window.electronAPI.getSetting(`tocVisible`);
+      const result = await window.pageToBackendBridge.getSetting(`highlightActiveElement`);
+      if (result.success && result.value !== undefined) {
+        applyHighlightActiveElement(!!result.value);
+      }
+    } catch {
+      // Default is highlighted, from the body's class in index.html
+    }
+
+    try {
+      const result = await window.pageToBackendBridge.getSetting(`tocVisible`);
       if (result.success && result.value !== undefined) {
         this.toc?.setVisible(!!result.value);
       }
@@ -841,7 +853,7 @@ class App extends AppData {
     }
 
     try {
-      const result = await window.electronAPI.getSetting(`tocPosition`);
+      const result = await window.pageToBackendBridge.getSetting(`tocPosition`);
       if (result.success && result.value) {
         this.toc?.setPosition(result.value === `right` ? `right` : `left`);
       }
@@ -850,7 +862,7 @@ class App extends AppData {
     }
 
     try {
-      const result = await window.electronAPI.getSetting(`tocWidth`);
+      const result = await window.pageToBackendBridge.getSetting(`tocWidth`);
       if (result.success && result.value) {
         this.toc?.setWidth(Number(result.value));
       }
@@ -859,7 +871,7 @@ class App extends AppData {
     }
 
     try {
-      const result = await window.electronAPI.getSetting(`ensureLocalPaths`);
+      const result = await window.pageToBackendBridge.getSetting(`ensureLocalPaths`);
       if (result.success && result.value !== undefined) {
         if (this.editor) {
           this.editor.ensureLocalPaths = !!result.value;
@@ -870,7 +882,7 @@ class App extends AppData {
     }
 
     try {
-      const result = await window.electronAPI.getSetting(`detailsClosed`);
+      const result = await window.pageToBackendBridge.getSetting(`detailsClosed`);
       if (result.success && result.value !== undefined) {
         if (this.editor) {
           this.editor.detailsClosed = !!result.value;
@@ -879,13 +891,20 @@ class App extends AppData {
     } catch {
       // Default is false (open)
     }
+  }
 
+  /**
+   * Reads whether a document's `<style>` elements are injected. It runs
+   * before the menu handler registers and the editor API exists, as
+   * either can deliver a document, which is rendered with the setting as
+   * it is then.
+   */
+  async loadStyleElementsSetting() {
+    if (!window.pageToBackendBridge || !this.editor) return;
     try {
-      const result = await window.electronAPI.getSetting(`enableStyleElements`);
+      const result = await window.pageToBackendBridge.getSetting(`enableStyleElements`);
       if (result.success && result.value !== undefined) {
-        if (this.editor) {
-          this.editor.enableStyleElements = !!result.value;
-        }
+        this.editor.enableStyleElements = !!result.value;
       }
     } catch {
       // Default is false (disabled)
@@ -948,91 +967,6 @@ class App extends AppData {
       get: () => this.editor?.syntaxTree?.treeCursor?.offset ?? 0,
       configurable: true,
     });
-  }
-
-  /**
-   * Sets up the handler for external API calls.
-   */
-  setupExternalAPIHandler() {
-    if (!window.electronAPI) {
-      console.warn(`electronAPI not available`);
-      return;
-    }
-
-    window.electronAPI.onExternalAPI((method, ...args) => {
-      this.handleExternalAPI(method, args);
-    });
-  }
-
-  /**
-   * Handles external API calls.
-   * @param {string} method - The API method name
-   * @param {any[]} args - The method arguments
-   */
-  async handleExternalAPI(method, args) {
-    if (!this.editor || !this.menuHandler) {
-      console.warn(`Editor or MenuHandler not initialized`);
-      return;
-    }
-
-    switch (method) {
-      case `file:new`:
-        await this.createNewTab(undefined, ``);
-        break;
-      case `file:save`:
-        this.menuHandler.handleSave();
-        break;
-      case `file:saveAs`:
-        this.menuHandler.handleSaveAs();
-        break;
-      case `edit:undo`:
-        await this.editor.undo();
-        break;
-      case `edit:redo`:
-        await this.editor.redo();
-        break;
-      case `view:writing`:
-        await this.editor.setViewMode(`writing`);
-        this.toolbar?.setViewMode(`writing`);
-        break;
-      case `view:source2`:
-        await this.editor.setViewMode(`source2`);
-        this.toolbar?.setViewMode(`source2`);
-        break;
-      case `document:getContent`:
-        // Response would be handled via IPC
-        break;
-      case `document:setContent`:
-        await this.editor.loadMarkdown(args[0]);
-        break;
-      case `document:insertText`:
-        await this.editor.insertText(args[0]);
-        break;
-      case `element:changeType`:
-        this.editor.changeElementType(args[0]);
-        break;
-      case `element:format`:
-        this.editor.applyFormat(args[0]);
-        break;
-      case `cursor:setPosition`:
-        this.editor.setCursorPosition(args[0], args[1]);
-        break;
-      case `selection:set`:
-        this.editor.setSelection(args[0]);
-        break;
-      case `app:reload`:
-        // Trigger the reload via the main process IPC handler
-        window.electronAPI?.reload();
-        break;
-      case `file:getRecentFiles`:
-        // Handled directly via IPC, no renderer action needed
-        break;
-      case `edit:preferences`:
-        this.menuHandler?.handlePreferences();
-        break;
-      default:
-        console.warn(`Unknown external API method: ${method}`);
-    }
   }
 }
 

@@ -90,17 +90,8 @@ array.filter(item => item.active);
 
 ```
 src/
-├── electron/                  # Electron main process
-│   ├── main.js               # Entry point, window creation, lifecycle
-│   ├── preload.cjs           # Secure IPC bridge (must be CommonJS)
-│   ├── menu-builder.js       # Application menu construction
-│   ├── file-manager.js       # File load/save/recent files
-│   ├── ipc-handler.js        # IPC routing and handler registration
-│   ├── api-registry.js       # External scripting API
-│   └── settings-manager.js   # Settings persistence (SQLite)
-│
-├── web/                  # Electron renderer process
-│   ├── index.html            # HTML entry
+├── web/                      # The page, loaded in the webview
+│   ├── index.html            # HTML entry, with the page's Content-Security-Policy
 │   ├── icons/                # Lucide SVG icons
 │   ├── styles/               # CSS files
 │   │   ├── main.css         # Base styles, CSS custom properties
@@ -144,8 +135,33 @@ src/
 │           └── word-count/      # Word count modal
 │               └── word-count-modal.js
 │
-└── types.d.ts                # Global TypeScript type declarations
+├── parsers/old/              # DFA tokenizer, parser and syntax tree
+├── types.d.ts                # Global TypeScript type declarations
+│
+└── tauri/                    # The Tauri backend
+    ├── main.rs               # Entry point, window, session, close flow
+    ├── preload.js            # The bridge, injected into the page
+    ├── ipc_handler.rs        # The commands the bridge invokes
+    ├── menu_builder.rs       # Application menu and context menu
+    ├── file_manager.rs       # Current file, recent files, export paths
+    ├── settings_manager.rs   # Settings in SQLite
+    ├── media_protocol.rs     # Local images, audio and video for the page
+    ├── webview_settings.rs   # Webview limits, settings, keys and page dialogs
+    ├── message_box.rs        # Message box texts and buttons
+    ├── image_path.rs         # Image paths and renames
+    ├── web_contents.rs       # Page events and evaluations until the bridge is ready
+    ├── test_hooks.rs         # Test-hooks builds only: the channel the specs drive
+    ├── build.rs              # Declares the app's commands, each refused unless granted
+    ├── bin/
+    │   └── win-runner.rs     # The Windows runner the real-input tests send input with
+    ├── capabilities/
+    │   └── default.json      # What the page may call
+    └── icons/                # The app's icons
 ```
+
+At the root, next to `package.json`: `Cargo.toml` (the crate: its binaries and build script in `src/tauri/`, its dependencies and the test-hooks feature) with its `Cargo.lock`, and `tauri.conf.json` (app name, version, where the page is, the icons). Cargo builds into `target/` at the root, which is not checked in; the release build links the C runtime statically on Windows through the Rust flags `scripts/build-executable.js` gives it.
+
+Each Rust module keeps its unit tests in a `tests` module at its end; `npm run test:rust` runs them.
 
 ### Test Structure
 
@@ -166,11 +182,43 @@ test/
 │   │   └── undo-manager.test.js
 │   ├── table/
 │   │   └── table-modal.test.js
-│   └── word-count/
-│       └── word-count-modal.test.js
+│   ├── word-count/
+│   │   └── word-count-modal.test.js
+│   ├── bridge/
+│   │   └── preload.test.js       # The bridge, run in a Node VM against a fake Tauri
+│   ├── tauri/                    # The configuration the app relies on
+│   │   ├── capabilities.test.js
+│   │   ├── cargo-config.test.js
+│   │   ├── no-old-runtime.test.js
+│   │   ├── package-end-state.test.js
+│   │   ├── tauri-conf.test.js
+│   │   └── tool-coverage.test.js
+│   ├── scripts/
+│   │   ├── build-executable.test.js
+│   │   ├── dev-server.test.js
+│   │   ├── lint-eol.test.js
+│   │   └── stage-frontend.test.js
+│   ├── web/
+│   │   └── csp.test.js           # The page's Content-Security-Policy
+│   ├── docs/
+│   │   └── references.test.js    # These documents and the README
+│   └── test-harness/
+│       └── tauri-app.test.js     # The hook client, against a fake app process
 │
-└── integration/              # Integration tests (Playwright + Firefox)
-    ├── test-utils.js
+├── release/
+│   └── release-smoke.test.js     # The release executable starts, loads its page and exits; it opens a file it is started with
+│
+├── real-input/               # Real keyboard and mouse input on Windows, run by npm run test:real-input
+│   ├── runner.js             # Runs the Windows runner; an element's middle in physical pixels
+│   ├── alt-f4.spec.js
+│   ├── image.spec.js
+│   ├── shortcuts.spec.js
+│   └── typing.spec.js
+│
+└── integration/              # Integration tests (Playwright)
+    ├── test-utils.js         # launchApp starts the test build and attaches over the DevTools protocol
+    ├── tauri-app.js          # TauriApp, the client for the test build's hooks
+    ├── test-http-server.js   # Serves src/ for the specs that run the page alone in Firefox
     ├── app-functionality/
     │   ├── app/
     │   │   ├── editor.spec.js
@@ -435,19 +483,18 @@ this.container.dispatchEvent(event);
 editor.container.addEventListener('editor:selectionchange', handleSelection);
 ```
 
-### IPC Events
+### Backend Events
 
-Use the preload API for IPC:
+The page talks to the backend only through the bridge's `window.pageToBackendBridge`:
 
 ```javascript
-// In renderer
-window.electronAPI.onMenuAction((action, ...args) => {
+// In the page
+window.pageToBackendBridge.onMenuAction((action, ...args) => {
     handleAction(action, args);
 });
-
-// In main
-window.webContents.send('menu:action', 'file:save');
 ```
+
+In the backend, `ipc_handler::emit_menu_action` sends a `menu:action` event with the action and its arguments; the bridge queues it until the page has registered its handler. A command the page calls is a `#[tauri::command]` function in `ipc_handler.rs`, declared in `build.rs` and granted in `capabilities/default.json`.
 
 ## State Management
 
@@ -487,17 +534,6 @@ async function loadFile() {
         console.error('Failed to load file:', error);
         // Show user-friendly message
     }
-}
-```
-
-### API Error Responses
-
-```javascript
-function executeCommand(command, params) {
-    if (!commands.has(command)) {
-        return { success: false, error: `Unknown command: ${command}` };
-    }
-    // ...
 }
 ```
 
@@ -573,14 +609,6 @@ test('should allow typing in the editor', async () => {
 8. Add a button color rule in `toolbar.css`
 9. Add tests for parser and rendering
 10. Update documentation
-
-### Adding a New API Command
-
-1. Add command in `APIRegistry.registerBuiltInCommands()`
-2. Handle the action in the renderer via the `onExternalAPI` listener in `app.js`
-3. Update `docs/api/README.md`
-4. Update `docs/api/api-v*.json`
-5. Add tests for the command
 
 ### Adding a New Preference
 

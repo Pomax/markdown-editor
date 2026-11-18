@@ -12,40 +12,37 @@ import { closeApp, launchApp, projectRoot } from '../../test-utils.js';
 const readmePath = path.join(projectRoot, `README.md`);
 const readmeContent = fs.readFileSync(readmePath, `utf-8`);
 
-/** @type {import('@playwright/test').ElectronApplication} */
-let electronApp;
+/** @type {import('../../tauri-app.js').TauriApp} */
+let app;
 
 /** @type {import('@playwright/test').Page} */
 let page;
 
 test.beforeAll(async () => {
-  ({ electronApp, page } = await launchApp());
+  ({ app, page } = await launchApp());
 });
 
 test.afterAll(async () => {
-  await closeApp(electronApp);
+  await closeApp(app);
 });
 
 test(`reload restores a saved file from disk`, async () => {
   // Persist the README as the open file in the settings DB so that
   // reload has something to restore.
-  await electronApp.evaluate((electron, rPath) => {
-    const sm = /** @type {any} */ (globalThis).__settingsManager;
-    sm.set(`openFiles`, [
-      {
-        filePath: rPath,
-        active: true,
-        cursorOffset: 0,
-        contentHash: 0,
-        scrollTop: 0,
-        cursorPath: undefined,
-        tocHeadingPath: undefined,
-      },
-    ]);
-  }, readmePath);
+  await app.settings.set(`openFiles`, [
+    {
+      filePath: readmePath,
+      active: true,
+      cursorOffset: 0,
+      contentHash: 0,
+      scrollTop: 0,
+      cursorPath: undefined,
+      tocHeadingPath: undefined,
+    },
+  ]);
 
   // Trigger reload via the IPC API
-  await page.evaluate(() => window.electronAPI?.reload());
+  await page.evaluate(() => window.pageToBackendBridge?.reload());
 
   // Wait for the page to fully reload and the editor to re-initialise
   await page.waitForFunction(

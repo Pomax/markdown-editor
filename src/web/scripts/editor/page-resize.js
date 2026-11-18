@@ -249,10 +249,10 @@ function attachDrag(editorRef, handle, side, otherHandle) {
  * @param {number} widthPx - Width in pixels
  */
 async function persistPageWidth(widthPx) {
-  if (!window.electronAPI) return;
+  if (!window.pageToBackendBridge) return;
   const pageWidth = { useFixed: false, width: widthPx, unit: `px` };
   try {
-    await window.electronAPI.setSetting(`pageWidth`, pageWidth);
+    await window.pageToBackendBridge.setSetting(`pageWidth`, pageWidth);
   } catch {
     // Non-critical — ignore
   }

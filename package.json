@@ -1,50 +1,50 @@
 {
   "name": "markdown-editor",
-  "version": "2.2.1",
+  "version": "3.0.0",
   "description": "A professional markdown editor with syntactic tree parsing and WYSIWYG editing",
-  "main": "src/electron/main.js",
   "type": "module",
   "scripts": {
     "build": "npm run lint && node scripts/build-executable.js",
     "cleanup": "rm -rf test-results",
-    "docs": "node scripts/generate-api-docs.js",
     "dist:linux": "node scripts/build-executable.js --linux",
     "dist:mac": "node scripts/build-executable.js --mac",
     "dist:win": "node scripts/build-executable.js --win",
-    "lint": "npm run lint:codestyle && npm run lint:format && npm run lint:typing && npm run lint:codestyle",
+    "lint": "npm run lint:eol && npm run lint:codestyle && npm run lint:format && npm run lint:rust && npm run lint:typing && npm run lint:codestyle",
     "lint:codestyle": "npm run lint:comments && npm run lint:quotes",
     "lint:comments": "node scripts/lint-comments.js",
+    "lint:eol": "node scripts/lint-eol.js",
     "lint:format": "biome format --write src test scripts",
     "lint:quotes": "eslint --fix -c backticks.config.js",
+    "lint:rust": "cargo fmt",
     "lint:typing": "tsc -p jsconfig.json",
-    "setup": "node node_modules/electron/install.js && electron-builder install-app-deps && playwright install firefox --with-deps",
-    "start": "electron .",
-    "test": "npm run lint && npm run test:unit && npm run test:integration && npm run test:cleanup",
+    "setup": "playwright install firefox --with-deps",
+    "start": "tauri dev",
+    "test": "npm run lint && npm run test:unit && npm run test:rust && npm run test:integration && npm run test:cleanup",
     "test:cleanup": "rm -rf test-results",
     "test:unit": "node --test \"test/unit/**/*.test.js\"",
-    "test:integration": "playwright test"
+    "test:rust": "node scripts/test-rust.js",
+    "build:test-app": "node scripts/build-test-app.js",
+    "test:integration": "node scripts/build-test-app.js && playwright test",
+    "test:real-input": "node scripts/build-test-app.js && node scripts/build-win-runner.js && playwright test --config playwright.real-input.config.js",
+    "version": "node scripts/sync-cargo-version.js"
   },
   "keywords": [
     "markdown",
     "editor",
-    "electron",
+    "tauri",
     "wysiwyg"
   ],
   "author": "",
   "license": "CC0-1.0",
   "devDependencies": {
     "@biomejs/biome": "^1.5.0",
-    "@electron/rebuild": "^4.0.3",
     "@playwright/test": "^1.64.1",
-    "electron": "^40.2.1",
-    "electron-builder": "^26.7.0",
+    "@tauri-apps/cli": "^2",
+    "@types/node": "^22",
     "eslint": "^10.0.3",
     "jsdom": "^28.1.0",
     "lucide-static": "^0.563.0",
     "typescript": "^5.3.0"
-  },
-  "dependencies": {
-    "better-sqlite3": "^12.11.1"
   },
   "overrides": {
     "ajv": "^6.14.0",
@@ -54,46 +54,5 @@
   },
   "engines": {
     "node": ">=22"
-  },
-  "build": {
-    "appId": "com.pomax.markdown-editor",
-    "productName": "Markdown Editor",
-    "directories": {
-      "output": "dist",
-      "buildResources": "scripts"
-    },
-    "files": [
-      "src/**/*",
-      "!src/**/*.d.ts",
-      "!src/**/node_modules/**",
-      "!node_modules/better-sqlite3/deps/**",
-      "!node_modules/better-sqlite3/src/**"
-    ],
-    "electronLanguages": [
-      "en-US"
-    ],
-    "win": {
-      "target": "dir",
-      "icon": null
-    },
-    "nsis": {
-      "script": "launcher.nsi",
-      "differentialPackage": false,
-      "packElevateHelper": false
-    },
-    "mac": {
-      "target": "dir",
-      "category": "public.app-category.productivity"
-    },
-    "linux": {
-      "target": "dir",
-      "category": "Office"
-    },
-    "asar": true,
-    "asarUnpack": [
-      "node_modules/better-sqlite3/**"
-    ],
-    "npmRebuild": true,
-    "removePackageScripts": true
   }
 }

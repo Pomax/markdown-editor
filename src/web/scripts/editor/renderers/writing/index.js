@@ -80,6 +80,17 @@ export class WritingRenderer extends WritingRendererData {
   }
 
   /**
+   * The URL an element loads a source through: the bridge's display URL,
+   * which serves a local file through the media protocol, or the source
+   * itself where there is no bridge.
+   * @param {string} src
+   * @returns {string}
+   */
+  displaySrc(src) {
+    return window.pageToBackendBridge?.toDisplayUrl(src) ?? src;
+  }
+
+  /**
    * Renders the syntax tree to the container.
    * @param {SyntaxTree} syntaxTree - The syntax tree to render
    * @param {HTMLElement} container - The container element
@@ -788,7 +799,7 @@ export class WritingRenderer extends WritingRendererData {
 
     // Always show rendered image (WYSIWYG)
     const img = document.createElement(`img`);
-    img.src = this.resolveImageSrc(src);
+    img.src = this.displaySrc(this.resolveImageSrc(src));
     img.alt = alt;
     img.title = alt;
     if (attrs.style) {
@@ -929,6 +940,7 @@ export class WritingRenderer extends WritingRendererData {
 
     // Copy attributes from the opening tag onto the semantic element
     this.applyHtmlAttributes(container, attrs.openingTag || ``);
+    if (container instanceof HTMLIFrameElement) this.sandboxSameOriginFrame(container);
 
     // Determine which child (if any) is focused
     const currentNodeId = this.editor.getFocusedNodeId();
@@ -944,6 +956,42 @@ export class WritingRenderer extends WritingRendererData {
 
     element.appendChild(container);
     return element;
+  }
+
+  /**
+   * Gives an iframe whose content would share the page's origin a
+   * `sandbox` without `allow-same-origin`, so its scripts run in an opaque
+   * origin and cannot reach the page. Such content is a `srcdoc`, no `src`
+   * (an empty document), or a `src` that is relative, `about:`, `blob:`,
+   * `javascript:` or on the page's own origin. The document's other
+   * sandbox tokens are kept; a frame without a `sandbox` gets
+   * `allow-scripts allow-forms allow-popups`. Frames on other origins are
+   * left as written. Called before the frame is in the document, so the
+   * sandbox applies to its first load.
+   * @param {HTMLIFrameElement} frame
+   */
+  sandboxSameOriginFrame(frame) {
+    const src = frame.getAttribute(`src`)?.trim() ?? ``;
+    let sameOrigin = frame.hasAttribute(`srcdoc`) || src === ``;
+    if (!sameOrigin) {
+      try {
+        const url = new URL(src, document.baseURI);
+        sameOrigin =
+          url.origin === location.origin ||
+          [`about:`, `blob:`, `javascript:`].includes(url.protocol);
+      } catch {
+        sameOrigin = true;
+      }
+    }
+    if (!sameOrigin) return;
+    const given = frame.getAttribute(`sandbox`);
+    const tokens = (given ?? ``)
+      .split(/\s+/)
+      .filter((token) => token && token.toLowerCase() !== `allow-same-origin`);
+    frame.setAttribute(
+      `sandbox`,
+      given === null ? `allow-scripts allow-forms allow-popups` : tokens.join(` `),
+    );
   }
 
   /**
@@ -1045,7 +1093,8 @@ export class WritingRenderer extends WritingRendererData {
 
   /**
    * Parses HTML attributes from an opening tag string and applies them
-   * to a DOM element (excluding the tag name itself).
+   * to a DOM element (excluding the tag name itself). The `src` and
+   * `poster` of a `<video>` or `<audio>` go through `displaySrc`.
    *
    * @param {HTMLElement} el - The element to apply attributes to
    * @param {string} openingTag - e.g. `<div class="note">`
@@ -1064,8 +1113,10 @@ export class WritingRenderer extends WritingRendererData {
     const parsed = tmp.firstElementChild;
     if (!parsed) return;
 
+    const media = el instanceof HTMLVideoElement || el instanceof HTMLAudioElement;
     for (const attr of parsed.attributes) {
-      el.setAttribute(attr.name, attr.value);
+      const source = media && (attr.name === `src` || attr.name === `poster`);
+      el.setAttribute(attr.name, source ? this.displaySrc(attr.value) : attr.value);
     }
   }
 
@@ -1144,7 +1195,7 @@ export class WritingRenderer extends WritingRendererData {
           const img = document.createElement(`img`);
           img.dataset.nodeId = child.id;
           img.alt = child.attributes.alt ?? ``;
-          img.src = this.resolveImageSrc(child.attributes.src ?? ``);
+          img.src = this.displaySrc(this.resolveImageSrc(child.attributes.src ?? ``));
           container.appendChild(img);
           container.appendChild(document.createTextNode(``));
           break;
@@ -1267,7 +1318,7 @@ export class WritingRenderer extends WritingRendererData {
         case `image`: {
           const img = document.createElement(`img`);
           img.alt = seg.alt ?? ``;
-          img.src = this.resolveImageSrc(seg.src ?? ``);
+          img.src = this.displaySrc(this.resolveImageSrc(seg.src ?? ``));
           container.appendChild(img);
           container.appendChild(document.createTextNode(``));
           break;

@@ -22,7 +22,8 @@ import { InputHandler } from './handlers/input-handler.js';
 import { EventHandler } from './handlers/event-handler.js';
 import { CursorManager } from './managers/cursor-manager.js';
 import { SelectionManager } from './managers/selection-manager.js';
-import { UndoManager } from './managers/undo-manager.js';
+import { UndoManager, caretAfterRedo, caretAfterUndo } from './managers/undo-manager.js';
+import { absoluteOffsetToCursor, cursorToAbsoluteOffset } from './managers/cursor-persistence.js';
 import { EditOperations } from './edit-operations/index.js';
 import { RangeOperations } from './range-operations.js';
 import { TableManager } from './content-types/table/table-manager.js';
@@ -121,6 +122,7 @@ export class Editor extends EditorData {
       click: /** @type {EventListener} */ (
         /** @type {unknown} */ (this.eventHandler.handleClick.bind(this.eventHandler))
       ),
+      dblclick: this.eventHandler.handleDoubleClick.bind(this.eventHandler),
       focus: /** @type {EventListener} */ (this.eventHandler.handleFocus.bind(this.eventHandler)),
       blur: /** @type {EventListener} */ (this.eventHandler.handleBlur.bind(this.eventHandler)),
       cut: /** @type {EventListener} */ (
@@ -511,7 +513,7 @@ export class Editor extends EditorData {
 
     const after = this.syntaxTree.toMarkdown();
     if (before !== after) {
-      this.undoManager.recordChange({ type: `input`, before, after });
+      this.undoManager.recordChange({ type: `input`, before, after, caret: this.caretOffset() });
       this.setUnsavedChanges(true);
     }
 
@@ -658,17 +660,53 @@ export class Editor extends EditorData {
     return this.treeFormatter;
   }
 
+  /**
+   * The tree cursor's offset into the document's markdown.
+   * @returns {number | undefined}
+   */
+  caretOffset() {
+    if (!this.syntaxTree?.treeCursor) return undefined;
+    const offset = cursorToAbsoluteOffset(
+      this.syntaxTree,
+      this.syntaxTree.treeCursor,
+      this.buildMarkdownLine.bind(this),
+      this.getPrefixLength.bind(this),
+    );
+    return offset < 0 ? undefined : offset;
+  }
+
+  /**
+   * The tree cursor at an offset into the document's markdown, or the
+   * start of the first node when the offset is out of range.
+   * @param {number} offset
+   * @returns {TreeCursor}
+   */
+  cursorAtOffset(offset) {
+    const tree = /** @type {SyntaxTree} */ (this.syntaxTree);
+    return (
+      absoluteOffsetToCursor(tree, offset, this.getPrefixLength.bind(this)) ?? {
+        nodeId: tree.children[0].id,
+        offset: 0,
+      }
+    );
+  }
+
   /** Undoes the last action. */
   async undo() {
     const change = this.undoManager.undo();
     if (change) {
+      const caret = caretAfterUndo(change);
+      if (this.viewMode === `source2`) {
+        this.sourceRendererV2.showContent(change.before, caret);
+        this.setUnsavedChanges(true);
+        return;
+      }
       this.syntaxTree = await parser.parse(change.before);
       if (this.syntaxTree.children.length === 0) {
         const node = new SyntaxNode(`paragraph`, ``);
         this.syntaxTree.appendChild(node);
       }
-      const first = this.syntaxTree.children[0];
-      this.syntaxTree.treeCursor = { nodeId: first.id, offset: 0 };
+      this.syntaxTree.treeCursor = this.cursorAtOffset(caret);
       this.fullRenderAndPlaceCursor();
       this.setUnsavedChanges(true);
     }
@@ -678,27 +716,21 @@ export class Editor extends EditorData {
   async redo() {
     const change = this.undoManager.redo();
     if (change) {
+      const caret = caretAfterRedo(change);
+      if (this.viewMode === `source2`) {
+        this.sourceRendererV2.showContent(change.after, caret);
+        this.setUnsavedChanges(true);
+        return;
+      }
       this.syntaxTree = await parser.parse(change.after);
       if (this.syntaxTree.children.length === 0) {
         const node = new SyntaxNode(`paragraph`, ``);
         this.syntaxTree.appendChild(node);
       }
-      const last = this.syntaxTree.children[this.syntaxTree.children.length - 1];
-      this.syntaxTree.treeCursor = {
-        nodeId: last.id,
-        offset: last.content.length,
-      };
+      this.syntaxTree.treeCursor = this.cursorAtOffset(caret);
       this.fullRenderAndPlaceCursor();
       this.setUnsavedChanges(true);
     }
-  }
-
-  /**
-   * Inserts text at the current cursor position (public API).
-   * @param {string} text
-   */
-  async insertText(text) {
-    await this.editOperations.insertTextAtCursor(text);
   }
 
   /**
@@ -901,7 +933,7 @@ export class Editor extends EditorData {
         const tagNames = [...htmlBlockParents]
           .map((p) => `<${/** @type {SyntaxNode} */ (p).attributes.tagName ?? `html`}>`)
           .join(`, `);
-        const result = await /** @type {any} */ (globalThis).electronAPI?.confirmDialog({
+        const result = await /** @type {any} */ (globalThis).pageToBackendBridge?.confirmDialog({
           type: `warning`,
           title: `Destructive Conversion`,
           message: `This selection includes content inside HTML block elements (${tagNames}) that will be removed by this conversion.`,
@@ -1153,23 +1185,6 @@ export class Editor extends EditorData {
   }
 
   /**
-   * Sets the cursor position.
-   * @param {number} line
-   * @param {number} column
-   */
-  setCursorPosition(line, column) {
-    this.selectionManager.setCursorPosition(line, column);
-  }
-
-  /**
-   * Sets the selection range.
-   * @param {{startLine: number, startColumn: number, endLine: number, endColumn: number}} range
-   */
-  setSelection(range) {
-    this.selectionManager.setSelection(range);
-  }
-
-  /**
    * Promotes all headings so that the top-most level becomes `#`.
    * E.g. if the shallowest heading is `###`, every heading loses two
    * leading `#` characters.
@@ -1214,8 +1229,8 @@ export class Editor extends EditorData {
    */
   setUnsavedChanges(hasChanges) {
     this.hasUnsavedChanges = hasChanges;
-    if (window.electronAPI) {
-      window.electronAPI.setUnsavedChanges(hasChanges);
+    if (window.pageToBackendBridge) {
+      window.pageToBackendBridge.setUnsavedChanges(hasChanges);
     }
     this.updateWindowTitle();
   }

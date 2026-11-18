@@ -20,18 +20,18 @@ import {
 
 const markdown = `# My Heading\n\nA paragraph of text.\n\n\`\`\`js\nconst x = 1;\n\`\`\``;
 
-/** @type {import('@playwright/test').ElectronApplication} */
-let electronApp;
+/** @type {import('../../tauri-app.js').TauriApp} */
+let app;
 
 /** @type {import('@playwright/test').Page} */
 let page;
 
 test.beforeAll(async () => {
-  ({ electronApp, page } = await launchApp());
+  ({ app, page } = await launchApp());
 });
 
 test.afterAll(async () => {
-  await closeApp(electronApp);
+  await closeApp(app);
 });
 
 /**

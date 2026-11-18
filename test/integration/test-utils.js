@@ -1,17 +1,27 @@
 /**
- * @fileoverview Shared helpers for Electron-based integration tests.
+ * @fileoverview Shared helpers for the Tauri integration tests.
  *
- * Every test file that launches Electron should call {@link launchApp} in
- * its `beforeAll` hook instead of duplicating the launch / wait boilerplate.
+ * Every test file that launches the app calls {@link launchApp} in its
+ * `beforeAll` hook. It spawns the debug test binary (built by
+ * build-test-app.js) with a per-launch DevTools port and webview
+ * directory and the spec file's own settings directory, attaches
+ * Playwright over the Chrome DevTools Protocol, and returns a
+ * {@link TauriApp} for the main-process hooks plus the page.
  *
- * The standard viewport is 800 × 1132 px (an A4 portrait aspect ratio) so
- * that tests behave identically on CI runners whose physical screen may be
- * landscape or whose window-manager may clamp the window to a small size.
+ * The standard viewport is 1920 × 1280 so layout-sensitive tests behave
+ * the same regardless of the runner's physical screen.
  */
 
+import { spawn } from 'node:child_process';
+import { mkdirSync } from 'node:fs';
+import { request } from 'node:http';
+import { createServer } from 'node:net';
 import path from 'node:path';
+import process from 'node:process';
 import { fileURLToPath } from 'node:url';
-import { _electron as electron } from '@playwright/test';
+import { chromium, test } from '@playwright/test';
+import { TEST_APP_BINARY } from '../../scripts/build-test-app.js';
+import { TauriApp } from './tauri-app.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -47,43 +57,146 @@ export const HOME = isMac ? `Meta+ArrowLeft` : `Home`;
 export const END = isMac ? `Meta+ArrowRight` : `End`;
 
 /**
- * Launch the Electron app, wait for the window to be ready, and set a
- * predictable viewport size so tests are not affected by the CI runner's
- * physical screen dimensions.
+ * Associates each returned TauriApp with the Playwright browser attached
+ * to its process, so {@link closeApp} can disconnect it.
+ * @type {WeakMap<TauriApp, import('@playwright/test').Browser>}
+ */
+const attachedBrowsers = new WeakMap();
+
+/**
+ * Resolves after the given number of milliseconds.
+ * @param {number} ms
+ * @returns {Promise<void>}
+ */
+function delay(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
+ * Finds a free TCP port by binding port 0 and releasing it.
+ * @returns {Promise<number>}
+ */
+function freePort() {
+  return new Promise((resolve, reject) => {
+    const server = createServer();
+    server.on(`error`, reject);
+    server.listen(0, () => {
+      const address = /** @type {import('node:net').AddressInfo} */ (server.address());
+      server.close(() => resolve(address.port));
+    });
+  });
+}
+
+/**
+ * Whether the DevTools endpoint on the given port answers.
+ * @param {number} port
+ * @returns {Promise<boolean>}
+ */
+function probeDevtools(port) {
+  return new Promise((resolve) => {
+    const req = request({ host: `127.0.0.1`, port, path: `/json/version`, timeout: 500 }, (res) => {
+      res.resume();
+      resolve(res.statusCode === 200);
+    });
+    req.on(`error`, () => resolve(false));
+    req.on(`timeout`, () => {
+      req.destroy();
+      resolve(false);
+    });
+    req.end();
+  });
+}
+
+/**
+ * Polls until the DevTools endpoint answers or the timeout elapses.
+ * @param {number} port
+ * @param {number} timeoutMs
+ * @returns {Promise<void>}
+ */
+async function waitForDevtools(port, timeoutMs) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (await probeDevtools(port)) return;
+    await delay(100);
+  }
+  throw new Error(`DevTools endpoint on port ${port} did not answer`);
+}
+
+/**
+ * Returns the page whose URL ends in web/index.html, polling past any
+ * transient blank page, or throws on timeout.
+ * @param {import('@playwright/test').Browser} browser
+ * @param {number} timeoutMs
+ * @returns {Promise<import('@playwright/test').Page>}
+ */
+async function findAppPage(browser, timeoutMs) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    for (const context of browser.contexts()) {
+      for (const page of context.pages()) {
+        if (page.url().endsWith(`web/index.html`)) return page;
+      }
+    }
+    await delay(100);
+  }
+  throw new Error(`app page (web/index.html) did not appear`);
+}
+
+/**
+ * Launches the Tauri test binary, attaches Playwright over CDP, waits for
+ * the app page to be ready, and sets a predictable viewport.
  *
- * Retries up to 2 times if the window fails to appear (e.g. transient
- * CI timeout on macOS runners).
+ * Each launch gets its own DevTools port and webview directory; the
+ * settings directory is shared per spec file so its launches see the same
+ * settings, all under test-results/. Retries up to three times.
+ *
+ * With `visible`, the test build shows its window, for the real-input
+ * specs, and the page keeps the window's own size, so a point on the page
+ * is the same point in the window.
  *
  * @param {string[]} [extraArgs]  Additional CLI arguments (e.g. a file path).
- * @returns {Promise<{ electronApp: import('@playwright/test').ElectronApplication, page: import('@playwright/test').Page }>}
+ * @param {{ visible?: boolean }} [options]
+ * @returns {Promise<{ app: TauriApp, page: import('@playwright/test').Page }>}
  */
-export async function launchApp(extraArgs = []) {
+export async function launchApp(extraArgs = [], { visible = false } = {}) {
+  const resultsDir = path.join(projectRoot, `test-results`);
+  const settingsDir = path.join(resultsDir, `settings`, path.basename(test.info().file));
   const maxAttempts = 3;
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-    /** @type {import('@playwright/test').ElectronApplication|undefined} */
-    let electronApp;
+    /** @type {import('node:child_process').ChildProcess|undefined} */
+    let child;
     try {
-      electronApp = await electron.launch({
-        args: [
-          ...(process.platform === `linux` ? [`--no-sandbox`] : []),
-          path.join(projectRoot, `src`, `electron`, `main.js`),
-          ...extraArgs,
-        ],
-        env: { ...process.env, TESTING: `1` },
+      const port = await freePort();
+      const webviewDir = path.join(
+        resultsDir,
+        `webview`,
+        `${process.pid}-${Date.now()}-${attempt}`,
+      );
+      mkdirSync(webviewDir, { recursive: true });
+      mkdirSync(settingsDir, { recursive: true });
+      child = spawn(TEST_APP_BINARY, extraArgs, {
+        env: {
+          ...process.env,
+          TESTING: `1`,
+          TESTING_WEBVIEW_DIR: webviewDir,
+          TESTING_DEVTOOLS_PORT: String(port),
+          TESTING_SETTINGS_DIR: settingsDir,
+          ...(visible ? { TESTING_VISIBLE: `1` } : {}),
+        },
+        stdio: [`pipe`, `pipe`, `inherit`],
+        windowsHide: true,
       });
-      const page = await electronApp.firstWindow();
-
-      // Wait for the renderer to be ready.
+      await waitForDevtools(port, 15000);
+      const browser = await chromium.connectOverCDP(`http://127.0.0.1:${port}`);
+      const page = await findAppPage(browser, 15000);
       await page.waitForFunction(() => document.readyState === `complete`);
-
-      // Force a consistent viewport so layout-sensitive tests pass on CI.
-      await page.setViewportSize(VIEWPORT);
-
-      return { electronApp, page };
+      if (!visible) await page.setViewportSize(VIEWPORT);
+      const app = new TauriApp(/** @type {any} */ (child));
+      attachedBrowsers.set(app, browser);
+      return { app, page };
     } catch (err) {
-      // Clean up the failed app instance before retrying.
       try {
-        await electronApp?.close();
+        child?.kill();
       } catch {
         /* ignore */
       }
@@ -102,8 +215,9 @@ export async function launchApp(extraArgs = []) {
  * @param {string} fixtureContent  Raw markdown string to load.
  */
 export async function loadContent(page, fixtureContent) {
-  await page.evaluate((content) => {
-    window.editorAPI?.setContent(content);
+  await page.waitForFunction(() => window.editorAPI !== undefined);
+  await page.evaluate(async (content) => {
+    await window.editorAPI?.setContent(content);
   }, fixtureContent);
   // Wait for the editor to settle — the selector depends on the active view.
   const isSource2 = await page
@@ -180,28 +294,21 @@ export async function clickQuerySelector(page, qs) {
 }
 
 /**
- * Close an Electron app with a timeout fallback.
+ * Disconnects Playwright and closes the Tauri app, killing the process if
+ * it does not exit within the close timeout.
  *
- * `electronApp.close()` can hang on CI when the Electron process is
- * slow to shut down (e.g. 8 workers closing simultaneously). This helper
- * races the close against a 5-second timeout and force-kills the process
- * if it doesn't exit in time.
- *
- * @param {import('@playwright/test').ElectronApplication} electronApp
+ * @param {TauriApp} app
  */
-export async function closeApp(electronApp) {
-  try {
-    await Promise.race([
-      electronApp.close(),
-      new Promise((_, reject) => setTimeout(() => reject(new Error(`close timeout`)), 5000)),
-    ]);
-  } catch {
+export async function closeApp(app) {
+  const browser = attachedBrowsers.get(app);
+  if (browser) {
     try {
-      electronApp.process().kill();
+      await browser.close();
     } catch {
-      /* already dead */
+      /* already disconnected */
     }
   }
+  await app.close();
 }
 
 /**

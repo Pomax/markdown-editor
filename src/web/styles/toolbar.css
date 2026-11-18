@@ -33,7 +33,6 @@
     max-width: var(--page-max-width);
     width: max-content;
     margin: 0 auto;
-    transform-origin: left center;
 
     &.hidden {
         display: none;

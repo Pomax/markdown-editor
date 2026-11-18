@@ -9,7 +9,7 @@ import { clickInEditor, closeApp, launchApp } from '../../test-utils.js';
 const heading = `# main`;
 
 test(`typing "# main" then backspace 6 times results in empty document`, async () => {
-  const { electronApp, page } = await launchApp();
+  const { app, page } = await launchApp();
   await page.waitForSelector(`#editor [data-node-id]`);
 
   const editor = page.locator(`#editor`);
@@ -31,5 +31,5 @@ test(`typing "# main" then backspace 6 times results in empty document`, async (
 
   const content = await editor.innerText();
   expect(content.trim()).toBe(``);
-  await closeApp(electronApp);
+  await closeApp(app);
 });

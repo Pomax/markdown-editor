@@ -324,11 +324,6 @@ export class Toolbar extends ToolbarData {
 
     this.container.appendChild(this.toolbarElement);
 
-    // Scale toolbar down when container is narrower than the toolbar's
-    // natural width.  Never scale up beyond 1.
-    this.resizeObserver = new ResizeObserver(() => this.scaleToolbar());
-    this.resizeObserver.observe(this.container);
-
     // Listen for selection changes on document so tab switches
     // (which swap editor.container) keep working.
     document.addEventListener(
@@ -338,34 +333,6 @@ export class Toolbar extends ToolbarData {
 
     // Initial state
     this.updateButtonStates(undefined);
-  }
-
-  /**
-   * Scales the toolbar element down uniformly when the container is narrower
-   * than the toolbar's natural (unwrapped) width.  Never scales above 1.
-   * Uses uniform scale so icons keep their aspect ratio.
-   */
-  scaleToolbar() {
-    if (!this.toolbarElement) return;
-
-    // Reset so we can measure the natural width
-    this.toolbarElement.style.transform = ``;
-    this.container.style.height = ``;
-
-    const containerWidth = this.container.clientWidth;
-    const padding =
-      Number.parseFloat(getComputedStyle(this.container).paddingLeft) +
-      Number.parseFloat(getComputedStyle(this.container).paddingRight);
-    const available = containerWidth - padding;
-    const natural = this.toolbarElement.scrollWidth;
-
-    if (natural > available && available > 0) {
-      const scale = available / natural;
-      this.toolbarElement.style.transform = `scale(${scale})`;
-      // Adjust container height since transform doesn't affect layout
-      const naturalHeight = this.toolbarElement.offsetHeight;
-      this.container.style.height = `${naturalHeight * scale + Number.parseFloat(getComputedStyle(this.container).paddingTop) + Number.parseFloat(getComputedStyle(this.container).paddingBottom)}px`;
-    }
   }
 
   /**
@@ -397,8 +364,8 @@ export class Toolbar extends ToolbarData {
       id: `file-open`,
       label: `Open File`,
       handler: async () => {
-        if (!window.electronAPI) return;
-        const result = await window.electronAPI.loadFile();
+        if (!window.pageToBackendBridge) return;
+        const result = await window.pageToBackendBridge.loadFile();
         if (result?.success && result.content !== undefined) {
           document.dispatchEvent(new CustomEvent(`file:loaded`, { detail: result }));
         }
@@ -561,10 +528,10 @@ export class Toolbar extends ToolbarData {
     let src = result.src;
 
     // Handle file rename if the filename changed
-    if (result.rename && window.electronAPI) {
+    if (result.rename && window.pageToBackendBridge) {
       const originalFilename = this.extractFilename(src);
       if (result.rename !== originalFilename) {
-        const renameResult = await window.electronAPI.renameImage(
+        const renameResult = await window.pageToBackendBridge.renameImage(
           this.resolveImagePath(src),
           result.rename,
         );

@@ -62,8 +62,8 @@ describe(`SyntaxTree.updateUsing`, () => {
   });
 
   it(`preserves ID of an edited paragraph and updates its content`, async () => {
-    const originalLine = `A GitHub-flavoured markdown editor built using the web stack, running in Electron, featuring a syntactic tree-based document model for fast editing of large documents (e.g. 50k+ work documents like https://pomax.github.io/are-we-flying).`;
-    const editedLine = `A GitHub-flavoured markdown editor built using the web stack, running in Electron, featuring a syntactic tree-based document model for fast editing of **very large** documents.`;
+    const originalLine = `A GitHub-flavoured markdown editor built using the web stack, running in Tauri (the operating system's own web view, with a Rust backend), featuring a syntactic tree-based document model for fast editing of large documents (e.g. 50k+ work documents like https://pomax.github.io/are-we-flying).`;
+    const editedLine = `A GitHub-flavoured markdown editor built using the web stack, running in Tauri (the operating system's own web view, with a Rust backend), featuring a syntactic tree-based document model for fast editing of **very large** documents.`;
     const editedReadme = replaceFirst(README, originalLine, editedLine);
 
     const oldTree = await parse(README);
@@ -132,11 +132,11 @@ describe(`SyntaxTree.updateUsing`, () => {
   });
 
   it(`preserves IDs when sections are reordered`, async () => {
-    const electronSection = `## Eww, Electron?\n\nSorry, did you not have 8+GB if RAM and 1TB+ of disk space? Stop pretending you care about Electron, you care about whether the tools are useful or not. Yes, it's dumb that 2 MB of resources needs 100MB of UI runner, but on the other hand, it's literally a browser, and have you looked at what browsers need to support these days? Can you even _count_ the number of web APIs? =P`;
+    const aiSection = `## Well I don't want to use something made by AI\n\nThat's fine. There's a reason I gave this project the name that it has: this is a tool that ***I*** need. I'm putting it up on GitHub with a public domain license because that's what I do with almost everything I make, and if you don't like it, no one's forcing you to use it, or even keep reading.`;
     const vibeSection = `## So this is a vibe coded project?\n\nNot really, no. This is literally an experiment into how _not_ to vibe code, and instead use these tools in a way that actually makes the same amount of sense as any other IDE automation. Because there is _so much_ these tools can't do, without telling you, and if you just let them "do their thing" instead of making them perform very specific targetted tasks based on you tracking the task list and acceptance criteria, that's on you.`;
 
-    const editedReadme = README.replace(electronSection, `PLACEHOLDER_VIBE`)
-      .replace(vibeSection, electronSection)
+    const editedReadme = README.replace(aiSection, `PLACEHOLDER_VIBE`)
+      .replace(vibeSection, aiSection)
       .replace(`PLACEHOLDER_VIBE`, vibeSection);
 
     const oldTree = await parse(README);
@@ -153,7 +153,7 @@ describe(`SyntaxTree.updateUsing`, () => {
   });
 
   it(`assigns a fresh ID when a node's type changes`, async () => {
-    const headingContent = `Eww, Electron?`;
+    const headingContent = `So this is a vibe coded project?`;
     const oldTree = await parse(README);
     const headingNode = oldTree.children.find(
       (c) => c.type === `heading2` && c.content === headingContent,
@@ -181,8 +181,8 @@ describe(`SyntaxTree.updateUsing`, () => {
   });
 
   it(`handles simultaneous edit, insert, and delete`, async () => {
-    const originalLine = `A GitHub-flavoured markdown editor built using the web stack, running in Electron, featuring a syntactic tree-based document model for fast editing of large documents (e.g. 50k+ work documents like https://pomax.github.io/are-we-flying).`;
-    const editedLine = `A markdown editor built with Electron featuring a **tree-based** document model.`;
+    const originalLine = `A GitHub-flavoured markdown editor built using the web stack, running in Tauri (the operating system's own web view, with a Rust backend), featuring a syntactic tree-based document model for fast editing of large documents (e.g. 50k+ work documents like https://pomax.github.io/are-we-flying).`;
+    const editedLine = `A markdown editor built with Tauri featuring a **tree-based** document model.`;
     const lineToRemove = `Previous versions can be found over on the [Releases](https://github.com/Pomax/Pomax-s-Markdown-Editor/releases/latest) page.`;
     const insertionPoint = `# Testing`;
     const fence = `\`\`\``;

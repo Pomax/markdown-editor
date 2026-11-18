@@ -1,6 +1,6 @@
 # Pomax's Markdown Editor
 
-A GitHub-flavoured markdown editor built using the web stack, running in Electron, featuring a syntactic tree-based document model for fast editing of large documents (e.g. 50k+ work documents like https://pomax.github.io/are-we-flying).
+A GitHub-flavoured markdown editor built using the web stack, running in Tauri (the operating system's own web view, with a Rust backend), featuring a syntactic tree-based document model for fast editing of large documents (e.g. 50k+ work documents like https://pomax.github.io/are-we-flying).
 
 ![A screenshot of the editor](./screenshot-1.png)
 
@@ -44,11 +44,13 @@ That's fine. There's a reason I gave this project the name that it has: this is 
 
 # Running from source
 
-You can obviously just run this project from source if you want. It's just a web stack project wrapped by Electron.
+You can obviously just run this project from source if you want. It's just a web stack project wrapped by Tauri.
 
 ### Prerequisites
 
 - Node.js 22.0.0 or higher
+- Rust (the stable toolchain, installed with `rustup`)
+- On Windows, the Microsoft C++ build tools and the WebView2 runtime; on macOS, the Xcode command line tools; on Linux, the WebKitGTK 4.1 development packages. See [Getting Started](./docs/developers/getting-started.md) for the details.
 
 ### Installation
 
@@ -57,7 +59,7 @@ npm install --ignore-scripts
 npm run setup
 ```
 
-`npm run setup` downloads the Electron binary, rebuilds `better-sqlite3` for Electron, and installs the Playwright Firefox browser used by the integration tests.
+`npm run setup` installs the Playwright Firefox browser used by the integration tests.
 
 ### Running the Application
 
@@ -67,7 +69,7 @@ npm start
 
 # Testing
 
-You run the full test suite using `npm test`. Nice and obvious. This will run linting, formatting, consistency testing, unit testing, and integration testing.
+You run the full test suite using `npm test`. Nice and obvious. This will run linting, formatting, consistency testing, unit testing, the backend's Rust tests, and integration testing.
 
 ### Linting
 
@@ -85,9 +87,17 @@ Unit tests use Node's built in testing framework, and can be run on their own us
 npm run test:unit
 ```
 
+### Backend Tests
+
+The Rust backend's unit tests can be run on their own using:
+
+```sh
+npm run test:rust
+```
+
 ### Integration Tests
 
-Integration testing uses Playwright with Firefox, and can be run on their own using:
+Integration testing uses Playwright, driving the app itself (with its window hidden) and, for the tests that only need the page, Firefox. They can be run on their own using:
 
 ```sh
 npm run test:integration
@@ -101,15 +111,13 @@ npm run test:integration -- test/integration/your.file.spec.js
 
 ## Building Executables
 
-To build a standalone executable for the current platform:
+To build a standalone executable for the current platform (a single `.exe` on Windows, a `.dmg` on macOS, an AppImage on Linux):
 
 ```sh
-npm run dist
+npm run build
 ```
 
-Build output goes to the `dist/` directory.
-
-Note that this tasks primarily exists for automated builds using a GitHub Actions workflow that builds all three platforms on every push to `main` that bumps up the project version in `package.json`.
+Build output goes to the `dist/` directory. The GitHub Actions workflow that builds all three platforms on every push to `main` lives outside this folder and still builds the Electron version.
 
 ## License
 

@@ -492,10 +492,10 @@ export class TableOfContents extends TableOfContentsData {
    * Saves the current sidebar width to the settings database.
    */
   async persistWidth() {
-    if (!window.electronAPI) return;
+    if (!window.pageToBackendBridge) return;
     const width = this.getWidth();
     try {
-      await window.electronAPI.setSetting(`tocWidth`, width);
+      await window.pageToBackendBridge.setSetting(`tocWidth`, width);
     } catch {
       // Non-critical — ignore
     }

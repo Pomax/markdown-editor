@@ -11,54 +11,42 @@ import { closeApp, launchApp, projectRoot } from '../../test-utils.js';
 
 const readmePath = path.join(projectRoot, `README.md`);
 
-/** @type {import('@playwright/test').ElectronApplication} */
-let electronApp;
+/** @type {import('../../tauri-app.js').TauriApp} */
+let app;
 
 /** @type {import('@playwright/test').Page} */
 let page;
 
 test.beforeAll(async () => {
-  ({ electronApp, page } = await launchApp());
+  ({ app, page } = await launchApp());
 });
 
 test.afterAll(async () => {
-  await closeApp(electronApp);
+  await closeApp(app);
 });
 
 test(`Copy File Path is disabled when no file is open`, async () => {
-  const enabled = await electronApp.evaluate(({ Menu }) => {
-    const menu = Menu.getApplicationMenu();
-    const fileMenu = menu?.items.find((i) => i.label === `File`);
-    const utilities = fileMenu?.submenu?.items.find((i) => i.label === `Utilities`);
-    const item = utilities?.submenu?.items.find((i) => i.label === `Copy File Path`);
-    return item?.enabled;
-  });
+  const enabled = await app.menu.isEnabled([`File`, `Utilities`, `Copy File Path`]);
 
   expect(enabled).toBe(false);
 });
 
 test(`Copy File Path copies the active file path to the clipboard`, async () => {
   // Tell the main process that a file with a real path is active,
-  // which sets fileManager.currentFilePath via the IPC handler.
+  // which sets fileManager.currentFilePath via the IPC handler. The
+  // promise is returned so the backend has handled it before the menu
+  // is used.
   await page.evaluate((fp) => {
-    window.electronAPI?.notifyOpenFiles([
+    return window.pageToBackendBridge?.notifyOpenFiles([
       { id: `tab-1`, filePath: fp, label: `README.md`, active: true },
     ]);
   }, readmePath);
 
   // The menu is rebuilt when openFilesChanged fires, so the item
   // should now be enabled.  Click it via the Menu API.
-  await electronApp.evaluate(({ Menu }) => {
-    const menu = Menu.getApplicationMenu();
-    const fileMenu = menu?.items.find((i) => i.label === `File`);
-    const utilities = fileMenu?.submenu?.items.find((i) => i.label === `Utilities`);
-    const item = utilities?.submenu?.items.find((i) => i.label === `Copy File Path`);
-    item?.click();
-  });
+  await app.menu.click([`File`, `Utilities`, `Copy File Path`]);
 
-  const clipboardText = await electronApp.evaluate(({ clipboard }) => {
-    return clipboard.readText();
-  });
+  const clipboardText = await app.clipboard.readText();
 
   expect(clipboardText).toBe(readmePath);
 });

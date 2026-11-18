@@ -122,6 +122,22 @@ function parseLinePrefix(lineText) {
 }
 
 /**
+ * Returns the leading whitespace of the least indented non-blank line.
+ * @param {string} text
+ * @returns {string}
+ */
+function commonIndent(text) {
+  const indents = text
+    .split(`\n`)
+    .filter((line) => line.trim())
+    .map((line) => /^[ \t]*/.exec(line)?.[0] ?? ``);
+  if (indents.length === 0) return ``;
+  return indents.reduce((shortest, indent) =>
+    indent.length < shortest.length ? indent : shortest,
+  );
+}
+
+/**
  * Replaces text in a textarea using execCommand so the edit
  * participates in the browser's native undo/redo stack.
  * @param {HTMLTextAreaElement} textarea
@@ -600,7 +616,10 @@ export class Source2Formatter extends Source2FormatterData {
   }
 
   /**
-   * Toggles a code block fence around the current line or selection.
+   * Toggles a code block fence around the current line or selection. The
+   * fences are put at the selected lines' own indentation, so that an
+   * indented block such as a nested list item stays where it is. Fences at
+   * that indentation, or at none, are removed.
    * @param {HTMLTextAreaElement} textarea
    */
   toggleCodeBlock(textarea) {
@@ -608,33 +627,37 @@ export class Source2Formatter extends Source2FormatterData {
     const { lineStart } = getLineRange(value, selectionStart);
     const { lineEnd } = getLineRange(value, selectionEnd);
     const selectedLines = value.substring(lineStart, lineEnd);
+    const indent = commonIndent(selectedLines);
 
-    const fenceOpen = `\`\`\`\n`;
-    const fenceClose = `\n\`\`\``;
-
-    const beforeStart = value.substring(Math.max(0, lineStart - fenceOpen.length), lineStart);
-    const afterEnd = value.substring(lineEnd, lineEnd + fenceClose.length);
-
-    if (beforeStart === fenceOpen && afterEnd === fenceClose) {
-      applyTextareaEdit(
-        textarea,
-        lineStart - fenceOpen.length,
-        lineEnd + fenceClose.length,
-        selectedLines,
-        lineStart - fenceOpen.length,
-        lineEnd - fenceOpen.length,
-      );
-    } else {
-      const wrapped = fenceOpen + selectedLines + fenceClose;
-      applyTextareaEdit(
-        textarea,
-        lineStart,
-        lineEnd,
-        wrapped,
-        lineStart + fenceOpen.length,
-        lineEnd + fenceOpen.length,
-      );
+    for (const fenceIndent of new Set([indent, ``])) {
+      const fenceOpen = `${fenceIndent}\`\`\`\n`;
+      const fenceClose = `\n${fenceIndent}\`\`\``;
+      const beforeStart = value.substring(Math.max(0, lineStart - fenceOpen.length), lineStart);
+      const afterEnd = value.substring(lineEnd, lineEnd + fenceClose.length);
+      if (beforeStart === fenceOpen && afterEnd === fenceClose) {
+        applyTextareaEdit(
+          textarea,
+          lineStart - fenceOpen.length,
+          lineEnd + fenceClose.length,
+          selectedLines,
+          lineStart - fenceOpen.length,
+          lineEnd - fenceOpen.length,
+        );
+        return;
+      }
     }
+
+    const fenceOpen = `${indent}\`\`\`\n`;
+    const fenceClose = `\n${indent}\`\`\``;
+    const wrapped = fenceOpen + selectedLines + fenceClose;
+    applyTextareaEdit(
+      textarea,
+      lineStart,
+      lineEnd,
+      wrapped,
+      lineStart + fenceOpen.length,
+      lineEnd + fenceOpen.length,
+    );
   }
 
   /**

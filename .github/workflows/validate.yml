@@ -21,6 +21,9 @@ jobs:
         with:
           node-version: lts/*
           cache: npm
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
       - run: npm ci --ignore-scripts && npm run setup && npm test
 
   test-macos:
@@ -32,7 +35,11 @@ jobs:
         with:
           node-version: lts/*
           cache: npm
-      - run: npm ci --ignore-scripts && npm run setup && npm test
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+      - run: npm ci --ignore-scripts
+      - run: npm run lint && npm run test:unit && npm run test:rust
 
   test-linux:
     needs: check-label
@@ -43,5 +50,9 @@ jobs:
         with:
           node-version: lts/*
           cache: npm
-      - run: npm ci --ignore-scripts && npm run setup
-      - run: xvfb-run --auto-servernum npm test
+      - run: sudo apt-get update && sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+      - run: npm ci --ignore-scripts
+      - run: npm run lint && npm run test:unit && npm run test:rust

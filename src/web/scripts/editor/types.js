@@ -105,6 +105,8 @@ export class SourceRendererV2Data {
   mirrorDirty = false;
   /** @type {string} */
   originalMarkdown = ``;
+  /** @type {string} */
+  lastValue = ``;
 }
 
 export class EventHandlerData {

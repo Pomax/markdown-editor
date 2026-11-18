@@ -84,7 +84,10 @@ export class InputHandler extends InputHandlerData {
    * @param {KeyboardEvent} event
    */
   async handleKeyDown(event) {
-    if (this.editor.viewMode === `source2`) return;
+    if (this.editor.viewMode === `source2`) {
+      await this.handleHistoryKey(event);
+      return;
+    }
 
     // Signal that the next selectionchange was caused by an
     // in-editor interaction, so treeRange may be cleared.
@@ -117,16 +120,7 @@ export class InputHandler extends InputHandlerData {
     }
 
     if (event.ctrlKey || event.metaKey) {
-      if (event.key === `z` && !event.shiftKey) {
-        event.preventDefault();
-        await this.editor.undo();
-        return;
-      }
-      if ((event.key === `z` && event.shiftKey) || event.key === `y`) {
-        event.preventDefault();
-        await this.editor.redo();
-        return;
-      }
+      if (await this.handleHistoryKey(event)) return;
 
       if (event.key === `a`) {
         event.preventDefault();
@@ -181,5 +175,26 @@ export class InputHandler extends InputHandlerData {
     // are left to their default browser behaviour so the cursor moves
     // naturally.  After the key is processed, `selectionchange` will fire
     // and we update the tree cursor from the DOM.
+  }
+
+  /**
+   * Runs undo for Ctrl+Z and redo for Ctrl+Shift+Z and Ctrl+Y, in either
+   * view, so that both views share the editor's one history.
+   * @param {KeyboardEvent} event
+   * @returns {Promise<boolean>} whether the key was undo or redo
+   */
+  async handleHistoryKey(event) {
+    if (!event.ctrlKey && !event.metaKey) return false;
+    if (event.key === `z` && !event.shiftKey) {
+      event.preventDefault();
+      await this.editor.undo();
+      return true;
+    }
+    if ((event.key === `z` && event.shiftKey) || event.key === `y`) {
+      event.preventDefault();
+      await this.editor.redo();
+      return true;
+    }
+    return false;
   }
 }

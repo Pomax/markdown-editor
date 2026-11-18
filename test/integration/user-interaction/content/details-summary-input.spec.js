@@ -20,21 +20,21 @@ import {
 const fixturePath = path.join(projectRoot, `test`, `fixtures`, `details.md`);
 const fixtureContent = fs.readFileSync(fixturePath, `utf-8`);
 
-/** @type {import('@playwright/test').ElectronApplication} */
-let electronApp;
+/** @type {import('../../tauri-app.js').TauriApp} */
+let app;
 
 /** @type {import('@playwright/test').Page} */
 let page;
 
 test.beforeAll(async () => {
-  ({ electronApp, page } = await launchApp());
+  ({ app, page } = await launchApp());
 
   // Load the details fixture content into the editor.
   await loadContent(page, fixtureContent);
 });
 
 test.afterAll(async () => {
-  await closeApp(electronApp);
+  await closeApp(app);
 });
 
 test(`pressing Enter after summary text and typing " a a" preserves leading space`, async () => {

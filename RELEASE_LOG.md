@@ -179,4 +179,4 @@ Initial release.
 - **A4 page layout**: Document-centric design with configurable page dimensions.
 - **Scripting API**: Full IPC-based API for external automation.
 - **Debug mode**: Help → Debug opens DevTools and enables context menus.
-- **Standalone executables**: Pre-built binaries for Windows, macOS, and Linux via electron-builder.
+- **Standalone executables**: Pre-built binaries for Windows, macOS, and Linux.

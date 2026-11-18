@@ -7,7 +7,14 @@
 
 export default [
   {
-    ignores: [`node_modules/**`],
+    ignores: [
+      `node_modules/**`,
+      `build/**`,
+      `dist/**`,
+      `test-results/**`,
+      `target/**`,
+      `gen/**`,
+    ],
   },
   {
     files: [`**/*.js`],

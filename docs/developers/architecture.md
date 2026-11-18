@@ -6,36 +6,40 @@ This document describes the high-level architecture of the Markdown Editor appli
 
 ## Technology Stack
 
-- **Runtime**: Electron 40+ (Node.js + Chromium)
-- **Language**: JavaScript (ES Modules) with JSDoc type annotations
+- **Runtime**: Tauri 2: a Rust backend and the system webview (WebView2 on Windows, WebKit on macOS and Linux)
+- **Language**: JavaScript (ES Modules) with JSDoc type annotations in the page; Rust in the backend
 - **Type Checking**: TypeScript (`tsc`) via `jsconfig.json`, checking `.js` files
-- **Linting / Formatting**: Biome
-- **Testing**: Node.js native test runner (unit), Playwright with Firefox (integration)
-- **Native Modules**: `better-sqlite3` for settings persistence
-- **Packaging**: `electron-builder` for standalone executables
+- **Linting / Formatting**: Biome and ESLint for JavaScript, `cargo fmt` for Rust
+- **Testing**: Node.js native test runner (unit), `cargo test` (backend), Playwright (integration: Firefox for the page-only specs, the Tauri app over the DevTools protocol for the rest; real input on Windows: the test app's window driven by real keyboard and mouse input from the Windows runner)
+- **Settings storage**: SQLite through `rusqlite` (bundled, so nothing is installed separately)
+- **Packaging**: `tauri build`, driven by `scripts/build-executable.js`
 
 ## Process Model
 
-The application follows Electron's multi-process architecture:
+The application is a Tauri app: one Rust process that owns the window, the menu, the file system and the settings, and a webview in which the editor page runs. The page reaches the backend only through the bridge, `src/tauri/preload.js`, which Tauri injects into the page before any page script runs. The bridge calls the backend's commands through Tauri's IPC, and the backend sends the page `menu:action` events and, for the few calls that need the page's answer, evaluates script in it.
 
 ```
-┌─────────────────────────────────────────────────────────┐
-│                    Main Process                         │
-│  ┌─────────────┐  ┌─────────────┐  ┌─────────────────┐  │
-│  │ FileManager │  │ MenuBuilder │  │   IPCHandler    │  │
-│  └─────────────┘  └─────────────┘  └─────────────────┘  │
-│                          │                              │
-│              ┌───────────┴───────────┐                  │
-│              │                       │                  │
-│        ┌─────┴─────┐  ┌──────────────┴──┐               │
-│        │APIRegistry│  │ SettingsManager │               │
-│        └───────────┘  └─────────────────┘               │
-└────────────────────────┬────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────┐
+│                 Backend (Rust, src/tauri)                    │
+│  ┌─────────┐ ┌───────────────┐ ┌─────────────────┐           │
+│  │ main.rs │ │ ipc_handler.rs│ │ menu_builder.rs │           │
+│  └─────────┘ └───────────────┘ └─────────────────┘           │
+│  ┌─────────────────┐ ┌─────────────────────┐                 │
+│  │ file_manager.rs │ │ settings_manager.rs │                 │
+│  └─────────────────┘ └─────────────────────┘                 │
+│  ┌───────────────────┐ ┌─────────────────────┐ ┌───────────┐ │
+│  │ media_protocol.rs │ │ webview_settings.rs │ │ message_  │ │
+│  └───────────────────┘ └─────────────────────┘ │ box.rs    │ │
+│  ┌───────────────┐ ┌─────────────────┐         └───────────┘ │
+│  │ image_path.rs │ │ web_contents.rs │                       │
+│  └───────────────┘ └─────────────────┘                       │
+└────────────────────────┬─────────────────────────────────────┘
                          │
-                         │ IPC (via preload.cjs)
+                         │ Tauri IPC and events (via the bridge, preload.js)
+                         │ `media` protocol (local images, audio, video)
                          │
 ┌────────────────────────┴─────────────────────────────────────┐
-│                     Renderer Process (app.js)                │
+│                 Page in the webview (app.js)                 │
 │    ┌── Editor ──────────────────────────────────────────┐    │
 │    │  ┌────────────────┐  ┌──────────────────────────┐  │    │
 │    │  │   DFAParser    │──│       SyntaxTree         │  │    │
@@ -83,91 +87,68 @@ The application follows Electron's multi-process architecture:
 └──────────────────────────────────────────────────────────────┘
 ```
 
-## Main Process Components
+## Backend Components
 
-### main.js
+The backend lives in `src/tauri`, built by the `Cargo.toml` at the project root, with `tauri.conf.json` beside it. Each module, and the bridge:
 
-Entry point for the Electron main process. Responsibilities:
-- Application lifecycle management (`app.whenReady`, `window-all-closed`, etc.)
-- Window creation with security settings (`contextIsolation: true`, `nodeIntegration: false`)
-- Menu setup via MenuBuilder
-- IPC handler registration
-- Persisting and restoring all open files across sessions (file paths, cursor paths, ToC heading paths, scroll positions)
-- Sending `session:restore` events to the renderer after file restore so cursor/ToC state can be reapplied once the document is fully parsed
+| File | Responsibility |
+|------|----------------|
+| `main.rs` | Entry point: registers the commands, the `media` protocol, the menu and the window events; creates the window hidden, sizes it from the saved bounds and shows it on the first page load; delivers a file named on the command line; restores and saves the open files of a session; runs the close flow; on macOS, opens the window again when the app is reopened from the Dock without one; honours `TESTING` and `STARTUP_TIMING` |
+| `ipc_handler.rs` | The commands the bridge invokes (`file_*`, `settings_*`, `document_*`, `view_*`, `element_*`, `image_*`, `path_to_relative`, `dialog_confirm`, `app_reload`, `context_menu`, `bridge_ready`, `web_contents_reply`); file dialogs and message boxes |
+| `file_manager.rs` | The current file, the unsaved flag, the recent files list, the Save As name, the HTML export paths and stylesheet, and reading a file as UTF-8 |
+| `settings_manager.rs` | The settings: one JSON value per key in an SQLite database in the app's data folder |
+| `menu_builder.rs` | The application menu and the context menu, built first as data and then as Tauri menus; a refresh changes only the native items that differ; each item runs its action; Images > Gather |
+| `message_box.rs` | The texts and buttons of the app's message boxes |
+| `image_path.rs` | The plain file name check, image renames, relative image paths and percent-decoding |
+| `media_protocol.rs` | The `media` protocol, through which the page loads local images, audio and video (see Security) |
+| `web_contents.rs` | Holds events and script evaluations for the page until the bridge says it is ready, and matches each evaluation to its reply |
+| `webview_settings.rs` | The navigation, new-window and permission limits; the WebView2 settings and browser arguments; on Windows, menu shortcuts and Alt plus a menu letter while the page has focus, the page's `alert` and `confirm` as the app's message box, Reload bypassing the cache, and Inspect Element: WebView2's own context menu requests are answered without showing its menu, and the one for the right-click sent at the inspected point runs WebView2's Inspect command |
+| `test_hooks.rs` | Only in builds with the `test-hooks` feature: the channel on standard input through which the Playwright specs drive the app |
+| `build.rs` | The build script: declares the app's commands, so each is refused unless the capability in `capabilities/` grants it, and points Tauri at the capabilities and the window icon in `src/tauri` |
+| `bin/win-runner.rs` | Not part of the app: the Windows runner the real-input tests use, a second binary of the crate that finds the app's window by process id, brings it to the front, presses keys, types and clicks through `SendInput`, and reads the window's title, whether the menu bar is active and the open menu's items |
+| `preload.js` | The bridge (below) |
 
-### FileManager
+### Window, session and close flow (`main.rs`)
 
-Handles all file system operations:
-- Loading and saving markdown files
-- File dialogs (open, save as)
-- Tracking current file path and unsaved changes
-- Recent files list (persisted via SettingsManager)
-- Image gathering (copying referenced images into the document folder)
+- The window is created hidden, given the saved bounds (position as ratios of the work area, size in DIPs, maximized state) or its starting size, kept on screen, and shown on the first page load. Its page is at least 998 pixels wide, the width the toolbar needs at full size.
+- With no file on the command line, the open files of the last session are restored on the first page load: the first into the page's own tab, the rest as `file:loaded` menu actions, then `view:switchFile` and `session:restore` so the page can put back the cursor, the active ToC heading and the scroll position. Help > Reload restores them again after the reload.
+- Closing the window first has the page save its open files; with unsaved changes it asks Save, Save As, Discard or Cancel.
+- Under `TESTING` the window is never shown, unless a `test-hooks` build also has `TESTING_VISIBLE` (the real-input tests set it), and the open files are not restored. With `STARTUP_TIMING` naming a file, the time of the first page load is written to it and the app exits.
 
-### MenuBuilder
+### Menus (`menu_builder.rs`)
 
-Constructs the application menu:
-- **File**: New, Load, Open Recent, Save, Save As, Close, Word Count, Copy File Path, Exit
-- **Edit**: Undo, Redo, Cut, Copy, Paste, Select All, Images → Gather, Preferences
-- **View**: Source View (`Ctrl+1`), Writing View (`Ctrl+2`), open file list with checkmarks
+- **File**: New, Load, Open Recent, Save, Save As, Export > HTML (writes `<name>.html` and `default.css` next to the document; when `<name>.html` exists, it first asks Replace or Cancel, and Cancel writes nothing), Close, Word Count, Copy File Path, Exit
+- **Edit**: Undo, Redo, Cut, Copy, Paste, Select All, Images > Gather, Preferences
+- **View**: Writing View (`Ctrl+1`), Source View (`Ctrl+2`), the open files with a checkmark on the active one
 - **Help**: Reload, Debug, About
-- **Right-click context menu**: Copy, Cut, Paste, Inspect Element
+- **Context menu** (right-click where the page did not handle it): Copy, Cut, Paste, Inspect Element (DevTools on the element under the pointer; on macOS and Linux it opens DevTools)
 
-Menu actions are sent to the renderer via the `menu:action` IPC channel. Cut, Copy, and Paste use Electron's built-in `role` mechanism, which fires native DOM clipboard events that the editor's `ClipboardHandler` intercepts.
+Menu actions reach the page as `menu:action` events. Cut, Copy and Paste send their keystroke to the webview, which runs the native clipboard command and so fires the DOM clipboard events the editor's `ClipboardHandler` handles. The six Edit shortcuts the page handles itself are not registered as menu accelerators on Windows and Linux, so they are not handled twice.
 
-### IPCHandler
+## Bridge (`src/tauri/preload.js`)
 
-Central hub for IPC communication. Registers handlers for:
-- File operations (`file:new`, `file:load`, `file:loadPath`, `file:save`, `file:saveAs`, `file:confirmClose`, etc.)
-- Document operations (`document:undo`, `document:redo`)
-- View operations (`view:source2`, `view:writing`, `view:openFilesChanged`)
-- Element operations (`element:changeType`, `element:format`)
-- Settings operations (`settings:get`, `settings:set`, `settings:getAll`)
-- Image operations (`image:browse`, `image:rename`)
-- Path operations (`path:toRelative` — uses `node:path` for filesystem-correct relative path computation)
-- API operations (`api:execute`, `api:commands`)
-- App operations (`app:reload`)
+- Injected by Tauri before any page script, on the app's own origin only. It uses `window.__TAURI_INTERNALS__`; Tauri's global API object stays off.
+- Defines `window.pageToBackendBridge` (read-only), through which the page calls the backend, with `toDisplayUrl` and `fromDisplayUrl`, which turn a local file reference into a `media` URL and back.
+- Subscribes to `menu:action` before the page runs and queues its messages until the page registers its handler, then tells the backend it is ready.
+- Sets the window title to `document.title` whenever it changes.
+- Turns a right-click the page did not handle into the app's context menu at the pointer, except the one the backend sends for Inspect Element, which it lets through to the webview.
+- Turns files dropped on the window (Tauri's drag-drop event) into a DOM `drop` event at the drop point, with `File` objects whose paths `getPathForFile` returns.
+- The full API surface is declared in `src/types.d.ts`.
 
-### APIRegistry
-
-Manages the external scripting API:
-
-- Command registration with parameter schemas
-- Command execution via IPC
-- Parameter validation
-- API documentation generation (used by `scripts/generate-api-docs.js`)
-
-### SettingsManager
-
-Persists and retrieves user preferences:
-
-- Uses SQLite (`better-sqlite3`) for storage in the user's OS-defined data directory
-- Key-value store with JSON serialization
-- Stores: page width, margins, colors, default view mode, TOC settings, ensure-local-paths, open files list, etc.
-
-### preload.cjs
-
-Secure bridge between main and renderer:
-
-- Must be CommonJS (`.cjs`) due to Electron's sandboxed preload environment
-- Exposes a typed `electronAPI` object via `contextBridge.exposeInMainWorld`
-- Provides file operations, settings, image operations, path utilities, and IPC event listeners
-- The full API surface is defined in `src/types.d.ts`
-
-## Renderer Process Components
+## Page Components
 
 ### App (`app.js`)
 
-The renderer entry point. Wires together all renderer components:
+The page's entry point. Wires together all page components:
 
 - Creates Editor, Toolbar, TabBar, TableOfContents, SearchBar, PreferencesModal, WordCountModal
 - Manages multi-file document state (content, cursor, undo/redo stacks per tab)
 - Handles tab creation, switching, and closing (with unsaved-changes prompts)
-- Registers IPC listeners for menu actions and external API calls
+- Registers the bridge handler for menu actions
 - Loads persisted settings and applies them to the editor
 - Listens for custom events from modals (e.g. `toc:settingsChanged`, `imageHandling:settingsChanged`)
-- Sends the open-files list to the main process so the View menu stays in sync
-- Exposes `editorAPI` to the main process for querying editor state
+- Sends the open-files list to the backend so the View menu stays in sync
+- Exposes `editorAPI`, which the backend's script evaluations read editor state through
 - Handles `session:restore` events to restore cursor position, ToC heading highlight, and scroll position for all tabs after a close-and-reopen. Active tab is restored live; background tabs are patched in `_documentStates`.
 - **Tab switching** preserves the DOM container and syntax tree — nothing is re-rendered. `_restoreState` restores `treeRange` (text selection) and sets `_isRendering = true` around `focus()` + `placeSelection()`/`placeCursor()` to suppress the `selectionchange` handler. If a `treeRange` exists, `placeSelection()` restores the full selection; otherwise `placeCursor()` places a collapsed caret. **Session restore** (app relaunch) rebuilds the DOM from scratch and uses `fullRenderAndPlaceCursor()`. The cursor position is the single source of positional truth on restore — the view scrolls to the cursor's node, and the persisted ToC heading highlight is applied via `_lockedHeadingId` with `_programmaticScroll` suppressing scroll-based recalculation.
 
@@ -386,7 +367,7 @@ WYSIWYG formatting toolbar using a CSS grid layout with three areas (`left`, `ce
 - List buttons (unordered, ordered, checklist)
 - View mode dropdown selector
 - Keyboard shortcut indicators in tooltips
-- Automatic scaling on narrow windows via ResizeObserver
+- Always shown at full size; the window's page is at least as wide as the toolbar row needs
 
 ### TableOfContents
 
@@ -402,9 +383,10 @@ Sidebar showing a navigable document outline:
 
 Settings dialog for user preferences:
 - Sidebar navigation with section links
-- Sections: Default View, Page Width, Margins, Colors, Table of Contents, Image Handling
+- Sections: Default View, Page Width, Margins, Colors, Table of Contents, Image Handling, Content
 - Image Handling: "Ensure local paths" checkbox (auto-rewrites downstream image paths to relative form)
-- Reads and writes settings via IPC to the SettingsManager
+- Content: "Highlight active element" (on by default; it only toggles the body's `with-highlight` class, and every writing-view rule for the block the cursor is in sits inside `body.with-highlight` in `writing-view.css`), "Load `<details>` closed", "Enable `<style>` elements in document"
+- Reads and writes settings through the bridge to the backend's settings
 - Applies CSS custom property changes immediately on save
 - Dispatches custom events so `app.js` can update runtime state
 
@@ -448,10 +430,10 @@ Bottom tab bar for multi-file editing:
 User clicks File → Load
        │
        ▼
-IPC: file:load → FileManager → File Dialog
+Menu item → file_load in the backend → file dialog
        │
        ▼
-Returns { content, filePath } to renderer
+Returns { content, filePath } to the page
        │
        ▼
 MenuHandler dispatches 'file:loaded' event
@@ -472,7 +454,7 @@ rewriteImagePaths() (async, if ensureLocalPaths enabled)
 Renderer.render() → DOM
        │
        ▼
-App._notifyOpenFiles() → IPC → View menu rebuild
+App._notifyOpenFiles() → view_open_files_changed → View menu update
 ```
 
 ### User Input
@@ -502,13 +484,13 @@ Renderer.render()
 User opens Edit → Preferences
        │
        ▼
-PreferencesModal loads current settings via IPC
+PreferencesModal loads current settings through the bridge
        │
        ▼
 User changes values and clicks Save
        │
        ▼
-PreferencesModal saves via IPC (settings:set)
+PreferencesModal saves through the bridge (settings_set)
        │
        ▼
 Dispatches custom event (e.g. imageHandling:settingsChanged)
@@ -548,29 +530,42 @@ CSS custom properties updated → immediate visual change
 - Click any element (including non-text elements like images) to focus and edit
 - Best for distraction-free writing
 
-## External API
+## Security
 
-The application exposes an IPC-based API for external scripting:
+### Threat model
 
-1. External process connects via IPC
-2. Sends command request with parameters
-3. IPCHandler routes to APIRegistry
-4. APIRegistry validates and executes command
-5. Result returned via IPC response
+Every document is untrusted input, and its scripts are assumed to run in the editor page: today through same-origin frames a document can contain, in future through script support. Nothing in the app may rely on document scripts not running, and anything a script in the page can reach counts as reachable by a document.
 
-See `docs/api/README.md` for full API documentation.
+### What a page script can reach
 
-## Security Model
+Through the bridge, a page script can do what the page itself needs: read any file (`loadFilePath`); make any path the save target (`notifyOpenFiles`) and write it (`saveFile`); write `<name>.html` (an existing one only once the user chooses Replace) and overwrite `default.css` in that file's folder (`exportHtml`); rename any file (`renameImage`, which refuses a new name that is not a plain file name); and queue any files to open at the next start (`setSetting('openFiles', ...)`).
 
-- `contextIsolation: true` — renderer runs in a separate JavaScript context
-- `nodeIntegration: false` — no `require()` or `process` in renderer
-- `webSecurity: false` — allows loading local `file://` images
-- All IPC goes through the preload script
-- Limited API surface exposed to renderer (defined in `preload.cjs` and `types.d.ts`)
+### Decisions
+
+- **Capabilities**: Tauri enforces the boundary in capabilities and in the commands' own checks. The capability grants the `main` window, on the app's own origin only (and the dev server's in dev builds), exactly: event listen and unlisten, window set-title, and the app's own commands. The app's commands are declared in an app manifest in `build.rs`, so each is refused unless granted. There is no `core:default` and no plugin permission at all; the dialog, clipboard and opener plugins are called from Rust only. Tauri's global API object (`withGlobalTauri`) stays off, and the bridge installs itself only on the app's own origin.
+- **Navigation**: the main frame can navigate only to the app's own pages (and the dev server in dev builds), so a link or form in an embedded frame cannot replace the editor with a remote page.
+- **New windows**: a `window.open`, or `target=_blank` in embedded content, never opens an app window. An `http:` or `https:` URL goes to the system browser, opened from Rust; anything else is refused.
+- **Permissions**: every permission request (camera, microphone, location, notifications, clipboard read and the like) is denied without a prompt.
+- **Fullscreen**: the page is served with `Permissions-Policy: fullscreen=()` (`app.security.headers` in `tauri.conf.json`, and the dev server's responses), so a fullscreen request from the page or from any frame in a document is refused and nothing goes fullscreen; a `<video>`'s controls show no fullscreen button.
+- **The `media` protocol**: local files reach the page only through the app's own `media` protocol (`http://media.localhost/<encoded path>` on Windows, `media://localhost/<encoded path>` elsewhere), not Tauri's asset protocol, which stays off. It serves files with an image, audio or video extension only; every response carries its `Content-Type`, `X-Content-Type-Options: nosniff` and `Content-Security-Policy: sandbox`, so a served SVG or any other file cannot run script; it answers byte-range requests so media can seek; and it sends no CORS header, so a page script cannot read a file's bytes. The cost: an image file without a known image extension does not load.
+- **Media sources in documents**: the page turns local image sources, and the `src` and `poster` of `<video>` and `<audio>`, into `media` URLs through the bridge's `toDisplayUrl`. `<iframe>` and `<object>` sources are left as written, so a document cannot frame a local file.
+- **Iframe sandbox**: an `<iframe>` a document creates with content that would share the page's origin (`srcdoc`, no `src`, or a `src` that is relative, `about:`, `blob:`, `javascript:` or on the app's origin) gets a `sandbox` without `allow-same-origin`, keeping the document's other sandbox tokens, or `allow-scripts allow-forms allow-popups` when it gave none. Its scripts then run in an opaque origin and cannot reach `parent.pageToBackendBridge`. Cross-origin `http:` and `https:` iframes stay as written.
+- **Content-Security-Policy**: the page's own meta tag is the policy (Tauri's CSP injection is off): a base policy, plus `connect-src 'self' ipc: http://ipc.localhost` for Tauri's IPC, and the `media` protocol's sources in `img-src` and a new `media-src`. Its `script-src https: http:` is what the `srcdoc` path uses, and with the sandbox above it no longer reaches the bridge.
+- **Test-only surfaces**: the standard-input hooks, the DevTools port and `TESTING_VISIBLE` exist only in builds with the `test-hooks` feature. In a release build DevTools open only from F12 or Help > Debug.
+- **Dev server**: `npm start`'s dev server listens on every interface, so while it runs `src/` can be read from the local network.
+- Tauri's isolation pattern is not used: it can check IPC payloads, but cannot tell the bridge's calls from a document script's.
+
+### Before document scripts may run
+
+These have to change before documents may run scripts on purpose:
+
+- The paths the backend trusts from the page must become paths the backend issued itself (from dialogs, the command line, recent files, drops and session restore), and `copy-file-path.spec.js`, which hands the backend a path it never issued, must change to match.
+- Document content has to render in a sandboxed frame that has no bridge.
+- The CSP's `script-src` must drop `https:` and `http:`.
 
 ## Build & CI
 
-- **Local builds**: `npm run build` lints and runs `scripts/build-executable.js` for the current platform; `npm run dist:win`, `dist:mac`, `dist:linux` run the same script for a named platform
-- **CI**: GitHub Actions workflow (`.github/workflows/build.yml`) builds all three platforms on push to `main`
-- **Packaging**: `electron-builder` creates standalone executables (a self-extracting `.exe` driven by `scripts/launcher.nsi` that unpacks once per package hash into `%LOCALAPPDATA%\markdown-editor\<version>` and starts directly on later runs, `.dmg`, `AppImage`); only the `en-US` locale is shipped, and `src/**/node_modules` and `better-sqlite3`'s C sources are excluded- **Native modules**: `better-sqlite3` is rebuilt per-platform via `@electron/rebuild`
-- **Artifacts**: Published as GitHub Releases
+- **Local builds**: `npm run build` lints and runs `scripts/build-executable.js` for the current platform; `npm run dist:win`, `dist:mac` and `dist:linux` run the same script for a named platform. The script runs `tauri build` and copies the result to `dist/` as `Markdown-Editor-<version>-<os>.<ext>`: on Windows the release `.exe` itself (the page is embedded in it, and it uses the system's WebView2 runtime, so it starts in place with nothing to unpack), on macOS the `.dmg`, on Linux the `.AppImage`. Each platform's file is built on that platform.
+- **Version**: `package.json` holds the version. `tauri.conf.json` reads it from there, and `npm version <version>` runs `scripts/sync-cargo-version.js`, which writes it into `Cargo.toml` and `Cargo.lock`; `cargo-config.test.js` fails if they differ.
+- **Release check**: `node --test test/release/release-smoke.test.js` starts the built Windows `.exe` without a window and checks it loads its page and exits, and that started with a markdown file it opens it (its window title, read through the Windows runner, names the file).
+- **CI**: `.github/workflows/validate.yml` runs on pull requests to `main`: on Windows `npm test` in full (the integration specs attach to WebView2, which only Windows has), on macOS and Linux the lint, unit and Rust tests. `.github/workflows/build.yml` runs on a version tag: it builds each platform's file with `npm run dist:win`, `dist:mac` and `dist:linux` and publishes them as a GitHub release. Every job installs the stable Rust toolchain, and the Linux jobs install WebKitGTK and the other packages Tauri needs. `test/unit/ci/workflows.test.js` checks the workflows say so; they have not been run on GitHub.

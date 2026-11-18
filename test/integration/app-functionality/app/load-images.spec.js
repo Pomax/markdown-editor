@@ -14,7 +14,7 @@ test(`images in a loaded markdown file resolve and load successfully`, async () 
   // Give CI runners extra time for image loading.
   test.setTimeout(60_000);
 
-  const { electronApp, page } = await launchApp([testFile]);
+  const { app, page } = await launchApp([testFile]);
 
   // Wait for the editor to finish rendering the loaded document.
   await page.waitForSelector(`#editor [data-node-id]`);
@@ -52,5 +52,5 @@ test(`images in a loaded markdown file resolve and load successfully`, async () 
     expect(naturalWidth, `image "${src}" should have loaded`).toBeGreaterThan(0);
   }
 
-  await closeApp(electronApp);
+  await closeApp(app);
 });
