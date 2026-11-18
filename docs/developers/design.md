@@ -92,7 +92,6 @@ array.filter(item => item.active);
 src/
 ├── web/                      # The page, loaded in the webview
 │   ├── index.html            # HTML entry, with the page's Content-Security-Policy
-│   ├── icons/                # Lucide SVG icons
 │   ├── styles/               # CSS files
 │   │   ├── main.css         # Base styles, CSS custom properties
 │   │   ├── editor.css       # Editor and syntax highlighting styles

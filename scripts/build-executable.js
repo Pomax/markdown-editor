@@ -1,8 +1,9 @@
 /**
  * @fileoverview Builds the release app with Tauri and copies the result to
- * dist/ as Markdown-Editor-<version>-<os>.<ext>, touching nothing else
- * there: on Windows the release .exe itself (the frontend is embedded, so
- * there is no bundle), on macOS the .dmg, on Linux the .AppImage. Each
+ * Markdown-Editor.<ext> in its platform's folder under
+ * dist/, touching nothing else there: on Windows the release .exe itself
+ * in dist/windows (the frontend is embedded, so there is no bundle), on
+ * macOS the .dmg in dist/macos, on Linux the .AppImage in dist/ubuntu. Each
  * platform's file is built on that platform. The platform is given as
  * --win, --mac or --linux and defaults to the one the script runs on.
  * The Tauri CLI is called through its Node API, so no .cmd shim is
@@ -12,7 +13,7 @@
  * Run with: npm run build, or npm run dist:win / dist:mac / dist:linux
  */
 
-import { copyFileSync, mkdirSync, readdirSync, readFileSync, statSync } from 'node:fs';
+import { copyFileSync, mkdirSync, readdirSync, statSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import process from 'node:process';
 import { fileURLToPath } from 'node:url';
@@ -28,12 +29,14 @@ const release = join(root, `target`, `release`);
  * What a platform's build runs and where its result goes: Tauri's build
  * arguments, the environment variables the build gets, the folder the
  * result is left in, the result's file name there (`*.<ext>` for a bundle,
- * whose name Tauri derives), and its name in dist/.
+ * whose name Tauri derives), the platform's folder under dist/, and the
+ * result's name in that folder.
  * @typedef {object} ReleaseTarget
  * @property {string[]} args
  * @property {Record<string, string>} env
  * @property {string} sourceDir
  * @property {string} sourceName
+ * @property {string} distDir
  * @property {string} artifact
  */
 
@@ -63,10 +66,9 @@ export function platformFlag(argv, platform) {
 /**
  * What the build for a flag runs and where its result goes.
  * @param {string} flag
- * @param {string} version
  * @returns {ReleaseTarget}
  */
-export function releaseTarget(flag, version) {
+export function releaseTarget(flag) {
   switch (flag) {
     case `--win`:
       return {
@@ -74,7 +76,8 @@ export function releaseTarget(flag, version) {
         env: { CARGO_TARGET_X86_64_PC_WINDOWS_MSVC_RUSTFLAGS: `-C target-feature=+crt-static` },
         sourceDir: release,
         sourceName: `markdown-editor.exe`,
-        artifact: `Markdown-Editor-${version}-win.exe`,
+        distDir: join(dist, `windows`),
+        artifact: `Markdown-Editor.exe`,
       };
     case `--mac`:
       return {
@@ -82,7 +85,8 @@ export function releaseTarget(flag, version) {
         env: {},
         sourceDir: join(release, `bundle`, `dmg`),
         sourceName: `*.dmg`,
-        artifact: `Markdown-Editor-${version}-mac.dmg`,
+        distDir: join(dist, `macos`),
+        artifact: `Markdown-Editor.dmg`,
       };
     case `--linux`:
       return {
@@ -90,7 +94,8 @@ export function releaseTarget(flag, version) {
         env: {},
         sourceDir: join(release, `bundle`, `appimage`),
         sourceName: `*.AppImage`,
-        artifact: `Markdown-Editor-${version}-linux.AppImage`,
+        distDir: join(dist, `ubuntu`),
+        artifact: `Markdown-Editor.AppImage`,
       };
     default:
       throw new Error(`No release target for ${flag}`);
@@ -114,7 +119,7 @@ export function sourceFile(target, names) {
 
 /**
  * Builds the release app for the given or current platform and copies it
- * to dist/.
+ * to that platform's folder under dist/.
  * @returns {Promise<void>}
  */
 async function buildExecutable() {
@@ -124,8 +129,7 @@ async function buildExecutable() {
     console.error(`No release target for platform ${process.platform}`);
     process.exit(1);
   }
-  const { version } = JSON.parse(readFileSync(join(root, `package.json`), `utf-8`));
-  const target = releaseTarget(flag, version);
+  const target = releaseTarget(flag);
   Object.assign(process.env, target.env);
   try {
     await run(target.args, `build-executable`);
@@ -137,8 +141,8 @@ async function buildExecutable() {
     console.error(`No ${target.sourceName} in ${target.sourceDir}`);
     process.exit(1);
   }
-  mkdirSync(dist, { recursive: true });
-  const destination = join(dist, target.artifact);
+  mkdirSync(target.distDir, { recursive: true });
+  const destination = join(target.distDir, target.artifact);
   copyFileSync(source, destination);
   console.log(`  ${target.artifact}: ${statSync(destination).size} bytes`);
 }

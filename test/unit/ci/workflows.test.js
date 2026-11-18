@@ -90,6 +90,8 @@ describe(`build.yml`, () => {
       assertRust(name, job);
       const dist = { windows: `win`, macos: `mac`, linux: `linux` }[os];
       assert.ok(job.includes(`npm run dist:${dist}`), `${name} runs dist:${dist}`);
+      const folder = { windows: `windows`, macos: `macos`, linux: `ubuntu` }[os];
+      assert.ok(job.includes(`path: dist/${folder}/*`), `${name} uploads dist/${folder}`);
       assert.ok(!job.includes(`7zip`), `${name} installs no 7zip`);
       assert.ok(!job.includes(`npm run setup`), `${name} installs no Playwright browser`);
     }

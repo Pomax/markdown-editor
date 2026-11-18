@@ -3,9 +3,9 @@
  * --win, --mac and --linux, the arguments Tauri's build gets, the
  * environment it gets (on Windows, Rust flags that link the C runtime
  * statically), the folder and file it leaves its result in (Cargo's
- * target/ at the project root), and the name that result is copied to in
- * dist/; the flag each platform defaults to; and picking the built file
- * out of its folder.
+ * target/ at the project root), and the folder under dist/ and the name
+ * that result is copied to; the flag each platform defaults to; and
+ * picking the built file out of its folder.
  */
 
 import assert from 'node:assert';
@@ -16,35 +16,39 @@ import { platformFlag, releaseTarget, sourceFile } from '../../../scripts/build-
 
 const root = join(dirname(fileURLToPath(import.meta.url)), `..`, `..`, `..`);
 const release = join(root, `target`, `release`);
+const dist = join(root, `dist`);
 
 describe(`build-executable`, () => {
-  it(`builds the Windows exe without a bundle and names it Markdown-Editor-<version>-win.exe`, () => {
-    assert.deepStrictEqual(releaseTarget(`--win`, `2.2.1`), {
+  it(`builds the Windows exe without a bundle and names it Markdown-Editor.exe`, () => {
+    assert.deepStrictEqual(releaseTarget(`--win`), {
       args: [`build`, `--no-bundle`],
       env: { CARGO_TARGET_X86_64_PC_WINDOWS_MSVC_RUSTFLAGS: `-C target-feature=+crt-static` },
       sourceDir: release,
       sourceName: `markdown-editor.exe`,
-      artifact: `Markdown-Editor-2.2.1-win.exe`,
+      distDir: join(dist, `windows`),
+      artifact: `Markdown-Editor.exe`,
     });
   });
 
-  it(`builds the macOS dmg and names it Markdown-Editor-<version>-mac.dmg`, () => {
-    assert.deepStrictEqual(releaseTarget(`--mac`, `2.2.1`), {
+  it(`builds the macOS dmg and names it Markdown-Editor.dmg`, () => {
+    assert.deepStrictEqual(releaseTarget(`--mac`), {
       args: [`build`, `--bundles`, `dmg`],
       env: {},
       sourceDir: join(release, `bundle`, `dmg`),
       sourceName: `*.dmg`,
-      artifact: `Markdown-Editor-2.2.1-mac.dmg`,
+      distDir: join(dist, `macos`),
+      artifact: `Markdown-Editor.dmg`,
     });
   });
 
-  it(`builds the Linux AppImage and names it Markdown-Editor-<version>-linux.AppImage`, () => {
-    assert.deepStrictEqual(releaseTarget(`--linux`, `2.2.1`), {
+  it(`builds the Linux AppImage and names it Markdown-Editor.AppImage`, () => {
+    assert.deepStrictEqual(releaseTarget(`--linux`), {
       args: [`build`, `--bundles`, `appimage`],
       env: {},
       sourceDir: join(release, `bundle`, `appimage`),
       sourceName: `*.AppImage`,
-      artifact: `Markdown-Editor-2.2.1-linux.AppImage`,
+      distDir: join(dist, `ubuntu`),
+      artifact: `Markdown-Editor.AppImage`,
     });
   });
 
@@ -60,12 +64,12 @@ describe(`build-executable`, () => {
   });
 
   it(`picks the built file out of its folder`, () => {
-    const win = releaseTarget(`--win`, `2.2.1`);
+    const win = releaseTarget(`--win`);
     assert.strictEqual(
       sourceFile(win, [`build`, `markdown-editor.exe`, `markdown-editor.pdb`]),
       join(win.sourceDir, `markdown-editor.exe`),
     );
-    const mac = releaseTarget(`--mac`, `2.2.1`);
+    const mac = releaseTarget(`--mac`);
     assert.strictEqual(
       sourceFile(mac, [`bundle_dmg.sh`, `Markdown Editor_2.2.1_aarch64.dmg`]),
       join(mac.sourceDir, `Markdown Editor_2.2.1_aarch64.dmg`),

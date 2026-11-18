@@ -29,7 +29,7 @@ const SKIPPED = new Set([
 ]);
 
 /** The files that still name the runtime. */
-const ALLOWED = new Set([`README.md`, join(`plans`, `plan.md`), join(`scripts`, `clean-dist.js`)]);
+const ALLOWED = new Set([`README.md`, join(`plans`, `plan.md`)]);
 
 /**
  * Every file in a folder and the folders under it, skipped folders aside.

@@ -54,7 +54,6 @@ markdown-editor/
 │   ├── types.d.ts         # Global TypeScript type declarations
 │   └── web/               # What the webview loads
 │       ├── index.html
-│       ├── icons/         # Lucide SVG icons (copied at build time)
 │       ├── styles/
 │       │   ├── main.css
 │       │   ├── editor.css
@@ -88,8 +87,6 @@ markdown-editor/
 │   ├── test.bat           # Windows: runs npm test, or the named test file or specs
 │   ├── build-executable.js # Builds the release app and copies it into dist/
 │   ├── build-test-app.js  # Builds the debug app with the test hooks
-│   ├── clean-dist.js      # Removes intermediate build artifacts from dist/
-│   ├── copy-icons.js      # Copies Lucide SVG icons into src/web/icons
 │   ├── dev-server.js      # Serves src/ for npm start
 │   ├── lint-comments.js   # Flags visual divider comments
 │   ├── lint-eol.js        # Checks every file uses LF line endings
@@ -226,7 +223,7 @@ npm run dist:linux  # Linux AppImage
 
 On Windows, `scripts\build.bat` runs the same script for the current platform, without the lint step, from any folder. `build-executable.js` itself works from the project root whatever folder it is started in.
 
-The script runs `tauri build` and copies the result to `dist/` as `Markdown-Editor-<version>-<os>.<ext>`. The Windows `.exe` has the page embedded and uses the system's WebView2 runtime, so it starts in place, with nothing to unpack. The `.dmg` and AppImage bundlers download Tauri's bundling tools the first time they run.
+The script runs `tauri build` and copies the result to `dist/windows`, `dist/macos` or `dist/ubuntu` as `Markdown-Editor.<ext>`. The Windows `.exe` has the page embedded and uses the system's WebView2 runtime, so it starts in place, with nothing to unpack. The `.dmg` and AppImage bundlers download Tauri's bundling tools the first time they run.
 
 On GitHub, `.github/workflows/build.yml` builds all three on a version tag and publishes them as a release, and `.github/workflows/validate.yml` tests pull requests (see Build & CI in [Architecture](./architecture.md)).
 

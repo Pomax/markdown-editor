@@ -22,7 +22,7 @@ jobs:
       - uses: actions/upload-artifact@v7
         with:
           name: build-windows
-          path: dist/*
+          path: dist/windows/*
           retention-days: 1
 
   build-macos:
@@ -41,7 +41,7 @@ jobs:
       - uses: actions/upload-artifact@v7
         with:
           name: build-macos
-          path: dist/*
+          path: dist/macos/*
           retention-days: 1
 
   build-linux:
@@ -61,7 +61,7 @@ jobs:
       - uses: actions/upload-artifact@v7
         with:
           name: build-linux
-          path: dist/*
+          path: dist/ubuntu/*
           retention-days: 1
 
   release:

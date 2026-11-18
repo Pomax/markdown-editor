@@ -1,6 +1,6 @@
 /**
  * @fileoverview Smoke tests for the release executable `npm run build`
- * leaves in dist/, started with TESTING=1, so it shows no window, and
+ * leaves in dist/windows, started with TESTING=1, so it shows no window, and
  * with its settings and WebView2 folders in its own output folder, so
  * nothing outside test-results is touched. With STARTUP_TIMING naming a
  * file in that folder, it must load its page, write the time it did so,
@@ -19,8 +19,7 @@ import { buildWinRunner } from '../../scripts/build-win-runner.js';
 import { runner } from '../real-input/runner.js';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), `..`, `..`);
-const { version } = JSON.parse(readFileSync(join(root, `package.json`), `utf-8`));
-const executable = join(root, `dist`, `Markdown-Editor-${version}-win.exe`);
+const executable = join(root, `dist`, `windows`, `Markdown-Editor.exe`);
 const output = join(root, `test-results`, `release-smoke`);
 
 /**
