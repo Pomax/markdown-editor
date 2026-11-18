@@ -21,6 +21,7 @@ const root = join(dirname(fileURLToPath(import.meta.url)), `..`, `..`, `..`);
 const source = readFileSync(join(root, `src`, `tauri`, `preload.js`), `utf-8`);
 
 const APP_ORIGIN = `http://tauri.localhost`;
+const APP_ORIGIN_ON_MACOS_AND_LINUX = `tauri://localhost`;
 const FOREIGN_ORIGIN = `https://example.com`;
 
 /**
@@ -258,6 +259,11 @@ describe(`Tauri bridge`, () => {
       Object.keys(window.pageToBackendBridge).sort(),
       [...EXPECTED_MEMBERS].sort(),
     );
+  });
+
+  it(`installs on the app's own origin on macOS and Linux`, () => {
+    const { window } = runBridge(APP_ORIGIN_ON_MACOS_AND_LINUX);
+    assert.ok(window.pageToBackendBridge, `pageToBackendBridge is installed`);
   });
 
   it(`installs nothing on a foreign origin`, () => {

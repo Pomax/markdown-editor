@@ -12,8 +12,19 @@ const platform = os.platform();
 const config = {
   retries: 0,
   timeout: 5_000,
-  workers: 8,
+  workers: platform === `linux` ? 4 : 8,
 };
+
+/**
+ * The specs that fail when other specs run beside them. They run one at a
+ * time, in a run of their own after the other specs' run, as
+ * scripts/test-integration.js runs them.
+ */
+const SOLO_SPECS = [
+  `**/app/search.spec.js`,
+  `**/document/view-switching.spec.js`,
+  `**/content/inline-image.spec.js`,
+];
 
 if (CI_RUN) {
   let overrides = {
@@ -48,6 +59,13 @@ export default defineConfig({
     {
       name: `firefox`,
       use: { ...devices[`Desktop Firefox`] },
+      testIgnore: SOLO_SPECS,
+    },
+    {
+      name: `firefox-solo`,
+      use: { ...devices[`Desktop Firefox`] },
+      testMatch: SOLO_SPECS,
+      workers: 1,
     },
   ],
   use: {

@@ -213,8 +213,6 @@ fn load_recent_file(app: &tauri::AppHandle, file_path: &str) -> Option<Value> {
 /// CDP, and background throttling and occlusion tracking disabled so the
 /// hidden page keeps rendering.
 fn create_window(app: &tauri::AppHandle) -> tauri::Result<()> {
-    let testing = std::env::var("TESTING").is_ok();
-
     #[cfg(windows)]
     if let Ok(dir) = std::env::var("TESTING_WEBVIEW_DIR") {
         // Safe: set at startup, before any other thread reads the environment.
@@ -274,14 +272,16 @@ fn create_window(app: &tauri::AppHandle) -> tauri::Result<()> {
 
     #[cfg(windows)]
     {
-        let port = testing_devtools_port(testing);
+        let port = testing_devtools_port(std::env::var("TESTING").is_ok());
         let args = webview_settings::browser_arguments(port.as_deref());
         webview_settings::record_browser_arguments(&args);
         builder = builder.additional_browser_args(&args);
     }
 
-    #[cfg_attr(not(windows), allow(unused_variables))]
+    #[cfg_attr(not(any(windows, target_os = "linux")), allow(unused_variables))]
     let window = builder.build()?;
+    #[cfg(target_os = "linux")]
+    webview_settings::handle_page_requests(&window)?;
     #[cfg(windows)]
     webview_settings::apply_webview_settings(&window)?;
     #[cfg(windows)]
@@ -537,17 +537,61 @@ fn logical_bounds(rect: ScreenRect, scale: f64) -> LogicalBounds {
     }
 }
 
-/// The outer bounds of a window, in logical pixels.
-fn outer_bounds<R: tauri::Runtime>(window: &tauri::Window<R>) -> Option<LogicalBounds> {
+/// The outer bounds of a window, in physical pixels. On Linux, on the main
+/// thread, they are read from GDK at the time of asking: tao keeps the
+/// frame bounds GDK gave on the window's last configure event, and on the
+/// one that first shows the window those are GDK's 1×1 fallback. Bounds
+/// smaller than the window's inner size give way to its inner bounds.
+fn outer_rect<R: tauri::Runtime>(window: &tauri::Window<R>) -> Option<ScreenRect> {
+    let inner = window.inner_size().ok()?;
     let position = window.outer_position().ok()?;
     let size = window.outer_size().ok()?;
-    let scale = window.scale_factor().ok()?;
-    let rect = ScreenRect {
+    #[cfg_attr(not(target_os = "linux"), allow(unused_mut))]
+    let mut rect = ScreenRect {
         x: position.x,
         y: position.y,
         width: size.width,
         height: size.height,
     };
+    #[cfg(target_os = "linux")]
+    if let Some(frame) = gdk_frame_rect(window) {
+        rect = frame;
+    }
+    if rect.width < inner.width || rect.height < inner.height {
+        let position = window.inner_position().ok()?;
+        rect = ScreenRect {
+            x: position.x,
+            y: position.y,
+            width: inner.width,
+            height: inner.height,
+        };
+    }
+    Some(rect)
+}
+
+/// The window's frame bounds as GDK gives them now, in physical pixels,
+/// or None off the main thread, where GTK must not be called.
+#[cfg(target_os = "linux")]
+fn gdk_frame_rect<R: tauri::Runtime>(window: &tauri::Window<R>) -> Option<ScreenRect> {
+    use gtk::prelude::WidgetExt;
+    if !gtk::is_initialized_main_thread() {
+        return None;
+    }
+    let frame = window.gtk_window().ok()?.window()?.frame_extents();
+    let scale = window.scale_factor().ok()?;
+    let physical = |value: i32| (f64::from(value) * scale).round() as i32;
+    Some(ScreenRect {
+        x: physical(frame.x()),
+        y: physical(frame.y()),
+        width: physical(frame.width()).max(0) as u32,
+        height: physical(frame.height()).max(0) as u32,
+    })
+}
+
+/// The outer bounds of a window, in logical pixels.
+fn outer_bounds<R: tauri::Runtime>(window: &tauri::Window<R>) -> Option<LogicalBounds> {
+    let rect = outer_rect(window)?;
+    let scale = window.scale_factor().ok()?;
     Some(logical_bounds(rect, scale))
 }
 

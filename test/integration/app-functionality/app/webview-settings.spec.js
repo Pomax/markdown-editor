@@ -1,11 +1,14 @@
 /**
  * @fileoverview Checks the WebView2 settings and browser arguments the
  * app gives the webview, read back through the
- * `webviewSettings` hook, and their effects as the page sees them: an
- * English locale, media allowed to play without a user gesture, and a
- * fullscreen request refused, with nothing going fullscreen.
+ * `webviewSettings` hook, on Windows, and their effects as the page sees
+ * them, everywhere: an English locale, media allowed to play without a
+ * user gesture, and a fullscreen request refused with a TypeError, thrown
+ * by the request where fullscreen is turned off or from its promise where
+ * it is not allowed, with nothing going fullscreen.
  */
 
+import process from 'node:process';
 import { expect, test } from '@playwright/test';
 import { closeApp, launchApp } from '../../test-utils.js';
 
@@ -24,6 +27,7 @@ test.afterAll(async () => {
 });
 
 test(`the WebView2 settings the app does not use are turned off`, async () => {
+  test.skip(process.platform !== `win32`, `WebView2 is the webview on Windows only`);
   const settings = await app.webviewSettings();
   expect(settings).toMatchObject({
     statusBar: false,
@@ -39,10 +43,12 @@ test(`the WebView2 settings the app does not use are turned off`, async () => {
 });
 
 test(`WebView2 raises its context menu requests, which the app answers itself`, async () => {
+  test.skip(process.platform !== `win32`, `WebView2 is the webview on Windows only`);
   expect((await app.webviewSettings()).defaultContextMenus).toBe(true);
 });
 
 test(`the browser arguments keep Tauri's defaults in one --disable-features switch`, async () => {
+  test.skip(process.platform !== `win32`, `WebView2 is the webview on Windows only`);
   const { browserArguments } = await app.webviewSettings();
   /** @type {string[]} */
   const args = browserArguments.split(/\s+/);
@@ -88,14 +94,18 @@ test(`a fullscreen request after a click does nothing`, async () => {
     button.textContent = `Fullscreen`;
     button.style.cssText = `position: fixed; left: 0; top: 0; z-index: 99999;`;
     button.addEventListener(`click`, () => {
-      document.documentElement.requestFullscreen().then(
-        () => {
-          /** @type {any} */ (window).fullscreenRequest = `granted`;
-        },
-        (error) => {
-          /** @type {any} */ (window).fullscreenRequest = String(error);
-        },
-      );
+      try {
+        document.documentElement.requestFullscreen().then(
+          () => {
+            /** @type {any} */ (window).fullscreenRequest = `granted`;
+          },
+          (error) => {
+            /** @type {any} */ (window).fullscreenRequest = String(error);
+          },
+        );
+      } catch (error) {
+        /** @type {any} */ (window).fullscreenRequest = String(error);
+      }
     });
     document.body.append(button);
   });

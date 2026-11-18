@@ -54,7 +54,7 @@ pub fn resolve_response(stub: Option<usize>, cancel_id: usize) -> usize {
 
 /// The message box shown for a page's `alert` or `confirm`: the
 /// page's text with OK, or with OK and Cancel, OK being the default.
-#[cfg_attr(not(windows), allow(dead_code))]
+#[cfg_attr(not(any(windows, target_os = "linux")), allow(dead_code))]
 pub fn script_dialog_box(title: &str, message: &str, confirm: bool) -> Value {
     let buttons = if confirm {
         json!(["OK", "Cancel"])
@@ -72,7 +72,7 @@ pub fn script_dialog_box(title: &str, message: &str, confirm: bool) -> Value {
 }
 
 /// Whether the box for a page's `alert` or `confirm` was answered with OK.
-#[cfg_attr(not(windows), allow(dead_code))]
+#[cfg_attr(not(any(windows, target_os = "linux")), allow(dead_code))]
 pub fn script_dialog_accepted(response: usize) -> bool {
     response == 0
 }

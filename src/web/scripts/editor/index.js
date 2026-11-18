@@ -144,9 +144,12 @@ export class Editor extends EditorData {
     // Clicking the padding area around the editor (inside
     // #editor-container but outside #editor) doesn't move focus
     // away from the contenteditable, so blur never fires.
-    // Explicitly blur when that happens.
+    // Explicitly blur when that happens, and keep the press from
+    // putting the caret in the nearest editable text, which WebKit
+    // does, focusing the editor again.
     this.container.parentElement?.addEventListener(`mousedown`, (event) => {
       if (event.target === this.container.parentElement) {
+        event.preventDefault();
         this.container.blur();
       }
     });

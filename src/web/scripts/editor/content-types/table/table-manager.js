@@ -302,4 +302,22 @@ export class TableManager extends TableManagerData {
 
     this.editor.placeCursor();
   }
+
+  /**
+   * Moves the cursor to the start or the end of the cell it is in, as Home
+   * and End do on a line of text. WebKit lays a table row out as one line,
+   * so its own Home and End would leave the cell.
+   * @param {boolean} toEnd
+   */
+  handleTableHomeEnd(toEnd) {
+    const node = this.editor.getCurrentBlockNode();
+    const tree = this.editor.syntaxTree;
+    const cursor = tree?.treeCursor;
+    if (!node || !tree || !cursor || cursor.cellRow === undefined || cursor.cellCol === undefined) {
+      return;
+    }
+    const text = this.getTableCellText(node, cursor.cellRow, cursor.cellCol);
+    tree.treeCursor = { ...cursor, offset: toEnd ? text.length : 0 };
+    this.editor.placeCursor();
+  }
 }

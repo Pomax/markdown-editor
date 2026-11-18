@@ -3,11 +3,18 @@
  *
  * Verifies that clicking an image in focused (WYSIWYG) mode opens the
  * image edit modal pre-filled with the image's current data, and that
- * submitting the modal updates the parse tree.
+ * submitting the modal updates the parse tree. The image is a fixture
+ * image given as a file URL, so it loads in every webview.
  */
 
 import { expect, test } from '@playwright/test';
-import { clickInEditor, closeApp, launchApp, loadContent } from '../../test-utils.js';
+import {
+  FIXTURE_IMAGE,
+  clickInEditor,
+  closeApp,
+  launchApp,
+  loadContent,
+} from '../../test-utils.js';
 
 /** @type {import('../../tauri-app.js').TauriApp} */
 let app;
@@ -15,7 +22,7 @@ let app;
 /** @type {import('@playwright/test').Page} */
 let page;
 
-const IMAGE_MD = `![Photo](picture.png)`;
+const IMAGE_MD = `![Photo](${FIXTURE_IMAGE})`;
 
 test.beforeAll(async () => {
   ({ app, page } = await launchApp());
@@ -46,7 +53,7 @@ test.describe(`Image click-to-edit`, () => {
     // Fields should be pre-filled
     const srcInput = page.locator(`#image-src`);
     const altInput = page.locator(`#image-alt`);
-    await expect(srcInput).toHaveValue(`picture.png`);
+    await expect(srcInput).toHaveValue(FIXTURE_IMAGE);
     await expect(altInput).toHaveValue(`Photo`);
 
     // Button should say "Update"
@@ -79,7 +86,7 @@ test.describe(`Image click-to-edit`, () => {
     // Verify the parse tree was updated
     const markdown = await page.evaluate(() => window.editorAPI?.getContent() ?? ``);
     expect(markdown).toContain(`![Updated Photo](new-picture.png)`);
-    expect(markdown).not.toContain(`![Photo](picture.png)`);
+    expect(markdown).not.toContain(`![Photo](${FIXTURE_IMAGE})`);
   });
 
   test(`cancelling the modal does not change the image`, async () => {
@@ -97,6 +104,6 @@ test.describe(`Image click-to-edit`, () => {
 
     // Original content should be unchanged
     const markdown = await page.evaluate(() => window.editorAPI?.getContent() ?? ``);
-    expect(markdown).toContain(`![Photo](picture.png)`);
+    expect(markdown).toContain(`![Photo](${FIXTURE_IMAGE})`);
   });
 });

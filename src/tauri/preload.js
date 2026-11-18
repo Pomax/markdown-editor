@@ -18,7 +18,12 @@
   const internals = /** @type {any} */ (window).__TAURI_INTERNALS__;
   if (!internals) return;
 
-  const appOrigins = [`http://tauri.localhost`, `https://tauri.localhost`, `http://localhost:1420`];
+  const appOrigins = [
+    `http://tauri.localhost`,
+    `https://tauri.localhost`,
+    `tauri://localhost`,
+    `http://localhost:1420`,
+  ];
   if (!appOrigins.includes(window.location.origin)) return;
 
   /**

@@ -111,7 +111,7 @@ npm run test:integration -- test/integration/your.file.spec.js
 
 ## Building Executables
 
-To build a standalone executable for the current platform (a single `.exe` on Windows, a `.dmg` on macOS, an AppImage on Linux):
+To build a standalone executable for the current platform (a single `.exe` on Windows, a `.dmg` on macOS, a `.deb` on Linux, which has apt install WebKitGTK and GTK from the system):
 
 ```sh
 npm run build

@@ -97,9 +97,10 @@ describe(`build.yml`, () => {
     }
   });
 
-  it(`installs the packages Tauri needs, and patchelf for the AppImage, on Linux`, () => {
-    for (const pkg of [...LINUX_PACKAGES, `patchelf`]) {
+  it(`installs the packages Tauri needs on Linux, and no patchelf, which only an AppImage needs`, () => {
+    for (const pkg of LINUX_PACKAGES) {
       assert.ok(jobs[`build-linux`].includes(pkg), pkg);
     }
+    assert.ok(!jobs[`build-linux`].includes(`patchelf`), `build-linux installs no patchelf`);
   });
 });

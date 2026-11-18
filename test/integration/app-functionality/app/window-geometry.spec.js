@@ -1,17 +1,33 @@
 /**
  * @fileoverview Integration tests for the window's size and position: the
- * starting size with no saved bounds, the minimum size, the bounds saved
- * after a move and a resize, and the bounds and maximized state restored
- * on the next launch. The window stays hidden throughout; the hooks report
- * its outer bounds, its page size and its monitor's work area in logical
- * pixels. The tests run in order, each launch seeing the settings the
- * previous one saved.
+ * starting size with no saved bounds, the bounds saved for a window closed
+ * where it started, the minimum size, the bounds saved after a move and a
+ * resize, and the bounds and maximized state restored on the next launch.
+ * The window stays hidden throughout, except on Linux, where it shows on a
+ * virtual display of its own, so a maximized window there fills the work
+ * area while the bounds it restores to stay saved. The page keeps the
+ * window's own size; the hooks report its outer bounds, its page size and
+ * its monitor's work area in logical pixels. The tests run in order, each
+ * launch seeing the settings the previous one saved.
  */
 
 import fs from 'node:fs';
 import path from 'node:path';
+import process from 'node:process';
 import { expect, test } from '@playwright/test';
 import { closeApp, launchApp, projectRoot } from '../../test-utils.js';
+
+/** Whether the test window shows: on Linux only, on a virtual display of its own. */
+const SHOWN = process.platform === `linux`;
+
+/**
+ * Launches the app with the page at the window's own size, so the window
+ * is measured as it is.
+ * @returns {ReturnType<typeof launchApp>}
+ */
+function launchMeasured() {
+  return launchApp([], { keepWindowSize: true });
+}
 
 /** The page width the window starts with (`PAGE_WIDTH` in main.rs). */
 const PAGE_WIDTH = 1216;
@@ -54,23 +70,24 @@ async function windowState(app) {
   return state;
 }
 
+/** launchApp's settings folder for this spec. */
+const SETTINGS_DIR = path.join(
+  projectRoot,
+  `test-results`,
+  `settings`,
+  path.basename(import.meta.filename),
+);
+
 test.beforeAll(() => {
-  // launchApp's settings folder for this spec, so the first launch has no
-  // saved bounds.
-  const settingsDir = path.join(
-    projectRoot,
-    `test-results`,
-    `settings`,
-    path.basename(import.meta.filename),
-  );
-  fs.rmSync(settingsDir, { recursive: true, force: true });
+  // So the first launch has no saved bounds.
+  fs.rmSync(SETTINGS_DIR, { recursive: true, force: true });
 });
 
 test(`with no saved bounds the window starts with a 1216 wide page, 1131 high`, async () => {
-  const { app } = await launchApp();
+  const { app } = await launchMeasured();
   try {
     const state = await windowState(app);
-    expect(state.visible).toBe(false);
+    expect(state.visible).toBe(SHOWN);
     expect(state.innerWidth).toBe(PAGE_WIDTH);
     expect(state.height).toBe(Math.min(WINDOW_HEIGHT, Math.round(state.workArea.height)));
     expect(state.maximized).toBe(false);
@@ -79,8 +96,23 @@ test(`with no saved bounds the window starts with a 1216 wide page, 1131 high`, 
   }
 });
 
+test(`a window closed where it started saves the bounds it started with`, async () => {
+  fs.rmSync(SETTINGS_DIR, { recursive: true, force: true });
+  const first = await launchMeasured();
+  const { workArea } = await windowState(first.app);
+  await closeApp(first.app);
+  const second = await launchMeasured();
+  try {
+    const saved = await second.app.settings.get(`windowBounds`);
+    expect(saved.width).toBeGreaterThanOrEqual(PAGE_WIDTH);
+    expect(saved.height).toBe(Math.min(WINDOW_HEIGHT, Math.round(workArea.height)));
+  } finally {
+    await closeApp(second.app);
+  }
+});
+
 test(`at its starting size the page shows everything without running past the right edge`, async ({}, testInfo) => {
-  const { app, page } = await launchApp();
+  const { app, page } = await launchMeasured();
   try {
     const state = await windowState(app);
     await page.setViewportSize({ width: state.innerWidth, height: state.innerHeight });
@@ -99,7 +131,7 @@ test(`at its starting size the page shows everything without running past the ri
 });
 
 test(`the window keeps at least a 998 wide page and 848 high`, async () => {
-  const { app } = await launchApp();
+  const { app } = await launchMeasured();
   try {
     await app.setWindowBounds({ width: 400, height: 300 });
     await expect
@@ -114,7 +146,7 @@ test(`the window keeps at least a 998 wide page and 848 high`, async () => {
 });
 
 test(`a move and a resize are saved as ratios of the work area`, async () => {
-  const { app } = await launchApp();
+  const { app } = await launchMeasured();
   try {
     const { workArea } = await windowState(app);
     await app.setWindowBounds({
@@ -140,7 +172,7 @@ test(`a move and a resize are saved as ratios of the work area`, async () => {
 });
 
 test(`the saved bounds are restored on the next launch`, async () => {
-  const { app } = await launchApp();
+  const { app } = await launchMeasured();
   try {
     const state = await windowState(app);
     expect({ x: state.x, y: state.y, width: state.width, height: state.height }).toEqual({
@@ -156,7 +188,7 @@ test(`the saved bounds are restored on the next launch`, async () => {
 });
 
 test(`a maximized window is restored maximized, with the bounds it restores to`, async () => {
-  const first = await launchApp();
+  const first = await launchMeasured();
   try {
     await first.app.maximize();
     await expect
@@ -171,15 +203,22 @@ test(`a maximized window is restored maximized, with the bounds it restores to`,
     await closeApp(first.app);
   }
 
-  const second = await launchApp();
+  const second = await launchMeasured();
   try {
     const state = await windowState(second.app);
     expect(state.maximized).toBe(true);
-    expect(state.visible).toBe(false);
-    expect({ width: state.width, height: state.height }).toEqual({
+    expect(state.visible).toBe(SHOWN);
+    const restoresTo = SHOWN ? await second.app.settings.get(`windowBounds`) : state;
+    expect({ width: restoresTo.width, height: restoresTo.height }).toEqual({
       width: MOVED.width,
       height: MOVED.height,
     });
+    if (SHOWN) {
+      expect({ width: state.width, height: state.height }).toEqual({
+        width: Math.round(state.workArea.width),
+        height: Math.round(state.workArea.height),
+      });
+    }
   } finally {
     await closeApp(second.app);
   }

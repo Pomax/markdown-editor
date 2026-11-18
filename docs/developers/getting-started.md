@@ -13,7 +13,7 @@ And for your platform:
 
 - **Windows**: the Microsoft C++ build tools (MSVC, the "Desktop development with C++" workload of the Visual Studio Build Tools), and the WebView2 runtime, which Windows 10 and 11 normally already have
 - **macOS**: the Xcode command line tools (`xcode-select --install`)
-- **Linux**: the WebKitGTK 4.1 development packages and the other system packages Tauri lists for your distribution (on Debian and Ubuntu: `libwebkit2gtk-4.1-dev`, `build-essential`, `libxdo-dev`, `libssl-dev`, `libayatana-appindicator3-dev`, `librsvg2-dev`)
+- **Linux**: the WebKitGTK 4.1 development packages and the other system packages Tauri lists for your distribution (on Debian and Ubuntu: `libwebkit2gtk-4.1-dev`, `build-essential`, `libxdo-dev`, `libssl-dev`, `libayatana-appindicator3-dev`, `librsvg2-dev`), and for the integration tests the `xvfb` and `openbox` packages
 
 ## Initial Setup
 
@@ -85,6 +85,10 @@ markdown-editor/
 ├── scripts/               # Build and utility scripts
 │   ├── build.bat          # Windows: builds the release app (build-executable.js)
 │   ├── test.bat           # Windows: runs npm test, or the named test file or specs
+│   ├── run.bat            # Windows: runs the release app in dist/windows
+│   ├── build.sh           # Other platforms: builds the release app (build-executable.js)
+│   ├── test.sh            # Other platforms: runs npm test, or the named test file or specs
+│   ├── run.sh             # Other platforms: runs the release app in dist/ubuntu or dist/macos
 │   ├── build-executable.js # Builds the release app and copies it into dist/
 │   ├── build-test-app.js  # Builds the debug app with the test hooks
 │   ├── dev-server.js      # Serves src/ for npm start
@@ -92,7 +96,8 @@ markdown-editor/
 │   ├── lint-eol.js        # Checks every file uses LF line endings
 │   ├── parse-markdown.js  # CLI tool for testing parser output
 │   ├── stage-frontend.js  # Copies the page into build/frontend for the app build
-│   └── sync-cargo-version.js # Gives Cargo.toml and Cargo.lock package.json's version
+│   ├── sync-cargo-version.js # Gives Cargo.toml and Cargo.lock package.json's version
+│   └── test-integration.js # Runs the integration specs: most side by side, then the rest one at a time
 │
 ├── package.json
 ├── backticks.config.js    # ESLint config for backtick-quote enforcement
@@ -135,7 +140,7 @@ node --test test/unit/parser/dfa-parser.test.js
 
 ### Backend Tests
 
-The Rust modules' unit tests:
+The Rust modules' unit tests, and then the runners', built with the `test-hooks` feature:
 ```sh
 npm run test:rust
 ```
@@ -147,7 +152,11 @@ Run integration tests:
 npm run test:integration
 ```
 
-This first builds the debug app with the `test-hooks` feature (`scripts/build-test-app.js`, into `target/test`), then runs Playwright. Most specs start that app with `TESTING=1`, so its window never appears, and drive its page over the DevTools protocol and its backend through the test hooks; the specs that need only the page run it in Firefox, which `npm run setup` installs. Run a single spec by naming it:
+This first builds the debug app with the `test-hooks` feature (`scripts/build-test-app.js`, into `target/test`), then runs Playwright through `scripts/test-integration.js` as two runs: most specs several at a time (4 on Linux, 8 elsewhere), and then the specs that fail when other specs run beside them, listed in `SOLO_SPECS` in `playwright.config.js`, one at a time. Most specs start that app with `TESTING=1`, so its window never appears, and drive its page over the DevTools protocol and its backend through the test hooks; the specs that need only the page run it in Firefox, which `npm run setup` installs.
+
+On Linux, WebKitGTK has no DevTools protocol, so each launch gets a virtual X display of its own, an Xvfb server with openbox on it, and the app's window shows there, never on your own screen. The specs drive the page over WebKitGTK's own inspector protocol (`test/integration/webkit-inspector.js` and `test/integration/linux-page.js`), with real keyboard and mouse input from the X11 runner (`src/tauri/bin/x11-runner.rs`, which the same build builds), one runner process for each app.
+
+Run a single spec by naming it:
 
 ```sh
 npm run test:integration -- test/integration/app-functionality/app/menus.spec.js
@@ -187,6 +196,16 @@ scripts\test.bat test/integration/app-functionality/app/menus.spec.js
 
 It runs from any folder: it works from the project root, which it finds from its own location, and reads the files you name relative to the folder you run it in. With no argument it runs `npm test`. A `.test.js` file runs with `node --test`; anything else runs as integration specs through `npm run test:integration`, which builds the test app first. Its exit code is that of the run.
 
+### On Linux and macOS: `scripts/test.sh`
+
+```sh
+scripts/test.sh
+scripts/test.sh test/unit/parser/dfa-parser.test.js
+scripts/test.sh test/integration/app-functionality/app/menus.spec.js
+```
+
+It does what `scripts\test.bat` does on Windows.
+
 ## Code Quality
 
 ### Linting and Formatting
@@ -207,7 +226,7 @@ npm run lint:typing     # TypeScript type checking (tsc)
 
 ## Building Executables
 
-Build the app for the current platform (a single `.exe` on Windows, a `.dmg` on macOS, an AppImage on Linux):
+Build the app for the current platform (a single `.exe` on Windows, a `.dmg` on macOS, a `.deb` on Linux):
 
 ```sh
 npm run build
@@ -218,12 +237,21 @@ Or name the platform explicitly (the same script, without the lint step); each p
 ```sh
 npm run dist:win    # Windows .exe
 npm run dist:mac    # macOS .dmg
-npm run dist:linux  # Linux AppImage
+npm run dist:linux  # Linux .deb
 ```
 
-On Windows, `scripts\build.bat` runs the same script for the current platform, without the lint step, from any folder. `build-executable.js` itself works from the project root whatever folder it is started in.
+On Windows, `scripts\build.bat` runs the same script for the current platform, without the lint step, from any folder, and `scripts/build.sh` does the same on Linux and macOS.
 
-The script runs `tauri build` and copies the result to `dist/windows`, `dist/macos` or `dist/ubuntu` as `Markdown-Editor.<ext>`. The Windows `.exe` has the page embedded and uses the system's WebView2 runtime, so it starts in place, with nothing to unpack. The `.dmg` and AppImage bundlers download Tauri's bundling tools the first time they run.
+To run the release app in `dist/`, from any folder, with any arguments passed on to it (a file to open, named relative to the folder you run it in):
+
+```sh
+scripts/run.sh
+scripts\run.bat
+```
+
+`scripts\run.bat` starts `dist\windows\Markdown-Editor.exe`. `scripts/run.sh` unpacks `dist/ubuntu/Markdown-Editor.deb` into a temporary folder on Linux, or mounts `dist/macos/Markdown-Editor.dmg` read-only on macOS, runs the app from there, and removes the folder or unmounts the image when the app exits, so nothing is installed. Each fails, naming the build script, when there is no release file. `build-executable.js` itself works from the project root whatever folder it is started in.
+
+The script runs `tauri build` and copies the result to `dist/windows`, `dist/macos` or `dist/ubuntu` as `Markdown-Editor.<ext>`. The Windows `.exe` has the page embedded and uses the system's WebView2 runtime, so it starts in place, with nothing to unpack. The `.deb` holds the app alone and depends on the system's `libwebkit2gtk-4.1-0` and `libgtk-3-0`, which apt installs with it. The `.dmg` bundler downloads Tauri's bundling tools the first time it runs. The runners the tests use are built only with the `test-hooks` feature, so no release build has them.
 
 On GitHub, `.github/workflows/build.yml` builds all three on a version tag and publishes them as a release, and `.github/workflows/validate.yml` tests pull requests (see Build & CI in [Architecture](./architecture.md)).
 

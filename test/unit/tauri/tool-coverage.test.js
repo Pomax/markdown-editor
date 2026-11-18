@@ -35,7 +35,7 @@ describe(`tool coverage`, () => {
     assert.strictEqual(pkg.scripts[`build:test-app`], `node scripts/build-test-app.js`);
     assert.strictEqual(
       pkg.scripts[`test:integration`],
-      `node scripts/build-test-app.js && playwright test`,
+      `node scripts/build-test-app.js && node scripts/test-integration.js`,
     );
   });
 

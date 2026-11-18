@@ -41,14 +41,14 @@ describe(`build-executable`, () => {
     });
   });
 
-  it(`builds the Linux AppImage and names it Markdown-Editor.AppImage`, () => {
+  it(`builds the Linux deb and names it Markdown-Editor.deb`, () => {
     assert.deepStrictEqual(releaseTarget(`--linux`), {
-      args: [`build`, `--bundles`, `appimage`],
+      args: [`build`, `--bundles`, `deb`],
       env: {},
-      sourceDir: join(release, `bundle`, `appimage`),
-      sourceName: `*.AppImage`,
+      sourceDir: join(release, `bundle`, `deb`),
+      sourceName: `*.deb`,
       distDir: join(dist, `ubuntu`),
-      artifact: `Markdown-Editor.AppImage`,
+      artifact: `Markdown-Editor.deb`,
     });
   });
 

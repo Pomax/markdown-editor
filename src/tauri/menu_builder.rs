@@ -1426,14 +1426,17 @@ fn is_url(src: &str) -> bool {
         || lower.starts_with("blob:")
 }
 
-/// Strips a `file://` or `file:///` prefix.
+/// Strips a `file://` prefix, and the slash after it when a drive follows,
+/// as in `file:///C:/`, keeping the leading slash of a POSIX path.
 fn strip_file_prefix(src: &str) -> String {
-    if let Some(rest) = src.strip_prefix("file:///") {
-        rest.to_string()
-    } else if let Some(rest) = src.strip_prefix("file://") {
+    let Some(rest) = src.strip_prefix("file://") else {
+        return src.to_string();
+    };
+    let (drive, _) = crate::image_path::split_path(rest);
+    if drive.is_empty() {
         rest.to_string()
     } else {
-        src.to_string()
+        rest.trim_start_matches('/').to_string()
     }
 }
 
@@ -1457,11 +1460,17 @@ fn rewrite(markdown: &str, full_match: &str, src: &str, rel: &str) -> String {
     markdown.replacen(full_match, &new_match, 1)
 }
 
-/// Node's `path.normalize` for comparison: resolves `.`/`..` and uses the
-/// host separator.
+/// Node's `path.normalize` for comparison: resolves `.`/`..`, uses the
+/// host separator, and keeps the leading separator of a path that starts
+/// with one and has no drive.
 fn normalize_path(path: &str) -> String {
     let (drive, segments) = crate::image_path::split_path(path);
-    join_segments(&drive, &segments)
+    let joined = join_segments(&drive, &segments);
+    if drive.is_empty() && (path.starts_with('/') || path.starts_with('\\')) {
+        format!("{SEP}{joined}")
+    } else {
+        joined
+    }
 }
 
 /// Whether a path is absolute (has a drive, or a leading separator).
@@ -1745,36 +1754,68 @@ mod tests {
         );
     }
 
+    /// A folder outside the document's, written as an absolute path the way
+    /// the platform writes one.
+    #[cfg(windows)]
+    const EXT: &str = "C:\\ext";
+    #[cfg(not(windows))]
+    const EXT: &str = "/ext";
+
+    /// The document's folder, written as an absolute path the way the
+    /// platform writes one.
+    #[cfg(windows)]
+    const DOCS: &str = "C:\\docs";
+    #[cfg(not(windows))]
+    const DOCS: &str = "/docs";
+
+    /// `EXT` written as a file URL.
+    #[cfg(windows)]
+    const EXT_URL: &str = "file:///C:/ext";
+    #[cfg(not(windows))]
+    const EXT_URL: &str = "file:///ext";
+
     #[test]
-    fn menu_builder_gather_copies_with_a_collision_name() {
+    fn menu_builder_gather_copies_an_image_given_as_a_file_url() {
         let plan = gather_images(
-            "![cat](C:\\ext\\cat.png)",
-            "C:\\docs",
-            |path| path.eq_ignore_ascii_case("C:\\docs\\cat.png"),
+            &format!("![cat]({EXT_URL}/cat.png)"),
+            DOCS,
+            |_path| false,
             |_a, _b| false,
             |_src, _dest| Ok(()),
         );
         assert_eq!(plan.changed_count, 1);
         assert_eq!(
             plan.copies,
-            vec![(
-                "C:\\ext\\cat.png".to_string(),
-                "C:\\docs\\cat-2.png".to_string()
-            )]
+            vec![(format!("{EXT}{SEP}cat.png"), format!("{DOCS}{SEP}cat.png"))]
+        );
+        assert!(plan.updated_markdown.contains("(cat.png)"));
+    }
+
+    #[test]
+    fn menu_builder_gather_copies_with_a_collision_name() {
+        let source = format!("{EXT}{SEP}cat.png");
+        let plan = gather_images(
+            &format!("![cat]({source})"),
+            DOCS,
+            |path| path.eq_ignore_ascii_case(&format!("{DOCS}{SEP}cat.png")),
+            |_a, _b| false,
+            |_src, _dest| Ok(()),
+        );
+        assert_eq!(plan.changed_count, 1);
+        assert_eq!(
+            plan.copies,
+            vec![(source.clone(), format!("{DOCS}{SEP}cat-2.png"))]
         );
         assert!(plan.updated_markdown.contains("(cat-2.png)"));
-        assert_eq!(
-            plan.details,
-            vec!["C:\\ext\\cat.png → cat-2.png".to_string()]
-        );
+        assert_eq!(plan.details, vec![format!("{source} → cat-2.png")]);
     }
 
     #[test]
     fn menu_builder_gather_reuses_a_same_size_file() {
         let plan = gather_images(
-            "![cat](C:\\ext\\cat.png)",
-            "C:\\docs",
-            |path| path.eq_ignore_ascii_case("C:\\docs\\cat.png"),
+            &format!("![cat]({EXT}{SEP}cat.png)"),
+            DOCS,
+            |path| path.eq_ignore_ascii_case(&format!("{DOCS}{SEP}cat.png")),
             |_a, _b| true,
             |_src, _dest| Ok(()),
         );
@@ -1813,19 +1854,21 @@ mod tests {
 
     #[test]
     fn menu_builder_gather_leaves_a_reference_whose_copy_failed() {
+        let source = format!("{EXT}{SEP}cat.png");
+        let markdown = format!("![cat]({source})");
         let plan = gather_images(
-            "![cat](C:\\ext\\cat.png)",
-            "C:\\docs",
+            &markdown,
+            DOCS,
             |_path| false,
             |_a, _b| false,
             |_src, _dest| Err("access denied".to_string()),
         );
         assert_eq!(plan.changed_count, 0);
         assert!(plan.copies.is_empty());
-        assert_eq!(plan.updated_markdown, "![cat](C:\\ext\\cat.png)");
+        assert_eq!(plan.updated_markdown, markdown);
         assert_eq!(
             plan.details,
-            vec!["Failed to copy C:\\ext\\cat.png: access denied".to_string()]
+            vec![format!("Failed to copy {source}: access denied")]
         );
     }
 

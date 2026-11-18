@@ -2,12 +2,16 @@
  * @fileoverview Checks the test harness itself: the window is not visible
  * on screen, yet the page still renders (visibilityState, requestAnimationFrame)
  * and timers fire, so hidden-window throttling does not break the specs.
+ * On Linux the window shows, as WebKitGTK stops rendering the page of a
+ * hidden window, but on a virtual display of its own, not on the screen.
  * Also checks that the window title follows the page's `document.title`.
  */
 
 import path from 'node:path';
+import process from 'node:process';
 import { expect, test } from '@playwright/test';
 import { clickInEditor, closeApp, launchApp, projectRoot } from '../../test-utils.js';
+import { runCommand } from '../../x11-display.js';
 
 const readmePath = path.join(projectRoot, `README.md`);
 
@@ -26,8 +30,18 @@ test.afterAll(async () => {
 });
 
 test(`the test window is not visible on screen`, async () => {
+  test.skip(process.platform === `linux`, `on Linux the window shows on a virtual display`);
   const state = await app.windowState();
   expect(state.visible).toBe(false);
+});
+
+test(`on Linux the test window shows on a virtual display, not on the screen`, async () => {
+  test.skip(process.platform !== `linux`, `Linux only`);
+  const state = await app.windowState();
+  expect(state.visible).toBe(true);
+  await expect(runCommand(process.env.DISPLAY, app.pid, `window`, [])).rejects.toThrow(
+    /no app window|cannot open the X display/,
+  );
 });
 
 test(`the page renders while the window is hidden`, async () => {

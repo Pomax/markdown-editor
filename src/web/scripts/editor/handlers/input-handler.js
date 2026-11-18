@@ -161,12 +161,26 @@ export class InputHandler extends InputHandlerData {
       return;
     }
 
-    if (event.key === `Tab` && this.editor.viewMode === `writing`) {
+    // Tab by key or by key code: WebKitGTK names Shift+Tab `Unidentified`.
+    const isTab = event.key === `Tab` || event.code === `Tab`;
+    if (isTab && this.editor.viewMode === `writing`) {
       this.editor.syncCursorFromDOM();
       const node = this.editor.getCurrentBlockNode();
       if (node?.type === `table` && this.editor.syntaxTree?.treeCursor?.cellRow !== undefined) {
         event.preventDefault();
         this.editor.tableManager.handleTableTab(event.shiftKey);
+        return;
+      }
+    }
+
+    const isLineEdge = event.key === `Home` || event.key === `End`;
+    const modified = event.shiftKey || event.ctrlKey || event.metaKey || event.altKey;
+    if (isLineEdge && !modified && this.editor.viewMode === `writing`) {
+      this.editor.syncCursorFromDOM();
+      const node = this.editor.getCurrentBlockNode();
+      if (node?.type === `table` && this.editor.syntaxTree?.treeCursor?.cellRow !== undefined) {
+        event.preventDefault();
+        this.editor.tableManager.handleTableHomeEnd(event.key === `End`);
         return;
       }
     }

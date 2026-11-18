@@ -8,6 +8,11 @@
  * Playwright over the Chrome DevTools Protocol, and returns a
  * {@link TauriApp} for the main-process hooks plus the page.
  *
+ * WebKitGTK has no DevTools Protocol, so on Linux each launch gets a
+ * virtual X display of its own instead, and the page is a LinuxPage: the
+ * part of Playwright's Page that the specs use, over WebKitGTK's own
+ * inspector, with real X11 input.
+ *
  * The standard viewport is 1920 × 1280 so layout-sensitive tests behave
  * the same regardless of the runner's physical screen.
  */
@@ -18,15 +23,27 @@ import { request } from 'node:http';
 import { createServer } from 'node:net';
 import path from 'node:path';
 import process from 'node:process';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { chromium, test } from '@playwright/test';
 import { TEST_APP_BINARY } from '../../scripts/build-test-app.js';
+import { LinuxPage } from './linux-page.js';
 import { TauriApp } from './tauri-app.js';
+import { WebKitInspector } from './webkit-inspector.js';
+import { X11Input, startVirtualDisplay } from './x11-display.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 export const projectRoot = path.join(__dirname, `..`, `..`);
+
+/**
+ * The fixture image as a file URL, for documents whose images must load
+ * in every webview: WebKitGTK can lay out an image that fails to load
+ * with no width.
+ */
+export const FIXTURE_IMAGE = pathToFileURL(
+  path.join(projectRoot, `test`, `fixtures`, `image.png`),
+).href;
 
 /** Standard viewport: 1920×1280 (typical desktop). */
 export const VIEWPORT = { width: 1920, height: 1280 };
@@ -57,11 +74,47 @@ export const HOME = isMac ? `Meta+ArrowLeft` : `Home`;
 export const END = isMac ? `Meta+ArrowRight` : `End`;
 
 /**
- * Associates each returned TauriApp with the Playwright browser attached
- * to its process, so {@link closeApp} can disconnect it.
- * @type {WeakMap<TauriApp, import('@playwright/test').Browser>}
+ * What {@link closeApp} undoes for each returned TauriApp: `detach` before
+ * the app closes (the Playwright browser attached to its process, or on
+ * Linux the inspector connection), and `release` after (on Linux, the
+ * app, killed when it has not exited a second after closing, as when its
+ * close was cancelled, and then its X11 runner and virtual display).
+ * @type {WeakMap<TauriApp, { detach: () => Promise<unknown>, release: () => Promise<void> }>}
  */
-const attachedBrowsers = new WeakMap();
+const attachments = new WeakMap();
+
+/**
+ * What every launch started that must not outlive this worker process:
+ * the apps and, on Linux, their virtual displays. A test that times out
+ * never reaches its closeApp, so whatever is still running when the
+ * worker exits is stopped then.
+ * @type {Set<{ kill: () => unknown }>}
+ */
+const started = new Set();
+
+process.on(`exit`, () => {
+  for (const entry of started) {
+    try {
+      entry.kill();
+    } catch {
+      /* already gone */
+    }
+  }
+});
+
+/**
+ * What one attempt at a launch gets: the app's arguments, whether its
+ * window shows, whether the page keeps the window's own size, its webview
+ * and settings directories, and a list to push what undoes each step
+ * onto, for a failed attempt.
+ * @typedef {object} LaunchAttempt
+ * @property {string[]} extraArgs
+ * @property {boolean} visible
+ * @property {boolean} keepWindowSize
+ * @property {string} webviewDir
+ * @property {string} settingsDir
+ * @property {(() => void)[]} cleanup
+ */
 
 /**
  * Resolves after the given number of milliseconds.
@@ -143,30 +196,141 @@ async function findAppPage(browser, timeoutMs) {
 }
 
 /**
- * Launches the Tauri test binary, attaches Playwright over CDP, waits for
- * the app page to be ready, and sets a predictable viewport.
+ * Starts the test binary with a DevTools port, attaches Playwright over
+ * CDP, and waits for the app page to be ready.
+ * @param {LaunchAttempt} attempt
+ * @returns {Promise<{ app: TauriApp, page: import('@playwright/test').Page }>}
+ */
+async function startOverDevtools({
+  extraArgs,
+  visible,
+  keepWindowSize,
+  webviewDir,
+  settingsDir,
+  cleanup,
+}) {
+  const port = await freePort();
+  const child = spawn(TEST_APP_BINARY, extraArgs, {
+    env: {
+      ...process.env,
+      TESTING: `1`,
+      TESTING_WEBVIEW_DIR: webviewDir,
+      TESTING_DEVTOOLS_PORT: String(port),
+      TESTING_SETTINGS_DIR: settingsDir,
+      ...(visible ? { TESTING_VISIBLE: `1` } : {}),
+    },
+    stdio: [`pipe`, `pipe`, `inherit`],
+    windowsHide: true,
+  });
+  started.add(child);
+  cleanup.push(() => child.kill());
+  await waitForDevtools(port, 15000);
+  const browser = await chromium.connectOverCDP(`http://127.0.0.1:${port}`);
+  const page = await findAppPage(browser, 15000);
+  await page.waitForFunction(() => document.readyState === `complete`);
+  if (!keepWindowSize) await page.setViewportSize(VIEWPORT);
+  const app = new TauriApp(/** @type {any} */ (child));
+  attachments.set(app, { detach: () => browser.close(), release: async () => {} });
+  return { app, page };
+}
+
+/**
+ * Starts the test binary on Linux on a virtual X display of its own, which
+ * has no GPU, so with software rendering and with Skia drawing on the CPU
+ * (through software GL, Skia takes over a second to draw the page's first
+ * two frames, and input sent meanwhile reaches the page late), with
+ * WebKitGTK's inspector on a
+ * port of its own and its webview data in the webview directory, attaches
+ * a LinuxPage to its page, and gives the
+ * window the input focus. The window is mapped on that display, since
+ * WebKitGTK stops rendering the page of a hidden window, so the standard
+ * viewport is set by resizing the window.
+ * @param {LaunchAttempt} attempt
+ * @returns {Promise<{ app: TauriApp, page: import('@playwright/test').Page }>}
+ */
+async function startOnLinux({ extraArgs, keepWindowSize, webviewDir, settingsDir, cleanup }) {
+  const display = await startVirtualDisplay();
+  started.add({ kill: display.stop });
+  cleanup.push(() => display.stop());
+  const port = await freePort();
+  const environment = { ...process.env };
+  delete environment.WAYLAND_DISPLAY;
+  const child = spawn(TEST_APP_BINARY, extraArgs, {
+    env: {
+      ...environment,
+      DISPLAY: display.name,
+      GDK_BACKEND: `x11`,
+      LIBGL_ALWAYS_SOFTWARE: `1`,
+      WEBKIT_SKIA_ENABLE_CPU_RENDERING: `1`,
+      NO_AT_BRIDGE: `1`,
+      XDG_DATA_HOME: webviewDir,
+      XDG_CACHE_HOME: webviewDir,
+      WEBKIT_INSPECTOR_HTTP_SERVER: `127.0.0.1:${port}`,
+      TESTING: `1`,
+      TESTING_VISIBLE: `1`,
+      TESTING_SETTINGS_DIR: settingsDir,
+    },
+    stdio: [`pipe`, `pipe`, `inherit`],
+  });
+  started.add(child);
+  cleanup.push(() => child.kill());
+  const exited = new Promise((resolve) => child.once(`exit`, resolve));
+  const inspector = await WebKitInspector.connect(port, `web/index.html`, 15000);
+  cleanup.push(() => inspector.close());
+  const app = new TauriApp(/** @type {any} */ (child));
+  const input = new X11Input(display.name, child.pid ?? 0);
+  cleanup.push(() => input.close());
+  const page = new LinuxPage(inspector, input, {
+    url: inspector.url,
+    resizeWindow: (bounds) => app.setWindowBounds(bounds),
+  });
+  await page.waitForFunction(() => document.readyState === `complete`);
+  await page.focusWindow();
+  if (!keepWindowSize) await page.setViewportSize(VIEWPORT);
+  attachments.set(app, {
+    detach: async () => page.disconnect(),
+    release: async () => {
+      await Promise.race([exited, delay(1000)]);
+      child.kill();
+      await Promise.race([exited, delay(1000)]);
+      input.close();
+      display.stop();
+    },
+  });
+  return { app, page: /** @type {any} */ (page) };
+}
+
+/**
+ * Launches the Tauri test binary, attaches to its page, waits for the app
+ * page to be ready, and sets a predictable viewport.
  *
- * Each launch gets its own DevTools port and webview directory; the
- * settings directory is shared per spec file so its launches see the same
- * settings, all under test-results/. Retries up to three times.
+ * Each launch gets its own DevTools port (on Linux, its own inspector
+ * port and virtual display) and webview directory; the settings directory
+ * is shared per spec file so its launches see the same settings, all
+ * under test-results/. Retries up to three times.
  *
  * With `visible`, the test build shows its window, for the real-input
  * specs, and the page keeps the window's own size, so a point on the page
- * is the same point in the window.
+ * is the same point in the window. With `keepWindowSize`, the page keeps
+ * the window's own size without the window showing, for specs that
+ * measure the window itself.
  *
  * @param {string[]} [extraArgs]  Additional CLI arguments (e.g. a file path).
- * @param {{ visible?: boolean }} [options]
+ * @param {{ visible?: boolean, keepWindowSize?: boolean }} [options]
  * @returns {Promise<{ app: TauriApp, page: import('@playwright/test').Page }>}
  */
-export async function launchApp(extraArgs = [], { visible = false } = {}) {
+export async function launchApp(
+  extraArgs = [],
+  { visible = false, keepWindowSize = visible } = {},
+) {
   const resultsDir = path.join(projectRoot, `test-results`);
   const settingsDir = path.join(resultsDir, `settings`, path.basename(test.info().file));
+  const start = process.platform === `linux` ? startOnLinux : startOverDevtools;
   const maxAttempts = 3;
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-    /** @type {import('node:child_process').ChildProcess|undefined} */
-    let child;
+    /** @type {(() => void)[]} */
+    const cleanup = [];
     try {
-      const port = await freePort();
       const webviewDir = path.join(
         resultsDir,
         `webview`,
@@ -174,31 +338,14 @@ export async function launchApp(extraArgs = [], { visible = false } = {}) {
       );
       mkdirSync(webviewDir, { recursive: true });
       mkdirSync(settingsDir, { recursive: true });
-      child = spawn(TEST_APP_BINARY, extraArgs, {
-        env: {
-          ...process.env,
-          TESTING: `1`,
-          TESTING_WEBVIEW_DIR: webviewDir,
-          TESTING_DEVTOOLS_PORT: String(port),
-          TESTING_SETTINGS_DIR: settingsDir,
-          ...(visible ? { TESTING_VISIBLE: `1` } : {}),
-        },
-        stdio: [`pipe`, `pipe`, `inherit`],
-        windowsHide: true,
-      });
-      await waitForDevtools(port, 15000);
-      const browser = await chromium.connectOverCDP(`http://127.0.0.1:${port}`);
-      const page = await findAppPage(browser, 15000);
-      await page.waitForFunction(() => document.readyState === `complete`);
-      if (!visible) await page.setViewportSize(VIEWPORT);
-      const app = new TauriApp(/** @type {any} */ (child));
-      attachedBrowsers.set(app, browser);
-      return { app, page };
+      return await start({ extraArgs, visible, keepWindowSize, webviewDir, settingsDir, cleanup });
     } catch (err) {
-      try {
-        child?.kill();
-      } catch {
-        /* ignore */
+      for (const undo of cleanup.reverse()) {
+        try {
+          undo();
+        } catch {
+          /* ignore */
+        }
       }
       if (attempt === maxAttempts) throw err;
     }
@@ -257,8 +404,9 @@ export async function defocusEditor(page) {
  * `locator.click()` dispatches a synthetic event that skips the real
  * browser event sequence (mousedown → selectionchange → mouseup → click).
  * This helper gets the bounding box and fires a real `page.mouse.click()`
- * at the element's centre so the full event chain fires.  An image is
- * first given time to finish loading (or fail), so its box is final.
+ * at the centre of the part of the element inside the viewport, as
+ * Playwright's own click does, so the full event chain fires.  An image
+ * is first given time to finish loading (or fail), so its box is final.
  *
  * @param {import('@playwright/test').Page} page
  * @param {import('@playwright/test').Locator} locator
@@ -274,7 +422,16 @@ export async function clickInEditor(page, locator) {
   );
   const box = await locator.boundingBox();
   if (!box) throw new Error(`clickInEditor: element not visible`);
-  await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+  const viewport = await page.evaluate(() => ({
+    width: window.innerWidth,
+    height: window.innerHeight,
+  }));
+  const left = Math.max(box.x, 0);
+  const top = Math.max(box.y, 0);
+  const right = Math.min(box.x + box.width, viewport.width);
+  const bottom = Math.min(box.y + box.height, viewport.height);
+  if (right <= left || bottom <= top) throw new Error(`clickInEditor: element not in view`);
+  await page.mouse.click((left + right) / 2, (top + bottom) / 2);
 }
 
 /**
@@ -294,21 +451,23 @@ export async function clickQuerySelector(page, qs) {
 }
 
 /**
- * Disconnects Playwright and closes the Tauri app, killing the process if
- * it does not exit within the close timeout.
+ * Disconnects from the page and closes the Tauri app, killing the process
+ * if it does not exit within the close timeout, then releases what the
+ * launch held, such as the app's virtual display on Linux.
  *
  * @param {TauriApp} app
  */
 export async function closeApp(app) {
-  const browser = attachedBrowsers.get(app);
-  if (browser) {
+  const attachment = attachments.get(app);
+  if (attachment) {
     try {
-      await browser.close();
+      await attachment.detach();
     } catch {
       /* already disconnected */
     }
   }
   await app.close();
+  await attachment?.release();
 }
 
 /**

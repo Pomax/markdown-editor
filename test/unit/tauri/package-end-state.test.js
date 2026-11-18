@@ -63,7 +63,7 @@ describe(`package.json end state`, () => {
     assert.strictEqual(pkg.scripts[`test:rust`], `node scripts/test-rust.js`);
     assert.strictEqual(
       pkg.scripts[`test:integration`],
-      `node scripts/build-test-app.js && playwright test`,
+      `node scripts/build-test-app.js && node scripts/test-integration.js`,
     );
     assert.strictEqual(pkg.scripts.cleanup, `rm -rf test-results`);
     assert.strictEqual(pkg.scripts[`test:cleanup`], `rm -rf test-results`);

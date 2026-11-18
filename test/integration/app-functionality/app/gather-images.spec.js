@@ -62,11 +62,24 @@ function editorContent() {
 }
 
 /**
+ * @param {number} shown - How many message boxes had been shown before.
+ * @returns {Promise<string | undefined>} The last message box's message,
+ *   when it is one shown since.
+ */
+async function messageSince(shown) {
+  const boxes = await app.messageBoxes();
+  return boxes.length > shown ? boxes[boxes.length - 1].message : undefined;
+}
+
+/**
  * Chooses Edit > Images > Gather, confirming the gather.
+ * @returns {Promise<number>} How many message boxes had been shown before.
  */
 async function gather() {
+  const shown = (await app.messageBoxes()).length;
   await app.setMessageBoxResponse(1);
   await app.menu.click([`Edit`, `Images`, `Gather`]);
+  return shown;
 }
 
 test(`asks to save an unsaved document first`, async () => {
@@ -111,9 +124,9 @@ test(`names the copy -2 when the name is taken by a different file`, async ({}, 
 
   await loadContent(page, `![pic](${pathToFileURL(outsideImage).href})\n`);
   await saveDocumentAs(path.join(docDir, `doc.md`));
-  await gather();
+  const shown = await gather();
 
-  await expect.poll(() => lastMessage()).toBe(`Gathered 1 image`);
+  await expect.poll(() => messageSince(shown)).toBe(`Gathered 1 image`);
   expect(fs.readFileSync(path.join(docDir, `pic-2.png`), `utf-8`)).toBe(
     `a different, longer image`,
   );

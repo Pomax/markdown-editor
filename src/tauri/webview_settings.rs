@@ -1,8 +1,9 @@
 //! Security limits applied to the webview: which pages the main frame may
 //! navigate to, what a window.open does, and how permission requests are
-//! answered, and, on Windows, the routing of menu shortcuts pressed while
-//! the page has keyboard focus and of the page's `alert` and `confirm` to
-//! the app's message box, the WebView2 settings and browser arguments.
+//! answered; on Windows and Linux, the routing of the page's `alert` and
+//! `confirm` to the app's message box; on Windows, the routing of menu
+//! shortcuts pressed while the page has keyboard focus, the WebView2
+//! settings and browser arguments; and on Linux, fullscreen turned off.
 
 use tauri::webview::NewWindowResponse;
 use tauri::{AppHandle, Url, Wry};
@@ -319,8 +320,28 @@ thread_local! {
 }
 
 /// The number given to the next page dialog.
-#[cfg(windows)]
+#[cfg(any(windows, target_os = "linux"))]
 static NEXT_DIALOG: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+/// Shows a page's `alert` or `confirm` as the app's message box on a
+/// worker thread, since a blocking box cannot be shown on the main thread,
+/// then calls `finish` back on the main thread with whether OK was chosen.
+#[cfg(any(windows, target_os = "linux"))]
+fn ask_script_dialog(
+    window: &tauri::WebviewWindow,
+    message: &str,
+    confirm: bool,
+    finish: impl FnOnce(bool) + Send + 'static,
+) {
+    let title = window.title().unwrap_or_default();
+    let options = crate::message_box::script_dialog_box(&title, message, confirm);
+    let shown_on = window.clone();
+    std::thread::spawn(move || {
+        let response = crate::ipc_handler::show_message_box(&shown_on, &options);
+        let accepted = crate::message_box::script_dialog_accepted(response);
+        let _ = shown_on.run_on_main_thread(move || finish(accepted));
+    });
+}
 
 /// Shows the page's `alert` and `confirm` as the app's message box
 /// instead of WebView2's own dialog. WebView2 waits for
@@ -372,13 +393,8 @@ fn handle_script_dialogs(
         let deferral = unsafe { args.GetDeferral()? };
         let id = NEXT_DIALOG.fetch_add(1, Ordering::SeqCst);
         PENDING_DIALOGS.with(|pending| pending.borrow_mut().insert(id, (args, deferral)));
-        let title = window.title().unwrap_or_default();
-        let options = crate::message_box::script_dialog_box(&title, &message, confirm);
-        let shown_on = window.clone();
-        std::thread::spawn(move || {
-            let response = crate::ipc_handler::show_message_box(&shown_on, &options);
-            let accepted = crate::message_box::script_dialog_accepted(response);
-            let _ = shown_on.run_on_main_thread(move || finish_script_dialog(id, accepted));
+        ask_script_dialog(&window, &message, confirm, move |accepted| {
+            finish_script_dialog(id, accepted)
         });
         Ok(())
     }));
@@ -409,6 +425,63 @@ fn finish_script_dialog(id: u64, accepted: bool) {
         }
         let _ = deferral.Complete();
     }
+}
+
+#[cfg(target_os = "linux")]
+thread_local! {
+    /// The page dialogs waiting for their box to be answered, by number.
+    /// They stay on the main thread, where WebKitGTK raised them.
+    static PENDING_SCRIPT_DIALOGS: std::cell::RefCell<
+        std::collections::HashMap<u64, webkit2gtk::ScriptDialog>,
+    > = std::cell::RefCell::default();
+}
+
+/// Turns off fullscreen, so the page cannot request it, and shows the
+/// page's `alert` and `confirm` as the app's message box instead of
+/// WebKitGTK's own dialog. WebKitGTK waits for a dialog the app keeps
+/// until the app closes it, so it is closed once its box is answered,
+/// confirmed when OK was chosen. Any other page dialog is closed
+/// unanswered, which cancels it.
+#[cfg(target_os = "linux")]
+pub fn handle_page_requests(window: &tauri::WebviewWindow) -> tauri::Result<()> {
+    let target = window.clone();
+    window.with_webview(move |webview| {
+        use webkit2gtk::{SettingsExt, WebViewExt};
+        let view = webview.inner();
+        if let Some(settings) = WebViewExt::settings(&view) {
+            settings.set_enable_fullscreen(false);
+        }
+        view.connect_script_dialog(move |_, dialog| {
+            use std::sync::atomic::Ordering;
+            use webkit2gtk::ScriptDialogType;
+            let confirm = match dialog.dialog_type() {
+                ScriptDialogType::Alert => false,
+                ScriptDialogType::Confirm => true,
+                _ => return true,
+            };
+            let message = dialog.message().map(String::from).unwrap_or_default();
+            let id = NEXT_DIALOG.fetch_add(1, Ordering::SeqCst);
+            PENDING_SCRIPT_DIALOGS.with(|pending| pending.borrow_mut().insert(id, dialog.clone()));
+            ask_script_dialog(&target, &message, confirm, move |accepted| {
+                finish_page_dialog(id, accepted)
+            });
+            true
+        });
+    })
+}
+
+/// Answers a waiting page dialog: confirms a `confirm` when OK was chosen,
+/// then closes the dialog, which lets the page continue.
+#[cfg(target_os = "linux")]
+fn finish_page_dialog(id: u64, accepted: bool) {
+    let Some(dialog) = PENDING_SCRIPT_DIALOGS.with(|pending| pending.borrow_mut().remove(&id))
+    else {
+        return;
+    };
+    if dialog.dialog_type() == webkit2gtk::ScriptDialogType::Confirm {
+        dialog.confirm_set_confirmed(accepted);
+    }
+    dialog.close();
 }
 
 /// The browser arguments: the Chromium features Tauri's own arguments turn
@@ -479,20 +552,28 @@ fn set_webview_settings(
 }
 
 /// The browser arguments the webview was created with.
+#[cfg(windows)]
 static BROWSER_ARGUMENTS: std::sync::OnceLock<String> = std::sync::OnceLock::new();
 
 /// Records the browser arguments the webview is created with.
+#[cfg(windows)]
 pub fn record_browser_arguments(arguments: &str) {
     let _ = BROWSER_ARGUMENTS.set(arguments.to_string());
 }
 
 /// The WebView2 settings in effect, read back from the webview, and the
-/// browser arguments it was created with, as the test hooks report them.
+/// browser arguments it was created with, as the test hooks report them;
+/// without WebView2, nothing.
 #[cfg(feature = "test-hooks")]
 pub fn describe_settings(window: &tauri::WebviewWindow) -> serde_json::Value {
-    let mut settings = read_settings(window).unwrap_or_else(|| serde_json::json!({}));
-    settings["browserArguments"] =
-        serde_json::json!(BROWSER_ARGUMENTS.get().cloned().unwrap_or_default());
+    let settings = read_settings(window).unwrap_or_else(|| serde_json::json!({}));
+    #[cfg(windows)]
+    let settings = {
+        let mut settings = settings;
+        settings["browserArguments"] =
+            serde_json::json!(BROWSER_ARGUMENTS.get().cloned().unwrap_or_default());
+        settings
+    };
     settings
 }
 

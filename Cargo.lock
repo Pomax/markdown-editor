@@ -2230,6 +2230,7 @@ name = "markdown-editor"
 version = "3.0.0"
 dependencies = [
  "chrono",
+ "gtk",
  "rusqlite",
  "serde",
  "serde_json",
@@ -2238,8 +2239,10 @@ dependencies = [
  "tauri-plugin-clipboard-manager",
  "tauri-plugin-dialog",
  "tauri-plugin-opener",
+ "webkit2gtk",
  "webview2-com",
  "windows",
+ "x11rb",
 ]
 
 [[package]]

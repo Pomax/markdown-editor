@@ -6,9 +6,12 @@
  * the menu with the pointer position instead of popping it up, so these
  * tests check what was recorded, that nothing is recorded where the page
  * prevented the event, that Copy, Cut and Paste send the same keystrokes
- * as the Edit items, and that Inspect Element opens DevTools.
+ * as the Edit items, and that Inspect Element opens DevTools: on the
+ * element under the pointer on Windows, where WebView2 can inspect a
+ * point, and with no element chosen elsewhere.
  */
 
+import process from 'node:process';
 import { expect, test } from '@playwright/test';
 import { closeApp, launchApp, loadContent } from '../../test-utils.js';
 
@@ -111,10 +114,19 @@ test(`Copy, Cut and Paste send the same keystrokes as the Edit items`, async () 
 });
 
 test(`Inspect Element opens DevTools on the element under the pointer`, async () => {
+  test.skip(process.platform !== `win32`, `only WebView2 can inspect the element at a point`);
   expect(await app.isDevtoolsOpen()).toBe(false);
   await openContextMenu();
   const { x, y } = (await app.contextMenus()).at(-1);
   expect(await app.contextMenu.click(`Inspect Element`)).toBe(true);
   await expect.poll(() => app.inspections()).toEqual([{ x, y }]);
+  await expect.poll(() => app.isDevtoolsOpen()).toBe(true);
+});
+
+test(`Inspect Element opens DevTools where the webview cannot inspect a point`, async () => {
+  test.skip(process.platform === `win32`, `WebView2 inspects the element at the point`);
+  expect(await app.isDevtoolsOpen()).toBe(false);
+  await openContextMenu();
+  expect(await app.contextMenu.click(`Inspect Element`)).toBe(true);
   await expect.poll(() => app.isDevtoolsOpen()).toBe(true);
 });

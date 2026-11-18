@@ -24,7 +24,7 @@
     "test:unit": "node --test \"test/unit/**/*.test.js\"",
     "test:rust": "node scripts/test-rust.js",
     "build:test-app": "node scripts/build-test-app.js",
-    "test:integration": "node scripts/build-test-app.js && playwright test",
+    "test:integration": "node scripts/build-test-app.js && node scripts/test-integration.js",
     "test:real-input": "node scripts/build-test-app.js && node scripts/build-win-runner.js && playwright test --config playwright.real-input.config.js",
     "version": "node scripts/sync-cargo-version.js"
   },

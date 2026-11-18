@@ -445,8 +445,7 @@ fn dispatch(app: &AppHandle, method: &str, params: &Value) -> Value {
 /// and its title.
 fn window_state(app: &AppHandle, window: &tauri::WebviewWindow) -> Value {
     let scale = window.scale_factor().unwrap_or(1.0);
-    let position = window.outer_position().ok();
-    let outer = window.outer_size().ok();
+    let outer = crate::outer_rect(&window.as_ref().window());
     let inner = window.inner_size().ok();
     let maximized = app
         .try_state::<crate::WindowTrackerState>()
@@ -465,10 +464,10 @@ fn window_state(app: &AppHandle, window: &tauri::WebviewWindow) -> Value {
         "visible": window.is_visible().unwrap_or(false),
         "maximized": maximized,
         "fullscreen": window.is_fullscreen().unwrap_or(false),
-        "x": position.map(|p| f64::from(p.x) / scale),
-        "y": position.map(|p| f64::from(p.y) / scale),
-        "width": outer.map(|s| f64::from(s.width) / scale),
-        "height": outer.map(|s| f64::from(s.height) / scale),
+        "x": outer.map(|rect| f64::from(rect.x) / scale),
+        "y": outer.map(|rect| f64::from(rect.y) / scale),
+        "width": outer.map(|rect| f64::from(rect.width) / scale),
+        "height": outer.map(|rect| f64::from(rect.height) / scale),
         "innerWidth": inner.map(|s| f64::from(s.width) / scale),
         "innerHeight": inner.map(|s| f64::from(s.height) / scale),
         "workArea": work_area,

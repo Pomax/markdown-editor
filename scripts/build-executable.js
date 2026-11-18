@@ -3,7 +3,8 @@
  * Markdown-Editor.<ext> in its platform's folder under
  * dist/, touching nothing else there: on Windows the release .exe itself
  * in dist/windows (the frontend is embedded, so there is no bundle), on
- * macOS the .dmg in dist/macos, on Linux the .AppImage in dist/ubuntu. Each
+ * macOS the .dmg in dist/macos, on Linux the .deb in dist/ubuntu, which
+ * has apt install WebKitGTK and the other libraries the app uses. Each
  * platform's file is built on that platform. The platform is given as
  * --win, --mac or --linux and defaults to the one the script runs on.
  * The Tauri CLI is called through its Node API, so no .cmd shim is
@@ -90,12 +91,12 @@ export function releaseTarget(flag) {
       };
     case `--linux`:
       return {
-        args: [`build`, `--bundles`, `appimage`],
+        args: [`build`, `--bundles`, `deb`],
         env: {},
-        sourceDir: join(release, `bundle`, `appimage`),
-        sourceName: `*.AppImage`,
+        sourceDir: join(release, `bundle`, `deb`),
+        sourceName: `*.deb`,
         distDir: join(dist, `ubuntu`),
-        artifact: `Markdown-Editor.AppImage`,
+        artifact: `Markdown-Editor.deb`,
       };
     default:
       throw new Error(`No release target for ${flag}`);

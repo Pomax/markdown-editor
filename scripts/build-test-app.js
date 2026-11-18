@@ -34,6 +34,13 @@ export const TEST_APP_BINARY = join(
 );
 
 /**
+ * The X11 runner's path: the crate's `x11-runner` binary, which the same
+ * build builds, and through which the Linux tests send real input.
+ * @type {string}
+ */
+export const X11_RUNNER_BINARY = join(TEST_TARGET_DIR, `debug`, `x11-runner`);
+
+/**
  * Builds the debug test binary into its own target directory.
  * @returns {Promise<void>}
  */
