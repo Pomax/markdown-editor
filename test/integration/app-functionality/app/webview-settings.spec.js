@@ -88,6 +88,7 @@ test(`media may play without a user gesture`, async () => {
 });
 
 test(`a fullscreen request after a click does nothing`, async () => {
+  expect(await page.evaluate(() => !!document.fullscreenEnabled)).toBe(false);
   await page.evaluate(() => {
     const button = document.createElement(`button`);
     button.id = `fullscreen-probe`;

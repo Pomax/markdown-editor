@@ -12,7 +12,7 @@
  * changes box, About, `confirm`'s answer, and the box shown when
  * shrinking a table would drop data. The close tests each launch an app
  * of their own and close it through the normal close flow: the open files
- * are saved, and the unsaved-changes box's four answers have their
+ * are saved, and the unsaved-changes box's three answers have their
  * outcomes.
  */
 
@@ -280,7 +280,7 @@ test(`Browse for image records the dialog and returns the chosen path`, async ({
 });
 
 test(`confirmClose records the unsaved-changes box with its options`, async () => {
-  await app.setMessageBoxResponse(3);
+  await app.setMessageBoxResponse(2);
   const result = await confirmClose();
   expect(result.action).toBe(`cancel`);
 
@@ -289,17 +289,16 @@ test(`confirmClose records the unsaved-changes box with its options`, async () =
   expect(last.type).toBe(`warning`);
   expect(last.title).toBe(`Unsaved Changes`);
   expect(last.message).toBe(`You have unsaved changes. What would you like to do?`);
-  expect(last.buttons).toEqual([`Save`, `Save As...`, `Discard`, `Cancel`]);
+  expect(last.buttons).toEqual([`Save`, `Discard`, `Cancel`]);
   expect(last.defaultId).toBe(0);
-  expect(last.cancelId).toBe(3);
+  expect(last.cancelId).toBe(2);
 });
 
 test(`confirmClose maps each button to its action`, async () => {
   const cases = [
     [0, `save`],
-    [1, `saveAs`],
-    [2, `discard`],
-    [3, `cancel`],
+    [1, `discard`],
+    [2, `cancel`],
   ];
   for (const [response, action] of cases) {
     await app.setMessageBoxResponse(/** @type {number} */ (response));
@@ -315,13 +314,13 @@ test(`an unsaved tab stays on Cancel and closes on Discard`, async () => {
   const countBefore = await tabs.count();
 
   await setUnsaved(true);
-  await app.setMessageBoxResponse(3);
+  await app.setMessageBoxResponse(2);
   await page.evaluate(() => document.dispatchEvent(new CustomEvent(`file:close`)));
   await page.waitForTimeout(300);
   expect(await tabs.count()).toBe(countBefore);
 
   await setUnsaved(true);
-  await app.setMessageBoxResponse(2);
+  await app.setMessageBoxResponse(1);
   await page.evaluate(() => document.dispatchEvent(new CustomEvent(`file:close`)));
   await page.waitForTimeout(300);
   expect(await tabs.count()).toBe(countBefore - 1);
@@ -444,7 +443,7 @@ test(`closing with unsaved changes and choosing Discard closes without saving`, 
   const filePath = testInfo.outputPath(`discarded.md`);
   fs.writeFileSync(filePath, loremContent);
   const closing = await launchUnsaved(filePath);
-  await closing.app.setMessageBoxResponse(2);
+  await closing.app.setMessageBoxResponse(1);
   await closing.app.requestClose({ testing: false });
   await expect.poll(() => windowOpen(closing.app)).toBe(false);
   expect(fs.readFileSync(filePath, `utf-8`)).toBe(loremContent);
@@ -455,12 +454,12 @@ test(`closing with unsaved changes and choosing Cancel keeps the window and the 
   fs.writeFileSync(filePath, loremContent);
   const closing = await launchUnsaved(filePath);
   try {
-    await closing.app.setMessageBoxResponse(3);
+    await closing.app.setMessageBoxResponse(2);
     await closing.app.requestClose({ testing: false });
     await expect.poll(async () => (await closing.app.messageBoxes()).length).toBe(1);
     const box = (await closing.app.messageBoxes())[0];
     expect(box.title).toBe(`Unsaved Changes`);
-    expect(box.buttons).toEqual([`Save`, `Save As...`, `Discard`, `Cancel`]);
+    expect(box.buttons).toEqual([`Save`, `Discard`, `Cancel`]);
     expect(await windowOpen(closing.app)).toBe(true);
     expect(await closing.page.evaluate(() => window.editorAPI?.getContent())).toBe(CHANGED);
     expect(fs.readFileSync(filePath, `utf-8`)).toBe(loremContent);
@@ -479,11 +478,11 @@ test(`closing with unsaved changes and choosing Save writes the file and closes`
   expect(fs.readFileSync(filePath, `utf-8`)).toBe(CHANGED);
 });
 
-test(`closing a new document with unsaved changes and choosing Save As writes it where chosen and closes`, async ({}, testInfo) => {
+test(`closing a new document with unsaved changes and choosing Save writes it where chosen and closes`, async ({}, testInfo) => {
   const target = testInfo.outputPath(`saved-as-on-close`);
   const closing = await launchUnsaved();
   await closing.app.setFileDialogResult(target);
-  await closing.app.setMessageBoxResponse(1);
+  await closing.app.setMessageBoxResponse(0);
   await closing.app.requestClose({ testing: false });
   await expect.poll(() => windowOpen(closing.app)).toBe(false);
   expect(fs.readFileSync(`${target}.md`, `utf-8`)).toBe(CHANGED);

@@ -25,7 +25,7 @@ const readmeContent = fs.readFileSync(readmePath, `utf-8`);
 /**
  * The narrowest page `fit_main_window` in main.rs allows.
  */
-const MIN_PAGE_WIDTH = 998;
+const MIN_PAGE_WIDTH = process.platform === `darwin` ? 1003 : 998;
 
 /** @type {import('../../tauri-app.js').TauriApp} */
 let app;
@@ -89,7 +89,12 @@ test(`file-button group is left-aligned, content toolbar is centred`, async () =
 });
 
 test(`at the minimum page width the toolbar fits at full size beside the file buttons`, async () => {
-  await page.setViewportSize({ width: MIN_PAGE_WIDTH, height: VIEWPORT.height });
+  // WebKit lays the toolbar out from the margins it had at the previous
+  // width, so the page narrows a pixel at a time, as dragging the window's
+  // edge narrows it, until the layout has settled.
+  for (let extra = 16; extra >= 0; extra -= 1) {
+    await page.setViewportSize({ width: MIN_PAGE_WIDTH + extra, height: VIEWPORT.height });
+  }
   try {
     await page.evaluate(
       () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))),

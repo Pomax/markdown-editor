@@ -31,6 +31,12 @@ test.afterAll(async () => {
 
 test(`the test window is not visible on screen`, async () => {
   test.skip(process.platform === `linux`, `on Linux the window shows on a virtual display`);
+  if (process.platform === `darwin`) {
+    const window = await app.input(`window`, []);
+    expect(window.alpha).toBe(0);
+    expect(window.takesClicks).toBe(false);
+    return;
+  }
   const state = await app.windowState();
   expect(state.visible).toBe(false);
 });

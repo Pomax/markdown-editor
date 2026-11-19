@@ -526,59 +526,26 @@ pub(crate) fn show_message_box(_window: &WebviewWindow, options: &Value) -> usiz
 /// Shows a message box and returns the index of the button chosen.
 #[cfg(not(feature = "test-hooks"))]
 pub(crate) fn show_message_box(window: &WebviewWindow, options: &Value) -> usize {
-    use tauri_plugin_dialog::{DialogExt, MessageDialogButtons, MessageDialogKind};
-    let buttons: Vec<String> = options
-        .get("buttons")
-        .and_then(Value::as_array)
-        .map(|items| {
-            items
-                .iter()
-                .filter_map(|button| button.as_str().map(str::to_string))
-                .collect()
-        })
-        .unwrap_or_default();
+    use crate::message_box::{button_labels, chosen_button, dialog_buttons};
+    use tauri_plugin_dialog::{DialogExt, MessageDialogKind};
+    let labels = button_labels(options);
     let title = options.get("title").and_then(Value::as_str).unwrap_or("");
     let message = options.get("message").and_then(Value::as_str).unwrap_or("");
-    let default_id = options
-        .get("defaultId")
-        .and_then(Value::as_u64)
-        .unwrap_or(0) as usize;
     let cancel_id = options.get("cancelId").and_then(Value::as_u64).unwrap_or(0) as usize;
     let kind = match options.get("type").and_then(Value::as_str) {
         Some("error") => MessageDialogKind::Error,
         Some("warning") => MessageDialogKind::Warning,
         _ => MessageDialogKind::Info,
     };
-    let label = |index: usize| {
-        buttons
-            .get(index)
-            .cloned()
-            .unwrap_or_else(|| "OK".to_string())
-    };
-    // The plugin's message dialog shows at most two buttons, so boxes with
-    // more are reduced to their default and cancel buttons.
-    let (dialog_buttons, ok_index, else_index) = match buttons.len() {
-        0 | 1 => (MessageDialogButtons::Ok, 0usize, 0usize),
-        2 => (
-            MessageDialogButtons::OkCancelCustom(label(0), label(1)),
-            0,
-            1,
-        ),
-        _ => (
-            MessageDialogButtons::OkCancelCustom(label(default_id), label(cancel_id)),
-            default_id,
-            cancel_id,
-        ),
-    };
-    let chose_ok = window
+    let result = window
         .dialog()
         .message(message)
         .title(title)
         .kind(kind)
-        .buttons(dialog_buttons)
+        .buttons(dialog_buttons(&labels))
         .parent(window)
-        .blocking_show();
-    if chose_ok { ok_index } else { else_index }
+        .blocking_show_with_result();
+    chosen_button(&labels, &result, cancel_id)
 }
 
 /// `file:confirmClose`: the unsaved-changes prompt, returning the chosen

@@ -7,6 +7,8 @@ use tauri::{WebviewUrl, WebviewWindowBuilder};
 mod file_manager;
 mod image_path;
 mod ipc_handler;
+#[cfg(all(feature = "test-hooks", target_os = "macos"))]
+mod mac_input;
 mod media_protocol;
 mod menu_builder;
 mod message_box;
@@ -39,6 +41,8 @@ const KEEP_PAGE_DIALOGS: &str = "for (const name of ['alert', 'confirm']) {
 }";
 
 fn main() {
+    #[cfg(target_os = "macos")]
+    webview_settings::use_english_locale();
     tauri::Builder::default()
         .append_invoke_initialization_script(KEEP_PAGE_DIALOGS)
         .register_asynchronous_uri_scheme_protocol("media", |_context, request, responder| {
@@ -80,6 +84,10 @@ fn main() {
         ])
         .setup(|app| {
             use tauri::Manager;
+            #[cfg(all(feature = "test-hooks", target_os = "macos"))]
+            if std::env::var("TESTING").is_ok() {
+                app.set_activation_policy(tauri::ActivationPolicy::Accessory);
+            }
             app.manage(std::sync::Mutex::new(web_contents::WebContents::new()));
             app.manage(std::sync::Mutex::new(menu_builder::MenuBuilder::default()));
             app.manage(WindowTrackerState::default());
@@ -94,6 +102,8 @@ fn main() {
             app.manage(std::sync::Mutex::new(pending));
             menu_builder::install_menu(app.handle());
             fit_main_window(app.handle())?;
+            #[cfg(all(feature = "test-hooks", target_os = "macos"))]
+            mac_input::show_unseen(app.handle());
             #[cfg(feature = "test-hooks")]
             test_hooks::start(app.handle().clone());
             Ok(())
@@ -278,9 +288,8 @@ fn create_window(app: &tauri::AppHandle) -> tauri::Result<()> {
         builder = builder.additional_browser_args(&args);
     }
 
-    #[cfg_attr(not(any(windows, target_os = "linux")), allow(unused_variables))]
     let window = builder.build()?;
-    #[cfg(target_os = "linux")]
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
     webview_settings::handle_page_requests(&window)?;
     #[cfg(windows)]
     webview_settings::apply_webview_settings(&window)?;
@@ -413,7 +422,11 @@ pub fn restore_open_files(app: &tauri::AppHandle, entries: &[Value]) {
 
 /// The narrowest page the toolbar row fits in at full size: its padding,
 /// the file buttons and the toolbar, as `file-buttons.spec.js` measures it.
-const MIN_PAGE_WIDTH: f64 = 998.0;
+const MIN_PAGE_WIDTH: f64 = if cfg!(target_os = "macos") {
+    1003.0
+} else {
+    998.0
+};
 
 /// The page width the window starts with.
 const PAGE_WIDTH: f64 = 1216.0;
@@ -669,7 +682,7 @@ pub fn use_close_flow() {
 
 /// Closes the window: the page's open
 /// files are flushed and saved, and a window with unsaved changes first
-/// asks whether to save them (Save, Save As, Discard, Cancel), staying open
+/// asks whether to save them (Save, Discard, Cancel), staying open
 /// on Cancel and when the save does not happen. It waits for the page and
 /// the box, so it must not run on the main thread.
 fn close_main_window(app: &tauri::AppHandle) {
@@ -695,7 +708,6 @@ fn close_main_window(app: &tauri::AppHandle) {
         .unwrap_or_default();
     let closes = match message_box::close_action(response) {
         "save" => ipc_handler::save(content, &window, app)["success"] == true,
-        "saveAs" => ipc_handler::save_as(content, &window, app)["success"] == true,
         "discard" => true,
         _ => false,
     };

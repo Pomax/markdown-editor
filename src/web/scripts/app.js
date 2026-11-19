@@ -675,10 +675,6 @@ class App extends AppData {
         const content = this.editor.getMarkdown();
         const result = await window.pageToBackendBridge.saveFile(content);
         if (!result.success) return; // save dialog was cancelled
-      } else if (action === `saveAs`) {
-        const content = this.editor.getMarkdown();
-        const result = await window.pageToBackendBridge.saveFileAs(content);
-        if (!result.success) return;
       }
       // 'discard' falls through to the removal below
     }

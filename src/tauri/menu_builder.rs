@@ -1192,8 +1192,33 @@ fn keyboard_input(key: VIRTUAL_KEY, flags: KEYBD_EVENT_FLAGS) -> INPUT {
     }
 }
 
+/// Sends the editing command down AppKit's responder chain, as the Edit
+/// menu's own items do: WebKit refuses a paste asked for from script.
+#[cfg(all(target_os = "macos", not(feature = "test-hooks")))]
+fn send_keystroke(app: &AppHandle, key: char) {
+    use objc2::runtime::{AnyClass, AnyObject, Bool};
+    use objc2::{msg_send, sel};
+    let action = match key {
+        'X' => sel!(cut:),
+        'C' => sel!(copy:),
+        _ => sel!(paste:),
+    };
+    let _ = app.run_on_main_thread(move || {
+        let Some(class) = AnyClass::get(c"NSApplication") else {
+            return;
+        };
+        let nobody = std::ptr::null_mut::<AnyObject>();
+        // Safe: this runs on the main thread, and a nil target and sender
+        // are what `sendAction:to:from:` takes for the responder chain.
+        unsafe {
+            let application: *mut AnyObject = msg_send![class, sharedApplication];
+            let _: Bool = msg_send![application, sendAction: action, to: nobody, from: nobody];
+        }
+    });
+}
+
 /// Runs the editing command directly where no keystroke is sent.
-#[cfg(all(not(windows), not(feature = "test-hooks")))]
+#[cfg(all(target_os = "linux", not(feature = "test-hooks")))]
 fn send_keystroke(app: &AppHandle, key: char) {
     let command = match key {
         'X' => "cut",
@@ -1262,12 +1287,30 @@ fn describe_kind(kind: &MenuItemKind<Wry>, items: &HashMap<String, ItemInfo>) ->
         MenuItemKind::Predefined(item) => {
             let text = item.text().unwrap_or_default();
             if text.is_empty() {
-                Some(json!({ "type": "separator" }))
-            } else {
-                Some(json!({ "label": text, "enabled": true }))
+                return Some(json!({ "type": "separator" }));
             }
+            let mut entry = json!({ "label": text, "enabled": true });
+            let info =
+                predefined_item_role(&text).and_then(|role| items.get(&format!("role:{role}")));
+            if let Some(accelerator) = info.and_then(|info| info.accelerator.as_ref()) {
+                entry["accelerator"] = json!(accelerator);
+                entry["registered"] = json!(true);
+            }
+            Some(entry)
         }
         MenuItemKind::Icon(_) => None,
+    }
+}
+
+/// The edit role of a predefined item, by the label it shows.
+#[cfg(feature = "test-hooks")]
+fn predefined_item_role(label: &str) -> Option<&'static str> {
+    match label {
+        "Cut" => Some("cut"),
+        "Copy" => Some("copy"),
+        "Paste" => Some("paste"),
+        "Select All" => Some("selectAll"),
+        _ => None,
     }
 }
 
@@ -1338,6 +1381,12 @@ pub fn item_enabled(app: &AppHandle, labels: &[String]) -> Option<bool> {
 #[cfg(feature = "test-hooks")]
 pub fn click_item(app: &AppHandle, labels: &[String]) -> bool {
     match find_item(app, labels) {
+        Some(MenuItemKind::Predefined(item)) => {
+            if let Some(role) = predefined_item_role(&item.text().unwrap_or_default()) {
+                run_role(app, role);
+            }
+            true
+        }
         Some(kind) => {
             handle_menu_event(app, &kind.id().0);
             true
@@ -1752,6 +1801,16 @@ mod tests {
             gather_done_box(2, &["a".to_string(), "b".to_string()])["detail"],
             "a\nb"
         );
+    }
+
+    #[test]
+    fn menu_builder_boxes_show_every_button() {
+        use crate::message_box::shows_every_button;
+        assert!(shows_every_button(&about_box("2.2.1")));
+        assert!(shows_every_button(&gather_save_first_box()));
+        assert!(shows_every_button(&gather_confirm_box()));
+        assert!(shows_every_button(&gather_nothing_box()));
+        assert!(shows_every_button(&gather_done_box(1, &["a".to_string()])));
     }
 
     /// A folder outside the document's, written as an absolute path the way

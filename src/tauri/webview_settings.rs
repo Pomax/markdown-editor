@@ -1,9 +1,10 @@
 //! Security limits applied to the webview: which pages the main frame may
 //! navigate to, what a window.open does, and how permission requests are
-//! answered; on Windows and Linux, the routing of the page's `alert` and
-//! `confirm` to the app's message box; on Windows, the routing of menu
+//! answered; the routing of the page's `alert` and `confirm` to the app's
+//! message box; on Windows, the routing of menu
 //! shortcuts pressed while the page has keyboard focus, the WebView2
-//! settings and browser arguments; and on Linux, fullscreen turned off.
+//! settings and browser arguments; and on Linux and macOS, fullscreen
+//! turned off.
 
 use tauri::webview::NewWindowResponse;
 use tauri::{AppHandle, Url, Wry};
@@ -320,13 +321,11 @@ thread_local! {
 }
 
 /// The number given to the next page dialog.
-#[cfg(any(windows, target_os = "linux"))]
 static NEXT_DIALOG: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 
 /// Shows a page's `alert` or `confirm` as the app's message box on a
 /// worker thread, since a blocking box cannot be shown on the main thread,
 /// then calls `finish` back on the main thread with whether OK was chosen.
-#[cfg(any(windows, target_os = "linux"))]
 fn ask_script_dialog(
     window: &tauri::WebviewWindow,
     message: &str,
@@ -425,6 +424,161 @@ fn finish_script_dialog(id: u64, accepted: bool) {
         }
         let _ = deferral.Complete();
     }
+}
+
+/// Has the page report the English locale, whatever the system's is.
+#[cfg(target_os = "macos")]
+pub fn use_english_locale() {
+    use objc2_foundation::{NSArray, NSString, NSUserDefaults, ns_string};
+    let languages = NSArray::from_retained_slice(&[NSString::from_str("en-US")]);
+    // Safe: the value is an array of strings, as this key holds.
+    unsafe {
+        NSUserDefaults::standardUserDefaults()
+            .setObject_forKey(Some(&languages), ns_string!("AppleLanguages"));
+    }
+}
+
+/// A page dialog waiting for its box to be answered, with the handler that
+/// lets the page continue.
+#[cfg(target_os = "macos")]
+enum PendingPageDialog {
+    Alert(block2::RcBlock<dyn Fn()>),
+    Confirm(block2::RcBlock<dyn Fn(objc2::runtime::Bool)>),
+}
+
+#[cfg(target_os = "macos")]
+impl PendingPageDialog {
+    /// Lets the page continue, with whether OK was chosen for a `confirm`.
+    fn finish(self, accepted: bool) {
+        match self {
+            PendingPageDialog::Alert(handler) => handler.call(()),
+            PendingPageDialog::Confirm(handler) => {
+                handler.call((objc2::runtime::Bool::new(accepted),))
+            }
+        }
+    }
+}
+
+#[cfg(target_os = "macos")]
+thread_local! {
+    /// The page dialogs waiting for their box to be answered, by number.
+    /// They stay on the main thread, where WebKit raised them.
+    static PENDING_PAGE_DIALOGS: std::cell::RefCell<
+        std::collections::HashMap<u64, PendingPageDialog>,
+    > = std::cell::RefCell::default();
+}
+
+/// The window whose page dialogs are shown as the app's message box.
+#[cfg(target_os = "macos")]
+static PAGE_DIALOG_WINDOW: std::sync::Mutex<Option<tauri::WebviewWindow>> =
+    std::sync::Mutex::new(None);
+
+/// Shows a page dialog as the app's message box, and lets the page continue
+/// once the box is answered.
+#[cfg(target_os = "macos")]
+fn show_page_dialog(
+    message: *mut objc2_foundation::NSString,
+    confirm: bool,
+    pending: PendingPageDialog,
+) {
+    use std::sync::atomic::Ordering;
+    // Safe: WebKit passes a live string, or none.
+    let text = unsafe { message.as_ref() }.map_or_else(String::new, ToString::to_string);
+    let window = PAGE_DIALOG_WINDOW.lock().expect("page dialog lock").clone();
+    let Some(window) = window else {
+        pending.finish(false);
+        return;
+    };
+    let id = NEXT_DIALOG.fetch_add(1, Ordering::SeqCst);
+    PENDING_PAGE_DIALOGS.with(|dialogs| dialogs.borrow_mut().insert(id, pending));
+    ask_script_dialog(&window, &text, confirm, move |accepted| {
+        let dialog = PENDING_PAGE_DIALOGS.with(|dialogs| dialogs.borrow_mut().remove(&id));
+        if let Some(dialog) = dialog {
+            dialog.finish(accepted);
+        }
+    });
+}
+
+/// WebKit's request to show a page's `alert`.
+#[cfg(target_os = "macos")]
+extern "C-unwind" fn run_alert_panel(
+    _delegate: *mut objc2::runtime::AnyObject,
+    _selector: objc2::runtime::Sel,
+    _view: *mut objc2::runtime::AnyObject,
+    message: *mut objc2_foundation::NSString,
+    _frame: *mut objc2::runtime::AnyObject,
+    handler: *mut block2::Block<dyn Fn()>,
+) {
+    // Safe: WebKit passes a live block, which the copy keeps alive.
+    if let Some(handler) = unsafe { block2::RcBlock::copy(handler) } {
+        show_page_dialog(message, false, PendingPageDialog::Alert(handler));
+    }
+}
+
+/// WebKit's request to show a page's `confirm`.
+#[cfg(target_os = "macos")]
+extern "C-unwind" fn run_confirm_panel(
+    _delegate: *mut objc2::runtime::AnyObject,
+    _selector: objc2::runtime::Sel,
+    _view: *mut objc2::runtime::AnyObject,
+    message: *mut objc2_foundation::NSString,
+    _frame: *mut objc2::runtime::AnyObject,
+    handler: *mut block2::Block<dyn Fn(objc2::runtime::Bool)>,
+) {
+    // Safe: WebKit passes a live block, which the copy keeps alive.
+    if let Some(handler) = unsafe { block2::RcBlock::copy(handler) } {
+        show_page_dialog(message, true, PendingPageDialog::Confirm(handler));
+    }
+}
+
+/// Turns off WebKit's element fullscreen, which wry turns on for every
+/// webview, so neither the page nor any frame in it can go fullscreen, and
+/// shows the page's `alert` and `confirm` as the app's message box: wry's
+/// delegate does not answer them, which makes every `confirm` a Cancel.
+#[cfg(target_os = "macos")]
+pub fn handle_page_requests(window: &tauri::WebviewWindow) -> tauri::Result<()> {
+    *PAGE_DIALOG_WINDOW.lock().expect("page dialog lock") = Some(window.clone());
+    window.with_webview(|webview| {
+        use objc2::rc::Retained;
+        use objc2::runtime::{AnyClass, AnyObject, Imp, NSObjectProtocol};
+        use objc2::sel;
+        use objc2_foundation::{NSNumber, NSObjectNSKeyValueCoding, ns_string};
+        use objc2_web_kit::WKWebView;
+        const PANEL_TYPES: &std::ffi::CStr = c"v@:@@@@?";
+        // Safe: Tauri hands out the live WKWebView, and runs this on the
+        // main thread, where it is used. The private key is the only
+        // switch on macOS versions without the public setter. Each method
+        // has the signature of the selector it is added under, and setting
+        // the delegate again has WebKit see the new methods.
+        unsafe {
+            let view = &*webview.inner().cast::<WKWebView>();
+            let preferences = view.configuration().preferences();
+            if preferences.respondsToSelector(sel!(setElementFullscreenEnabled:)) {
+                preferences.setElementFullscreenEnabled(false);
+            } else {
+                let off = NSNumber::numberWithBool(false);
+                preferences.setValue_forKey(Some(&off), ns_string!("fullScreenEnabled"));
+            }
+            let Some(delegate) = view.UIDelegate() else {
+                return;
+            };
+            let object = Retained::as_ptr(&delegate).cast::<AnyObject>();
+            let class = std::ptr::from_ref::<AnyClass>((*object).class()).cast_mut();
+            objc2::ffi::class_addMethod(
+                class,
+                sel!(webView:runJavaScriptAlertPanelWithMessage:initiatedByFrame:completionHandler:),
+                std::mem::transmute::<*const (), Imp>(run_alert_panel as *const ()),
+                PANEL_TYPES.as_ptr(),
+            );
+            objc2::ffi::class_addMethod(
+                class,
+                sel!(webView:runJavaScriptConfirmPanelWithMessage:initiatedByFrame:completionHandler:),
+                std::mem::transmute::<*const (), Imp>(run_confirm_panel as *const ()),
+                PANEL_TYPES.as_ptr(),
+            );
+            view.setUIDelegate(Some(&delegate));
+        }
+    })
 }
 
 #[cfg(target_os = "linux")]

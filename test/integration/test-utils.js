@@ -11,7 +11,9 @@
  * WebKitGTK has no DevTools Protocol, so on Linux each launch gets a
  * virtual X display of its own instead, and the page is a LinuxPage: the
  * part of Playwright's Page that the specs use, over WebKitGTK's own
- * inspector, with real X11 input.
+ * inspector, with real X11 input. WKWebView has neither, so on macOS the
+ * page is a LinuxPage over the app's test hooks, with key and mouse events
+ * sent to the app's unseen window inside its own process.
  *
  * The standard viewport is 1920 × 1280 so layout-sensitive tests behave
  * the same regardless of the runner's physical screen.
@@ -27,6 +29,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { chromium, test } from '@playwright/test';
 import { TEST_APP_BINARY } from '../../scripts/build-test-app.js';
 import { LinuxPage } from './linux-page.js';
+import { MacInput, MacInspector } from './mac-webview.js';
 import { TauriApp } from './tauri-app.js';
 import { WebKitInspector } from './webkit-inspector.js';
 import { X11Input, startVirtualDisplay } from './x11-display.js';
@@ -301,6 +304,77 @@ async function startOnLinux({ extraArgs, keepWindowSize, webviewDir, settingsDir
 }
 
 /**
+ * Waits until pointer input reaches a page that has just started, which
+ * WebKit drops after launch until the pointer has moved over the page, by
+ * moving the pointer until the page reports seeing it, for at most a
+ * second.
+ * @param {TauriApp} app
+ * @param {LinuxPage} page
+ * @returns {Promise<void>}
+ */
+async function waitForPageInput(app, page) {
+  const moves = () => page.evaluateWithHarness(`return harness.seen.mousemove;`);
+  const before = await moves();
+  const deadline = Date.now() + 1_000;
+  for (let x = 1; Date.now() < deadline; x += 1) {
+    await app.input(`move`, [String(x), `1`]);
+    await delay(25);
+    if ((await moves()) > before) return;
+  }
+}
+
+/**
+ * Starts the test binary on macOS, attaches a LinuxPage to its page over
+ * the test hooks, and gives the window the input focus.
+ * @param {LaunchAttempt} attempt
+ * @returns {Promise<{ app: TauriApp, page: import('@playwright/test').Page }>}
+ */
+async function startOnMac({ extraArgs, keepWindowSize, settingsDir, cleanup }) {
+  const child = spawn(TEST_APP_BINARY, extraArgs, {
+    env: { ...process.env, TESTING: `1`, TESTING_SETTINGS_DIR: settingsDir },
+    stdio: [`pipe`, `pipe`, `inherit`],
+  });
+  started.add(child);
+  cleanup.push(() => child.kill());
+  const exited = new Promise((resolve) => child.once(`exit`, resolve));
+  const app = new TauriApp(/** @type {any} */ (child));
+  const inspector = new MacInspector(app);
+  exited.then(() => inspector.close());
+  const page = new LinuxPage(
+    /** @type {any} */ (inspector),
+    /** @type {any} */ (new MacInput(app)),
+    {
+      url: `tauri://localhost/web/index.html`,
+      resizeWindow: ({ width, height }) => app.input(`resize`, [String(width), String(height)]),
+      inputWaitMs: 4_000,
+    },
+  );
+  await page.waitForFunction(() => document.readyState === `complete`);
+  await page.focusWindow();
+  if (!keepWindowSize) await page.setViewportSize(VIEWPORT);
+  await waitForPageInput(app, page);
+  attachments.set(app, {
+    detach: async () => page.disconnect(),
+    release: async () => {
+      await Promise.race([exited, delay(1000)]);
+      child.kill();
+    },
+  });
+  return { app, page: /** @type {any} */ (page) };
+}
+
+/**
+ * The way the test binary is started on this platform.
+ * @type {(attempt: LaunchAttempt) => Promise<{ app: TauriApp, page: import('@playwright/test').Page }>}
+ */
+const startApp =
+  process.platform === `linux`
+    ? startOnLinux
+    : process.platform === `darwin`
+      ? startOnMac
+      : startOverDevtools;
+
+/**
  * Launches the Tauri test binary, attaches to its page, waits for the app
  * page to be ready, and sets a predictable viewport.
  *
@@ -325,7 +399,6 @@ export async function launchApp(
 ) {
   const resultsDir = path.join(projectRoot, `test-results`);
   const settingsDir = path.join(resultsDir, `settings`, path.basename(test.info().file));
-  const start = process.platform === `linux` ? startOnLinux : startOverDevtools;
   const maxAttempts = 3;
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     /** @type {(() => void)[]} */
@@ -338,7 +411,14 @@ export async function launchApp(
       );
       mkdirSync(webviewDir, { recursive: true });
       mkdirSync(settingsDir, { recursive: true });
-      return await start({ extraArgs, visible, keepWindowSize, webviewDir, settingsDir, cleanup });
+      return await startApp({
+        extraArgs,
+        visible,
+        keepWindowSize,
+        webviewDir,
+        settingsDir,
+        cleanup,
+      });
     } catch (err) {
       for (const undo of cleanup.reverse()) {
         try {

@@ -36,7 +36,7 @@ const PAGE_WIDTH = 1216;
 const WINDOW_HEIGHT = 1131;
 
 /** The narrowest page (`MIN_PAGE_WIDTH` in main.rs). */
-const MIN_PAGE_WIDTH = 998;
+const MIN_PAGE_WIDTH = process.platform === `darwin` ? 1003 : 998;
 
 /** The whole window's minimum height (main.rs). */
 const MIN_WINDOW_HEIGHT = 848;
@@ -128,7 +128,9 @@ test(`at its starting size the page shows everything without running past the ri
     await page.evaluate(
       () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))),
     );
-    await page.screenshot({ path: testInfo.outputPath(`starting-size.png`) });
+    if (process.platform !== `darwin`) {
+      await page.screenshot({ path: testInfo.outputPath(`starting-size.png`) });
+    }
     const widths = await page.evaluate(() => ({
       page: window.innerWidth,
       content: document.documentElement.scrollWidth,

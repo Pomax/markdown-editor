@@ -338,9 +338,10 @@ test(`only the six page-handled Edit shortcuts are left unregistered`, async () 
   const unregistered = accelerators
     .filter((entry) => !entry.registered)
     .map((entry) => entry.accelerator);
-  expect(unregistered.sort()).toEqual([...PAGE_HANDLED].sort());
+  const expected = process.platform === `darwin` ? [] : PAGE_HANDLED;
+  expect(unregistered.sort()).toEqual([...expected].sort());
   expect(accelerators.filter((entry) => entry.registered).length).toBe(
-    accelerators.length - PAGE_HANDLED.length,
+    accelerators.length - expected.length,
   );
 });
 

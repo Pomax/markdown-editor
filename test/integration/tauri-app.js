@@ -185,6 +185,25 @@ export class TauriApp {
     }
   }
 
+  /**
+   * Evaluates an expression in the page and resolves with its value.
+   * @param {string} expression
+   * @returns {Promise<any>}
+   */
+  evaluate(expression) {
+    return this.#send(`page.evaluate`, { expression });
+  }
+
+  /**
+   * Runs one input command in the app's process, on macOS.
+   * @param {string} command
+   * @param {string[]} args
+   * @returns {Promise<any>}
+   */
+  input(command, args) {
+    return this.#send(`input`, { command, args });
+  }
+
   /** @returns {Promise<number>} The number of open windows. */
   windowCount() {
     return this.#send(`windowCount`);

@@ -251,10 +251,48 @@ pub fn start(app: AppHandle) {
             let id = request.get("id").cloned().unwrap_or(Value::Null);
             let method = request.get("method").and_then(Value::as_str).unwrap_or("");
             let params = request.get("params").cloned().unwrap_or(Value::Null);
+            if matches!(method, "page.evaluate" | "input") {
+                let app = app.clone();
+                let method = method.to_string();
+                std::thread::spawn(move || match waiting_hook(&app, &method, &params) {
+                    Ok(result) => respond(&id, result),
+                    Err(error) => respond_error(&id, &error),
+                });
+                continue;
+            }
             let result = dispatch(&app, method, &params);
             respond(&id, result);
         }
     });
+}
+
+/// Handles a hook that waits for the page or the main thread, which runs
+/// on a thread of its own so other hooks can be answered meanwhile.
+fn waiting_hook(app: &AppHandle, method: &str, params: &Value) -> Result<Value, String> {
+    if method == "input" {
+        return run_input(app, params);
+    }
+    let window = app
+        .get_webview_window("main")
+        .ok_or_else(|| "the app has no window".to_string())?;
+    let expression = params
+        .get("expression")
+        .and_then(Value::as_str)
+        .unwrap_or("undefined");
+    let web_contents = app.state::<crate::ipc_handler::WebContentsState>();
+    crate::web_contents::execute_javascript(&window, web_contents.inner(), expression)
+}
+
+/// Runs one input command in the app's process.
+#[cfg(target_os = "macos")]
+fn run_input(app: &AppHandle, params: &Value) -> Result<Value, String> {
+    crate::mac_input::run(app, params)
+}
+
+/// Input through the hook channel exists on macOS only.
+#[cfg(not(target_os = "macos"))]
+fn run_input(_app: &AppHandle, _params: &Value) -> Result<Value, String> {
+    Err("the input hook works on macOS only".to_string())
 }
 
 /// Handles one hook request and returns its result. Unknown hooks return
@@ -439,6 +477,12 @@ fn dispatch(app: &AppHandle, method: &str, params: &Value) -> Value {
     }
 }
 
+/// Whether the window can be seen: on macOS the test window is on screen
+/// but fully transparent, so it never can.
+fn is_seen(window: &tauri::WebviewWindow) -> bool {
+    !cfg!(target_os = "macos") && window.is_visible().unwrap_or(false)
+}
+
 /// The window's state: whether it is visible, maximized (the tracked
 /// state, which a hidden window is given when it is shown) and fullscreen, its outer
 /// bounds, its page size and its monitor's work area in logical pixels,
@@ -461,7 +505,7 @@ fn window_state(app: &AppHandle, window: &tauri::WebviewWindow) -> Value {
         })
     });
     json!({
-        "visible": window.is_visible().unwrap_or(false),
+        "visible": is_seen(window),
         "maximized": maximized,
         "fullscreen": window.is_fullscreen().unwrap_or(false),
         "x": outer.map(|rect| f64::from(rect.x) / scale),
@@ -503,7 +547,7 @@ fn maximize(app: &AppHandle) {
     let Some(window) = app.get_webview_window("main") else {
         return;
     };
-    if window.is_visible().unwrap_or(false) {
+    if is_seen(&window) {
         let _ = window.maximize();
         return;
     }
@@ -521,7 +565,16 @@ fn maximize(app: &AppHandle) {
 
 /// Writes one tagged reply line to stdout.
 fn respond(id: &Value, result: Value) {
-    let message = json!({ "id": id, "result": result });
+    write_reply(json!({ "id": id, "result": result }));
+}
+
+/// Writes one tagged reply line that fails the request to stdout.
+fn respond_error(id: &Value, error: &str) {
+    write_reply(json!({ "id": id, "error": error }));
+}
+
+/// Writes a reply to stdout as one tagged line.
+fn write_reply(message: Value) {
     let stdout = std::io::stdout();
     let mut lock = stdout.lock();
     let _ = writeln!(lock, "{TAG}{message}");

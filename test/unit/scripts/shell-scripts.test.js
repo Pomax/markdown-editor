@@ -240,11 +240,13 @@ describe(`shell scripts`, { skip: process.platform === `win32` }, () => {
      * Stubs for the macOS commands run.sh uses: `uname` says Darwin,
      * `hdiutil attach` puts an app whose executable is the app stub at the
      * mount point and `hdiutil detach` takes it away again, each logging
-     * its arguments, and `defaults` names the app's executable.
+     * its arguments, `defaults` names the app's executable, and `mktemp`
+     * makes its folder in TMPDIR, which the macOS `mktemp` does not use.
      * @type {Record<string, string>}
      */
     const MAC_STUBS = {
       uname: `#!/bin/sh\necho Darwin\n`,
+      mktemp: `#!/bin/sh\nexec /usr/bin/mktemp -d "$TMPDIR/tmp.XXXXXX"\n`,
       hdiutil: [
         `#!/bin/sh`,
         `echo "$*" >> "$HDIUTIL_LOG"`,

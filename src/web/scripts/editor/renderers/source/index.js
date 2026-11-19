@@ -23,6 +23,23 @@ function syncScroll(textarea, pre) {
 }
 
 /**
+ * Whether the webview makes a textarea as tall as its content from the
+ * stylesheet's `field-sizing`.
+ * @type {boolean}
+ */
+const SIZES_TEXTAREAS = globalThis.CSS?.supports(`field-sizing`, `content`) ?? true;
+
+/**
+ * Makes a textarea as tall as its content, where the webview does not.
+ * @param {HTMLTextAreaElement} textarea
+ */
+function fitTextarea(textarea) {
+  if (SIZES_TEXTAREAS) return;
+  textarea.style.height = `auto`;
+  textarea.style.height = `${textarea.scrollHeight}px`;
+}
+
+/**
  * Renders the syntax tree as plain markdown in a textarea with
  * an overlapping pre mirror for coordinate lookups.
  */
@@ -67,12 +84,17 @@ export class SourceRendererV2 extends SourceRendererV2Data {
         caret: textarea.selectionStart,
       });
       this.lastValue = textarea.value;
+      fitTextarea(textarea);
     });
     textarea.addEventListener(`scroll`, () => syncScroll(textarea, pre));
 
     wrapper.appendChild(textarea);
     wrapper.appendChild(pre);
     container.appendChild(wrapper);
+    if (!SIZES_TEXTAREAS) {
+      fitTextarea(textarea);
+      new ResizeObserver(() => fitTextarea(textarea)).observe(wrapper);
+    }
 
     this.textarea = textarea;
     this.pre = pre;
@@ -119,6 +141,7 @@ export class SourceRendererV2 extends SourceRendererV2Data {
     this.textarea.setSelectionRange(caret, caret);
     this.lastValue = markdown;
     this.mirrorDirty = true;
+    fitTextarea(this.textarea);
   }
 
   /**

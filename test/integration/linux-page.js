@@ -154,6 +154,36 @@ export function pageHarness() {
     );
   }
 
+  /**
+   * Whether this webview reports the box of a CSS-zoomed element in the
+   * element's own zoomed units, instead of in the page's.
+   * @type {boolean}
+   */
+  const boxesInZoomedUnits = (() => {
+    const probe = document.createElement(`div`);
+    probe.style.cssText = `position: fixed; left: 100px; top: 0; width: 10px; zoom: 0.5;`;
+    document.documentElement.append(probe);
+    const { left } = probe.getBoundingClientRect();
+    probe.remove();
+    return left === 100;
+  })();
+
+  /**
+   * What to multiply an element's reported box by to get page pixels.
+   * @param {Element} element
+   * @returns {number}
+   */
+  const boxScale = (element) => {
+    if (!boxesInZoomedUnits) return 1;
+    let scale = 1;
+    for (let at = /** @type {Element | null} */ (element); at; at = at.parentElement) {
+      const zoom = /** @type {any} */ (getComputedStyle(at)).zoom;
+      const value = Number.parseFloat(zoom);
+      if (value > 0) scale *= String(zoom).endsWith(`%`) ? value / 100 : value;
+    }
+    return scale;
+  };
+
   /** @param {string} text */
   const normalizeWhiteSpace = (text) => text.replace(/[​­]/g, ``).trim().replace(/\s+/g, ` `);
 
@@ -420,8 +450,11 @@ export function pageHarness() {
     await frames();
     const boxes = [...element.getClientRects()].filter((box) => box.width > 0 && box.height > 0);
     const box = boxes[0] ?? element.getBoundingClientRect();
-    const x = options.position ? box.left + options.position.x : box.left + box.width / 2;
-    const y = options.position ? box.top + options.position.y : box.top + box.height / 2;
+    const scale = boxScale(element);
+    const left = box.left * scale;
+    const top = box.top * scale;
+    const x = options.position ? left + options.position.x : left + (box.width * scale) / 2;
+    const y = options.position ? top + options.position.y : top + (box.height * scale) / 2;
     if (!options.force) {
       const hit = document.elementFromPoint(x, y);
       if (!hit || (hit !== element && !element.contains(hit))) {
@@ -502,6 +535,7 @@ export function pageHarness() {
 
   page.__linuxHarness = {
     seen,
+    boxScale,
     query,
     single,
     isVisible,
@@ -839,7 +873,7 @@ export class LinuxLocator {
    */
   boundingBox() {
     return this.#withElement(
-      `const box = element.getBoundingClientRect(); return box.width === 0 && box.height === 0 ? null : { x: box.x, y: box.y, width: box.width, height: box.height };`,
+      `const box = element.getBoundingClientRect(); const scale = harness.boxScale(element); return box.width === 0 && box.height === 0 ? null : { x: box.x * scale, y: box.y * scale, width: box.width * scale, height: box.height * scale };`,
     );
   }
 
@@ -1054,15 +1088,22 @@ export class LinuxPage {
   #initScripts = [];
 
   /**
+   * How long an input call waits for the page to see the events it sent.
+   * @type {number}
+   */
+  #inputWaitMs;
+
+  /**
    * @param {import('./webkit-inspector.js').WebKitInspector} inspector
    * @param {import('./x11-display.js').X11Input} input
-   * @param {{ url: string, resizeWindow: (bounds: { width: number, height: number }) => Promise<unknown> }} options
+   * @param {{ url: string, resizeWindow: (bounds: { width: number, height: number }) => Promise<unknown>, inputWaitMs?: number }} options
    */
   constructor(inspector, input, options) {
     this.#inspector = inspector;
     this.#input = input;
     this.#url = options.url;
     this.#resizeWindow = options.resizeWindow;
+    this.#inputWaitMs = options.inputWaitMs ?? INPUT_WAIT_MS;
     this.keyboard = new LinuxKeyboard(this);
     this.mouse = new LinuxMouse(this);
   }
@@ -1230,7 +1271,7 @@ export class LinuxPage {
     const answer = await this.#input.run(command, ...args);
     const wanted = before + (expected ?? Number(answer));
     await this.evaluateWithHarness(
-      `return harness.settle(${source(counter)}, ${wanted}, ${INPUT_WAIT_MS});`,
+      `return harness.settle(${source(counter)}, ${wanted}, ${this.#inputWaitMs});`,
     ).catch((error) => {
       if (!isNavigationError(error)) throw error;
     });
@@ -1253,7 +1294,10 @@ export class LinuxPage {
         window.innerWidth === width && window.innerHeight === height,
       [size.width, size.height],
       { timeout: 5_000 },
-    );
+    ).catch(async () => {
+      const actual = await this.evaluate(() => `${window.innerWidth}x${window.innerHeight}`);
+      throw new Error(`the page is ${actual}, not ${size.width}x${size.height}`);
+    });
   }
 
   /**
