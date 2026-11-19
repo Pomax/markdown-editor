@@ -78,10 +78,19 @@ const SETTINGS_DIR = path.join(
   path.basename(import.meta.filename),
 );
 
-test.beforeAll(() => {
-  // So the first launch has no saved bounds.
-  fs.rmSync(SETTINGS_DIR, { recursive: true, force: true });
-});
+/**
+ * Deletes the saved settings, so the next launch has no saved bounds. An
+ * app that is still exiting keeps its settings database open, which
+ * Windows refuses to delete, so the deletion is retried until it has.
+ * @returns {Promise<void>}
+ */
+async function clearSettings() {
+  await expect(() => {
+    fs.rmSync(SETTINGS_DIR, { recursive: true, force: true });
+  }).toPass({ timeout: 3_000 });
+}
+
+test.beforeAll(clearSettings);
 
 test(`with no saved bounds the window starts with a 1216 wide page, 1131 high`, async () => {
   const { app } = await launchMeasured();
@@ -97,7 +106,7 @@ test(`with no saved bounds the window starts with a 1216 wide page, 1131 high`, 
 });
 
 test(`a window closed where it started saves the bounds it started with`, async () => {
-  fs.rmSync(SETTINGS_DIR, { recursive: true, force: true });
+  await clearSettings();
   const first = await launchMeasured();
   const { workArea } = await windowState(first.app);
   await closeApp(first.app);
