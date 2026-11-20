@@ -12,6 +12,11 @@ import { parser } from '../../../src/parsers/old/dfa-parser.js';
 import { SyntaxTree } from '../../../src/parsers/old/syntax-tree.js';
 
 const README = readFileSync(resolve(`README.md`), `utf-8`);
+const README_LINES = README.split(`\n`);
+
+const sections = Array.from(README.matchAll(/(### (.*\n)(\r?\n?[^#]+)*)\s*\n/g)).map((e) => e[0]);
+const headings = README_LINES.filter((e) => e.startsWith(`#`));
+const paragraphs = README_LINES.filter((e) => !!e.match(/^\w/));
 
 /**
  * Collects the IDs of all top-level children in a tree.
@@ -65,8 +70,9 @@ describe(`SyntaxTree.updateUsing`, () => {
   });
 
   it(`preserves ID of an edited paragraph and updates its content`, async () => {
-    const originalLine = `A GitHub-flavoured markdown editor built using the web stack, running in Tauri (the operating system's own web view, with a Rust backend), featuring a syntactic tree-based document model for fast editing of large documents (e.g. 50k+ work documents like https://pomax.github.io/are-we-flying).`;
-    const editedLine = `A GitHub-flavoured markdown editor built using the web stack, running in Tauri (the operating system's own web view, with a Rust backend), featuring a syntactic tree-based document model for fast editing of **very large** documents.`;
+    const { 0: l, length: len } = paragraphs;
+    const originalLine = l;
+    const editedLine = l.substring(10) + l.substring(0, len - 10);
     const editedReadme = replaceFirst(README, originalLine, editedLine);
 
     const oldTree = await parser.parse(README);
@@ -89,6 +95,7 @@ describe(`SyntaxTree.updateUsing`, () => {
   });
 
   it(`assigns a fresh ID to an inserted node while preserving others`, async () => {
+    // FIX THIS FUCKING TEST WHY IS IT FUCKING HARDCODED CONTENT INSTEAD OF FUCKING FINDING "WHATEVER IS IN THE README THAT WE CAN USE
     const versionMatch = README.match(/^## Current version: .+$/m);
     assert.ok(versionMatch, `README must contain a "## Current version:" heading`);
     const insertionPoint = versionMatch[0];
@@ -118,7 +125,7 @@ describe(`SyntaxTree.updateUsing`, () => {
   });
 
   it(`removes a node and preserves surviving IDs`, async () => {
-    const lineToRemove = `See the [release log](./RELEASE_LOG.md) for what's new in this version.`;
+    const lineToRemove = paragraphs[0];
     const editedReadme = removeBlock(README, lineToRemove);
 
     const oldTree = await parser.parse(README);
@@ -137,12 +144,11 @@ describe(`SyntaxTree.updateUsing`, () => {
   });
 
   it(`preserves IDs when sections are reordered`, async () => {
-    const aiSection = `## Well I don't want to use something made by AI\n\nThat's fine. There's a reason I gave this project the name that it has: this is a tool that ***I*** need. I'm putting it up on GitHub with a public domain license because that's what I do with almost everything I make, and if you don't like it, no one's forcing you to use it, or even keep reading.`;
-    const vibeSection = `## So this is a vibe coded project?\n\nNot really, no. This is literally an experiment into how _not_ to vibe code, and instead use these tools in a way that actually makes the same amount of sense as any other IDE automation. Because there is _so much_ these tools can't do, without telling you, and if you just let them "do their thing" instead of making them perform very specific targetted tasks based on you tracking the task list and acceptance criteria, that's on you.`;
-
-    const editedReadme = README.replace(aiSection, `PLACEHOLDER_VIBE`)
-      .replace(vibeSection, aiSection)
-      .replace(`PLACEHOLDER_VIBE`, vibeSection);
+    const section1 = sections[0];
+    const section2 = sections[1];
+    const editedReadme = README.replace(section1, `PLACEHOLDER`)
+      .replace(section2, section1)
+      .replace(`PLACEHOLDER`, section2);
 
     const oldTree = await parser.parse(README);
     const newTree = await parser.parse(editedReadme);
@@ -158,7 +164,8 @@ describe(`SyntaxTree.updateUsing`, () => {
   });
 
   it(`assigns a fresh ID when a node's type changes`, async () => {
-    const headingContent = `So this is a vibe coded project?`;
+    // FIX THIS FUCKING TEST WHY IS IT FUCKING HARDCODED CONTENT INSTEAD OF FUCKING FINDING "WHATEVER IS IN THE README THAT WE CAN USE
+    const headingContent = `So... what is this?`;
     const oldTree = await parser.parse(README);
     const headingNode = oldTree.children.find(
       (c) => c.type === `heading2` && c.content === headingContent,
@@ -186,10 +193,11 @@ describe(`SyntaxTree.updateUsing`, () => {
   });
 
   it(`handles simultaneous edit, insert, and delete`, async () => {
-    const originalLine = `A GitHub-flavoured markdown editor built using the web stack, running in Tauri (the operating system's own web view, with a Rust backend), featuring a syntactic tree-based document model for fast editing of large documents (e.g. 50k+ work documents like https://pomax.github.io/are-we-flying).`;
-    const editedLine = `A markdown editor built with Tauri featuring a **tree-based** document model.`;
-    const lineToRemove = `Previous versions can be found over on the [Releases](https://github.com/Pomax/Pomax-s-Markdown-Editor/releases/latest) page.`;
-    const insertionPoint = `# Testing`;
+    // FIX THIS FUCKING TEST WHY IS IT FUCKING HARDCODED CONTENT INSTEAD OF FUCKING FINDING "WHATEVER IS IN THE README THAT WE CAN USE
+    const { 0: l, 1: lineToRemove, length: len } = paragraphs;
+    const originalLine = l;
+    const editedLine = l.substring(10) + l.substring(0, len - 10);
+    const insertionPoint = `### Downloads`;
     const fence = `\`\`\``;
     const insertedBlock = `${fence}sh\nnpm run check\n${fence}`;
 
