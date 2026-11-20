@@ -58,6 +58,44 @@ const MOVED = { dx: 100, dy: 50, width: 1300, height: 900 };
  */
 
 /**
+ * The bounds the app gives a window that it keeps inside the work area:
+ * no larger than the work area, and moved inside it.
+ * @param {{ x: number, y: number, width: number, height: number }} bounds
+ * @param {WindowState['workArea']} workArea
+ * @returns {{ x: number, y: number, width: number, height: number }}
+ */
+function keptInWorkArea(bounds, workArea) {
+  const width = Math.min(bounds.width, Math.round(workArea.width));
+  const height = Math.min(bounds.height, Math.round(workArea.height));
+  const right = Math.round(workArea.x + workArea.width) - width;
+  const bottom = Math.round(workArea.y + workArea.height) - height;
+  return {
+    x: Math.min(Math.max(Math.round(bounds.x), Math.round(workArea.x)), right),
+    y: Math.min(Math.max(Math.round(bounds.y), Math.round(workArea.y)), bottom),
+    width,
+    height,
+  };
+}
+
+/**
+ * The bounds the move and resize test gives the window, kept inside the
+ * work area.
+ * @param {WindowState['workArea']} workArea
+ * @returns {{ x: number, y: number, width: number, height: number }}
+ */
+function movedInWorkArea(workArea) {
+  return keptInWorkArea(
+    {
+      x: workArea.x + MOVED.dx,
+      y: workArea.y + MOVED.dy,
+      width: MOVED.width,
+      height: MOVED.height,
+    },
+    workArea,
+  );
+}
+
+/**
  * The window's state, rounded to whole logical pixels.
  * @param {import('../../tauri-app.js').TauriApp} app
  * @returns {Promise<WindowState>}
@@ -92,12 +130,15 @@ async function clearSettings() {
 
 test.beforeAll(clearSettings);
 
-test(`with no saved bounds the window starts with a 1216 wide page, 1131 high`, async () => {
+test(`with no saved bounds the window starts with a 1216 wide page, 1131 high, kept inside the work area`, async () => {
   const { app } = await launchMeasured();
   try {
     const state = await windowState(app);
+    const frameWidth = state.width - state.innerWidth;
     expect(state.visible).toBe(SHOWN);
-    expect(state.innerWidth).toBe(PAGE_WIDTH);
+    expect(state.innerWidth).toBe(
+      Math.min(PAGE_WIDTH, Math.round(state.workArea.width) - frameWidth),
+    );
     expect(state.height).toBe(Math.min(WINDOW_HEIGHT, Math.round(state.workArea.height)));
     expect(state.maximized).toBe(false);
   } finally {
@@ -113,7 +154,7 @@ test(`a window closed where it started saves the bounds it started with`, async 
   const second = await launchMeasured();
   try {
     const saved = await second.app.settings.get(`windowBounds`);
-    expect(saved.width).toBeGreaterThanOrEqual(PAGE_WIDTH);
+    expect(saved.width).toBeGreaterThanOrEqual(Math.min(PAGE_WIDTH, Math.round(workArea.width)));
     expect(saved.height).toBe(Math.min(WINDOW_HEIGHT, Math.round(workArea.height)));
   } finally {
     await closeApp(second.app);
@@ -186,12 +227,9 @@ test(`the saved bounds are restored on the next launch`, async () => {
   const { app } = await launchMeasured();
   try {
     const state = await windowState(app);
-    expect({ x: state.x, y: state.y, width: state.width, height: state.height }).toEqual({
-      x: Math.round(state.workArea.x + MOVED.dx),
-      y: Math.round(state.workArea.y + MOVED.dy),
-      width: MOVED.width,
-      height: MOVED.height,
-    });
+    expect({ x: state.x, y: state.y, width: state.width, height: state.height }).toEqual(
+      movedInWorkArea(state.workArea),
+    );
     expect(state.maximized).toBe(false);
   } finally {
     await closeApp(app);
@@ -200,6 +238,8 @@ test(`the saved bounds are restored on the next launch`, async () => {
 
 test(`a maximized window is restored maximized, with the bounds it restores to`, async () => {
   const first = await launchMeasured();
+  const { workArea } = await windowState(first.app);
+  const moved = movedInWorkArea(workArea);
   try {
     await first.app.maximize();
     await expect
@@ -207,8 +247,8 @@ test(`a maximized window is restored maximized, with the bounds it restores to`,
       .toBe(true);
     const saved = await first.app.settings.get(`windowBounds`);
     expect({ width: saved.width, height: saved.height }).toEqual({
-      width: MOVED.width,
-      height: MOVED.height,
+      width: moved.width,
+      height: moved.height,
     });
   } finally {
     await closeApp(first.app);
@@ -221,8 +261,8 @@ test(`a maximized window is restored maximized, with the bounds it restores to`,
     expect(state.visible).toBe(SHOWN);
     const restoresTo = SHOWN ? await second.app.settings.get(`windowBounds`) : state;
     expect({ width: restoresTo.width, height: restoresTo.height }).toEqual({
-      width: MOVED.width,
-      height: MOVED.height,
+      width: moved.width,
+      height: moved.height,
     });
     if (SHOWN) {
       expect({ width: state.width, height: state.height }).toEqual({
