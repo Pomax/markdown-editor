@@ -105,6 +105,8 @@ These rules describe writing-related actions that MAY NEVER BE PERFORMED BY THE 
 
 These rules describe general actions that MAY NEVER BE PERFORMED BY THE WORKER
 
+- Going off on something that you were not told to do
+- Investigating something unexpected but unrelated
 - Code changes not required to fulfil the instructions or planned tasks.
 - Working on anything while a question from the user has not been answered yet.
 - Acting on a question as though it were an instruction.
