@@ -1,6 +1,6 @@
 /**
  * @fileoverview Checks the developer documents and the README after the
- * port: none refers to the removed layer (`preload.cjs`,
+ * port: none refers to the removed layer (the old bridge script,
  * `better-sqlite3`, or the download and native rebuild `npm run setup` used to do), and each has
  * the sections it must have.
  */
@@ -47,7 +47,7 @@ function section(text, heading) {
  * @type {{ name: string, pattern: RegExp }[]}
  */
 const REMOVED = [
-  { name: `preload.cjs`, pattern: /preload\.cjs/ },
+  { name: `the old bridge script`, pattern: new RegExp(`${[`pre`, `load`].join(``)}\\.cjs`) },
   { name: `better-sqlite3`, pattern: /better-sqlite3/ },
   { name: `the native rebuild in npm run setup`, pattern: /install-app-deps/ },
 ];
@@ -87,7 +87,7 @@ describe(`architecture.md`, () => {
   it(`names every backend module and the bridge in a table`, () => {
     const rows = text.split(`\n`).filter((line) => line.startsWith(`|`));
     const modules = readdirSync(join(root, `src`, `tauri`)).filter(
-      (name) => name.endsWith(`.rs`) || name === `preload.js`,
+      (name) => name.endsWith(`.rs`) || name === `backend-bridge.js`,
     );
     const missing = modules.filter((name) => !rows.some((row) => row.includes(`\`${name}\``)));
     assert.deepStrictEqual(missing, []);

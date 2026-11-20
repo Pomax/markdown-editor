@@ -221,6 +221,11 @@
     applyFormat: (/** @type {string} */ format) => invoke(`element_format`, { format }),
     onMenuAction: (/** @type {(name: string, ...args: any[]) => void} */ callback) =>
       register(`menu:action`, callback),
+    showTabContextMenu: (
+      /** @type {string | null} */ filePath,
+      /** @type {number} */ x,
+      /** @type {number} */ y,
+    ) => invoke(`tab_context_menu`, { filePath, x, y }),
   };
 
   Object.defineProperty(window, `pageToBackendBridge`, {

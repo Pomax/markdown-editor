@@ -97,6 +97,8 @@ class App extends AppData {
       this.tabBar.onTabClose = (tabId) => this.closeTab(tabId);
     }
 
+    document.addEventListener(`contextmenu`, (event) => this.keepContextMenuToDocument(event));
+
     // Keep cursor position in sync with the main process so that
     // saveOpenFiles() always has a fresh offset.  Debounce to avoid
     // excessive IPC on rapid cursor movement.
@@ -131,21 +133,23 @@ class App extends AppData {
     document.addEventListener(`session:restore`, (e) => {
       const detail = /** @type {CustomEvent} */ (e).detail;
       if (detail) {
-        this.restoreSession(detail);
+        this.queueFileAction(() => this.restoreSession(detail));
       }
     });
 
     // Handle file switching from the View menu
     document.addEventListener(`view:switchFile`, (e) => {
       const detail = /** @type {CustomEvent} */ (e).detail;
-      if (detail?.tabId) {
-        this.switchToTab(detail.tabId);
-      } else if (detail?.filePath && this.tabBar) {
-        const tab = this.tabBar.tabs.find((t) => t.filePath === detail.filePath);
-        if (tab) {
-          this.switchToTab(tab.id);
+      this.queueFileAction(() => {
+        if (detail?.tabId) {
+          this.switchToTab(detail.tabId);
+        } else if (detail?.filePath && this.tabBar) {
+          const tab = this.tabBar.tabs.find((t) => t.filePath === detail.filePath);
+          if (tab) {
+            this.switchToTab(tab.id);
+          }
         }
-      }
+      });
     });
 
     // Handle File → New: create a new tab with an empty document
@@ -155,26 +159,28 @@ class App extends AppData {
 
     // Handle File → Load / Open Recent: open in a new tab (or switch
     // to an existing tab if the file is already open)
-    document.addEventListener(`file:loaded`, async (e) => {
+    document.addEventListener(`file:loaded`, (e) => {
       const detail = /** @type {CustomEvent} */ (e).detail;
       if (!detail) return;
-      const filePath = detail.filePath || undefined;
-      // If this file is already open in another tab, switch to it
-      if (filePath && this.tabBar) {
-        const existing = this.tabBar.tabs.find((t) => t.filePath === filePath);
-        if (existing) {
-          this.switchToTab(existing.id);
-          return;
+      this.queueFileAction(async () => {
+        const filePath = detail.filePath || undefined;
+        // If this file is already open in another tab, switch to it
+        if (filePath && this.tabBar) {
+          const existing = this.tabBar.tabs.find((t) => t.filePath === filePath);
+          if (existing) {
+            this.switchToTab(existing.id);
+            return;
+          }
         }
-      }
 
-      // If the active tab is a pristine empty document, reuse it
-      // instead of opening a new tab alongside it
-      if (this.isActiveTabPristine()) {
-        await this.loadIntoCurrentTab(filePath, detail.content ?? ``);
-      } else {
-        await this.createNewTab(filePath, detail.content ?? ``);
-      }
+        // If the active tab is a pristine empty document, reuse it
+        // instead of opening a new tab alongside it
+        if (this.isActiveTabPristine()) {
+          await this.loadIntoCurrentTab(filePath, detail.content ?? ``);
+        } else {
+          await this.createNewTab(filePath, detail.content ?? ``);
+        }
+      });
     });
 
     // Handle File → Save: save the active document
@@ -266,6 +272,18 @@ class App extends AppData {
     this.menuHandler.initialize();
 
     await this.loadSettings();
+  }
+
+  /**
+   * Shows no menu for a right-click outside the document: the app's UI has
+   * no document menu, and the webview's own menu never shows. A right-click
+   * in the document is left to the document's menu.
+   * @param {MouseEvent} event
+   */
+  keepContextMenuToDocument(event) {
+    const target = event.target;
+    if (target instanceof Element && target.closest(`.editor`)) return;
+    event.preventDefault();
   }
 
   /**
@@ -433,6 +451,18 @@ class App extends AppData {
     return (
       !tab.filePath && !this.editor.hasUnsavedChanges && this.editor.getMarkdown().trim() === ``
     );
+  }
+
+  /**
+   * Runs a file action once every file action queued before it has
+   * finished, so that files loaded, switched to and restored by menu
+   * actions are handled one after the other, in the order they arrived.
+   * @param {() => void | Promise<void>} action
+   */
+  queueFileAction(action) {
+    this.fileActions = this.fileActions.then(action).catch((error) => {
+      console.error(error);
+    });
   }
 
   /**

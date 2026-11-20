@@ -159,13 +159,14 @@ interface EditorAPI {
 }
 
 /**
- * The page-to-backend bridge that src/tauri/preload.js defines on
+ * The page-to-backend bridge that src/tauri/backend-bridge.js defines on
  * window.pageToBackendBridge.
  */
 interface PageToBackendBridge {
     toDisplayUrl(url: string): string;
     fromDisplayUrl(url: string): string;
     onMenuAction(callback: (action: string, ...args: any[]) => void): () => void;
+    showTabContextMenu(filePath: string | null, x: number, y: number): Promise<void>;
     setUnsavedChanges(hasChanges: boolean): void;
     confirmClose(): Promise<{ action: 'save' | 'saveAs' | 'discard' | 'cancel' }>;
     saveFile(content: string): Promise<{ success: boolean; filePath?: string; message?: string }>;

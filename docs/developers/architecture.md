@@ -16,7 +16,7 @@ This document describes the high-level architecture of the Markdown Editor appli
 
 ## Process Model
 
-The application is a Tauri app: one Rust process that owns the window, the menu, the file system and the settings, and a webview in which the editor page runs. The page reaches the backend only through the bridge, `src/tauri/preload.js`, which Tauri injects into the page before any page script runs. The bridge calls the backend's commands through Tauri's IPC, and the backend sends the page `menu:action` events and, for the few calls that need the page's answer, evaluates script in it.
+The application is a Tauri app: one Rust process that owns the window, the menu, the file system and the settings, and a webview in which the editor page runs. The page reaches the backend only through the bridge, `src/tauri/backend-bridge.js`, which Tauri injects into the page before any page script runs. The bridge calls the backend's commands through Tauri's IPC, and the backend sends the page `menu:action` events and, for the few calls that need the page's answer, evaluates script in it.
 
 ```
 ┌──────────────────────────────────────────────────────────────┐
@@ -35,7 +35,7 @@ The application is a Tauri app: one Rust process that owns the window, the menu,
 │  └───────────────┘ └─────────────────┘                       │
 └────────────────────────┬─────────────────────────────────────┘
                          │
-                         │ Tauri IPC and events (via the bridge, preload.js)
+                         │ Tauri IPC and events (via the bridge, backend-bridge.js)
                          │ `media` protocol (local images, audio, video)
                          │
 ┌────────────────────────┴─────────────────────────────────────┐
@@ -94,10 +94,10 @@ The backend lives in `src/tauri`, built by the `Cargo.toml` at the project root,
 | File | Responsibility |
 |------|----------------|
 | `main.rs` | Entry point: registers the commands, the `media` protocol, the menu and the window events; creates the window hidden, sizes it from the saved bounds and shows it on the first page load; delivers a file named on the command line; restores and saves the open files of a session; runs the close flow; on macOS, opens the window again when the app is reopened from the Dock without one; honours `TESTING` and `STARTUP_TIMING` |
-| `ipc_handler.rs` | The commands the bridge invokes (`file_*`, `settings_*`, `document_*`, `view_*`, `element_*`, `image_*`, `path_to_relative`, `dialog_confirm`, `app_reload`, `context_menu`, `bridge_ready`, `web_contents_reply`); file dialogs and message boxes |
+| `ipc_handler.rs` | The commands the bridge invokes (`file_*`, `settings_*`, `document_*`, `view_*`, `element_*`, `image_*`, `path_to_relative`, `dialog_confirm`, `app_reload`, `context_menu`, `tab_context_menu`, `bridge_ready`, `web_contents_reply`); file dialogs and message boxes |
 | `file_manager.rs` | The current file, the unsaved flag, the recent files list, the Save As name, the HTML export paths and stylesheet, and reading a file as UTF-8 |
 | `settings_manager.rs` | The settings: one JSON value per key in an SQLite database in the app's data folder |
-| `menu_builder.rs` | The application menu and the context menu, built first as data and then as Tauri menus; a refresh changes only the native items that differ; each item runs its action; Images > Gather |
+| `menu_builder.rs` | The application menu, the document's context menu and the tab context menu, built first as data and then as Tauri menus; a refresh changes only the native items that differ; each item runs its action; Images > Gather |
 | `message_box.rs` | The texts and buttons of the app's message boxes |
 | `image_path.rs` | The plain file name check, image renames, relative image paths and percent-decoding |
 | `media_protocol.rs` | The `media` protocol, through which the page loads local images, audio and video (see Security) |
@@ -108,7 +108,7 @@ The backend lives in `src/tauri`, built by the `Cargo.toml` at the project root,
 | `build.rs` | The build script: declares the app's commands, so each is refused unless the capability in `capabilities/` grants it, and points Tauri at the capabilities and the window icon in `src/tauri` |
 | `bin/win-runner.rs` | Not part of the app: the Windows runner the real-input tests use, a second binary of the crate that finds the app's window by process id, brings it to the front, presses keys, types and clicks through `SendInput`, and reads the window's title, whether the menu bar is active and the open menu's items |
 | `bin/x11-runner.rs` | Not part of the app: the X11 runner the Linux integration tests use, a binary of the crate that finds the app's window on its X display by process id, gives it the input focus, and presses keys, types and clicks through the XTEST extension; run as `serve`, it takes one command per line on standard input for as long as the app runs |
-| `preload.js` | The bridge (below) |
+| `backend-bridge.js` | The bridge (below) |
 
 ### Window, session and close flow (`main.rs`)
 
@@ -127,7 +127,7 @@ The backend lives in `src/tauri`, built by the `Cargo.toml` at the project root,
 
 Menu actions reach the page as `menu:action` events. Cut, Copy and Paste send their keystroke to the webview, which runs the native clipboard command and so fires the DOM clipboard events the editor's `ClipboardHandler` handles. The six Edit shortcuts the page handles itself are not registered as menu accelerators on Windows and Linux, so they are not handled twice.
 
-## Bridge (`src/tauri/preload.js`)
+## Bridge (`src/tauri/backend-bridge.js`)
 
 - Injected by Tauri before any page script, on the app's own origin only. It uses `window.__TAURI_INTERNALS__`; Tauri's global API object stays off.
 - Defines `window.pageToBackendBridge` (read-only), through which the page calls the backend, with `toDisplayUrl` and `fromDisplayUrl`, which turn a local file reference into a `media` URL and back.

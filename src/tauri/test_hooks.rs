@@ -59,15 +59,19 @@ pub fn record_inspection(x: f64, y: f64) {
     }
 }
 
+/// An entry of a context menu: its label (none for a separator), its id,
+/// and whether it is enabled.
+pub type ContextEntry = (Option<String>, String, bool);
+
 /// A context menu that would have popped up: the point of the page it
-/// was asked for at, and each entry's label (none for a separator) and id.
-type ContextMenu = (f64, f64, Vec<(Option<String>, String)>);
+/// was asked for at, and its entries.
+type ContextMenu = (f64, f64, Vec<ContextEntry>);
 
 /// Context menus that would have popped up, recorded instead.
 static CONTEXT_MENUS: Mutex<Vec<ContextMenu>> = Mutex::new(Vec::new());
 
 /// Records a context menu that would have popped up at a point of the page.
-pub fn record_context_menu(x: f64, y: f64, entries: Vec<(Option<String>, String)>) {
+pub fn record_context_menu(x: f64, y: f64, entries: Vec<ContextEntry>) {
     if let Ok(mut menus) = CONTEXT_MENUS.lock() {
         menus.push((x, y, entries));
     }
@@ -83,8 +87,8 @@ fn describe_context_menus() -> Value {
         .map(|(x, y, entries)| {
             let items: Vec<Value> = entries
                 .iter()
-                .map(|(label, _)| match label {
-                    Some(label) => json!({ "label": label }),
+                .map(|(label, _, enabled)| match label {
+                    Some(label) => json!({ "label": label, "enabled": enabled }),
                     None => json!({ "type": "separator" }),
                 })
                 .collect();
@@ -93,15 +97,16 @@ fn describe_context_menus() -> Value {
         .collect()
 }
 
-/// Chooses the item with the given label in the last recorded context
-/// menu, as a click on it does. Returns whether there was such an item.
+/// Chooses the enabled item with the given label in the last recorded
+/// context menu, as a click on it does. Returns whether there was such an
+/// item; a disabled item cannot be chosen.
 fn click_context_item(app: &AppHandle, label: &str) -> bool {
     let id = CONTEXT_MENUS.lock().ok().and_then(|menus| {
         menus.last().and_then(|(_, _, entries)| {
             entries
                 .iter()
-                .find(|(entry, _)| entry.as_deref() == Some(label))
-                .map(|(_, id)| id.clone())
+                .find(|(entry, _, enabled)| *enabled && entry.as_deref() == Some(label))
+                .map(|(_, id, _)| id.clone())
         })
     });
     match id {

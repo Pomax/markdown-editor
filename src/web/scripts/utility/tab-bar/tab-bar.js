@@ -112,6 +112,22 @@ export class TabBar extends TabBarData {
     this.container.addEventListener(`click`, (e) => {
       this.handleClick(e);
     });
+    this.container.addEventListener(`contextmenu`, (e) => {
+      this.handleContextMenu(e);
+    });
+  }
+
+  /**
+   * Shows a tab's context menu for a right-click on that tab.
+   * @param {MouseEvent} e
+   */
+  handleContextMenu(e) {
+    const target = /** @type {HTMLElement} */ (e.target);
+    const tabButton = /** @type {HTMLElement | null} */ (target.closest(`.tab-button`));
+    if (!tabButton) return;
+    e.preventDefault();
+    const tab = this.tabs.find((t) => t.id === tabButton.dataset.tabId);
+    window.pageToBackendBridge?.showTabContextMenu(tab?.filePath ?? null, e.clientX, e.clientY);
   }
 
   /**

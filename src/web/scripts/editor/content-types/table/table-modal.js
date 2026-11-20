@@ -201,28 +201,49 @@ export class TableModal extends BaseModal {
   }
 
   /**
+   * Finds the cells of raw markdown table content: for each row, header
+   * row first and without the separator line, each cell's trimmed text
+   * and the offset into the content where that text starts.
+   * @param {string} content - The raw table markdown (node.content)
+   * @returns {{ text: string, start: number }[][]}
+   */
+  static locateTableCells(content) {
+    // A separator line contains only pipes, dashes, colons, and spaces,
+    // and must include at least one dash.
+    /** @param {string} l */
+    const isSeparator = (l) => /^[\s|:-]+$/.test(l) && l.includes(`-`);
+
+    /** @type {{ text: string, start: number }[][]} */
+    const rows = [];
+    let lineStart = 0;
+    for (const line of content.split(`\n`)) {
+      if (line.trim() && !isSeparator(line)) {
+        const parts = line.split(`|`);
+        /** @type {{ text: string, start: number }[]} */
+        const row = [];
+        let partStart = lineStart;
+        for (let i = 0; i < parts.length; i++) {
+          // The parts before the first pipe and after the last are not cells.
+          if (i > 0 && i < parts.length - 1) {
+            const leading = parts[i].length - parts[i].trimStart().length;
+            row.push({ text: parts[i].trim(), start: partStart + leading });
+          }
+          partStart += parts[i].length + 1;
+        }
+        rows.push(row);
+      }
+      lineStart += line.length + 1;
+    }
+    return rows;
+  }
+
+  /**
    * Parses raw markdown table content into a TableData object.
    * @param {string} content - The raw table markdown (node.content)
    * @returns {TableData}
    */
   static parseTableContent(content) {
-    const lines = content.split(`\n`).filter((l) => l.trim());
-    // A separator line contains only pipes, dashes, colons, and spaces,
-    // and must include at least one dash.
-    /** @param {string} l */
-    const isSeparator = (l) => /^[\s|:-]+$/.test(l) && l.includes(`-`);
-    const dataLines = lines.filter((l) => !isSeparator(l));
-
-    /** @type {string[][]} */
-    const cells = [];
-
-    for (const line of dataLines) {
-      const row = line
-        .split(`|`)
-        .filter((_, i, a) => i > 0 && i < a.length - 1) // trim leading/trailing empty splits
-        .map((cell) => cell.trim());
-      cells.push(row);
-    }
+    const cells = TableModal.locateTableCells(content).map((row) => row.map((cell) => cell.text));
 
     const columns = cells.length > 0 ? cells[0].length : 0;
     const rows = Math.max(0, cells.length - 1); // subtract header

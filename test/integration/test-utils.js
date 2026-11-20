@@ -551,13 +551,23 @@ export async function closeApp(app) {
 }
 
 /**
- * Navigate the page to about:blank to clean up browser state between tests.
- * Wrapped in a try/catch because Firefox occasionally throws a
- * "browserContext.close" protocol error during teardown.
+ * Navigate the page to about:blank to clean up browser state between tests,
+ * and have its browser context close without throwing, so that a test that
+ * passed is never failed by Firefox throwing a "browserContext.close"
+ * protocol error while Playwright closes the context after the test.
  *
  * @param {import('@playwright/test').Page} page
  */
 export async function resetPage(page) {
+  const context = page.context();
+  const close = context.close.bind(context);
+  context.close = async (options) => {
+    try {
+      await close(options);
+    } catch {
+      /* Firefox teardown glitch, after the test has finished */
+    }
+  };
   try {
     await page.goto(`about:blank`);
     await page.waitForTimeout(100);
@@ -601,4 +611,190 @@ export async function setSource2View(page) {
 export async function getSourceLineText(pg, index) {
   const value = await pg.locator(`#editor textarea`).inputValue();
   return value.split(`\n`)[index] ?? ``;
+}
+
+/**
+ * The fixture that is a normal markdown document, with every kind of
+ * block and inline markup in it.
+ */
+export const FIXTURE_DOCUMENT = path.join(
+  projectRoot,
+  `test`,
+  `fixtures`,
+  `document-with-every-markdown-feature.md`,
+);
+
+/**
+ * Clicks in the writing view just inside the right edge of the last
+ * character of `before`, where the writing view shows `before` followed
+ * by `after`, so that the caret lands between the two.  Fails when the
+ * writing view does not show that text exactly once.
+ *
+ * @param {import('@playwright/test').Page} pg
+ * @param {string} before - The text just before the place, at least one character.
+ * @param {string} after - The text just after the place.
+ */
+export async function clickWritingViewBetween(pg, before, after) {
+  const point = await pg.evaluate(
+    ({ before, after }) => {
+      const editor = /** @type {HTMLElement} */ (document.querySelector(`#editor`));
+      const walker = document.createTreeWalker(editor, NodeFilter.SHOW_TEXT);
+      /** @type {{ node: Text, start: number }[]} */
+      const texts = [];
+      let text = ``;
+      for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+        texts.push({ node: /** @type {Text} */ (node), start: text.length });
+        text += node.textContent ?? ``;
+      }
+      const index = text.indexOf(before + after);
+      if (index === -1 || text.indexOf(before + after, index + 1) !== -1) return undefined;
+      const last = index + before.length - 1;
+      const holder = texts.find((t) => t.start <= last && last < t.start + t.node.length);
+      if (!holder) return undefined;
+      holder.node.parentElement?.scrollIntoView({ block: `center`, behavior: `instant` });
+      const range = document.createRange();
+      range.setStart(holder.node, last - holder.start);
+      range.setEnd(holder.node, last - holder.start + 1);
+      const rect = range.getBoundingClientRect();
+      return { x: rect.right - 1, y: rect.top + rect.height / 2 };
+    },
+    { before, after },
+  );
+  if (!point) {
+    throw new Error(
+      `clickWritingViewBetween: the writing view does not show "${before}${after}" once`,
+    );
+  }
+  await pg.mouse.click(point.x, point.y);
+}
+
+/**
+ * Clicks in the source view just inside the right edge of the last
+ * character of `before`, where the markdown has `before` followed by
+ * `after`, so that the caret lands between the two.  The character is
+ * found in the mirror behind the textarea.  Fails when the markdown does
+ * not have that text exactly once.
+ *
+ * @param {import('@playwright/test').Page} pg
+ * @param {string} before - The text just before the place, at least one character.
+ * @param {string} after - The text just after the place.
+ */
+export async function clickSourceViewBetween(pg, before, after) {
+  const point = await pg.evaluate(
+    ({ before, after }) => {
+      const textarea = /** @type {HTMLTextAreaElement} */ (
+        document.querySelector(`#editor textarea`)
+      );
+      const mirror = textarea.parentElement?.querySelector(`pre`)?.firstChild;
+      const scroller = document.querySelector(`#editor`)?.parentElement;
+      const index = textarea.value.indexOf(before + after);
+      if (!mirror || !scroller || index === -1) return undefined;
+      if (textarea.value.indexOf(before + after, index + 1) !== -1) return undefined;
+      const last = index + before.length - 1;
+      const range = document.createRange();
+      range.setStart(mirror, last);
+      range.setEnd(mirror, last + 1);
+      const top = range.getBoundingClientRect().top - scroller.getBoundingClientRect().top;
+      scroller.scrollTop += top - scroller.clientHeight / 2;
+      const rect = range.getBoundingClientRect();
+      return { x: rect.right - 1, y: rect.top + rect.height / 2 };
+    },
+    { before, after },
+  );
+  if (!point) {
+    throw new Error(`clickSourceViewBetween: the markdown does not have "${before}${after}" once`);
+  }
+  await pg.mouse.click(point.x, point.y);
+}
+
+/**
+ * The text just before and just after the caret in the writing view, as
+ * many characters of each as asked for, and whether the editor has the
+ * focus, or undefined when there is no collapsed caret.
+ *
+ * @param {import('@playwright/test').Page} pg
+ * @param {number} beforeLength
+ * @param {number} afterLength
+ * @returns {Promise<{ before: string, after: string, focused: boolean } | undefined>}
+ */
+export async function writingViewTextAroundCaret(pg, beforeLength, afterLength) {
+  return pg.evaluate(
+    ({ beforeLength, afterLength }) => {
+      const selection = window.getSelection();
+      if (!selection || selection.rangeCount === 0 || !selection.isCollapsed) return undefined;
+      const caret = selection.getRangeAt(0);
+      const editor = /** @type {HTMLElement} */ (document.querySelector(`#editor`));
+      const head = document.createRange();
+      head.setStart(editor, 0);
+      head.setEnd(caret.startContainer, caret.startOffset);
+      const tail = document.createRange();
+      tail.setStart(caret.startContainer, caret.startOffset);
+      tail.setEnd(editor, editor.childNodes.length);
+      const textBefore = head.toString();
+      return {
+        before: textBefore.slice(Math.max(0, textBefore.length - beforeLength)),
+        after: tail.toString().slice(0, afterLength),
+        focused: editor.contains(document.activeElement),
+      };
+    },
+    { beforeLength, afterLength },
+  );
+}
+
+/**
+ * The markdown just before and just after the caret in the source view,
+ * as many characters of each as asked for, and whether the textarea has
+ * the focus, or undefined when there is no collapsed caret.
+ *
+ * @param {import('@playwright/test').Page} pg
+ * @param {number} beforeLength
+ * @param {number} afterLength
+ * @returns {Promise<{ before: string, after: string, focused: boolean } | undefined>}
+ */
+export async function sourceViewTextAroundCaret(pg, beforeLength, afterLength) {
+  return pg.locator(`#editor textarea`).evaluate(
+    (element, { beforeLength, afterLength }) => {
+      const textarea = /** @type {HTMLTextAreaElement} */ (element);
+      const { value, selectionStart, selectionEnd } = textarea;
+      if (selectionStart !== selectionEnd) return undefined;
+      return {
+        before: value.slice(Math.max(0, selectionStart - beforeLength), selectionStart),
+        after: value.slice(selectionStart, selectionStart + afterLength),
+        focused: document.activeElement === textarea,
+      };
+    },
+    { beforeLength, afterLength },
+  );
+}
+
+/**
+ * The type of the block the editor's tree cursor is in, and that block's
+ * content, or the text of the table cell the tree cursor is in, just
+ * before and just after the tree cursor's offset, as many characters of
+ * each as asked for, or undefined when there is no tree cursor.
+ *
+ * @param {import('@playwright/test').Page} pg
+ * @param {number} beforeLength
+ * @param {number} afterLength
+ * @returns {Promise<{ type: string, before: string, after: string } | undefined>}
+ */
+export async function treeCursorTextAround(pg, beforeLength, afterLength) {
+  return pg.evaluate(
+    ({ beforeLength, afterLength }) => {
+      const editor = /** @type {any} */ (window).__editor;
+      const cursor = editor?.syntaxTree?.treeCursor;
+      const node = cursor && editor.syntaxTree.findNodeById(cursor.nodeId);
+      if (!node) return undefined;
+      const text =
+        cursor.cellRow === undefined
+          ? node.content
+          : editor.tableManager.getTableCellText(node, cursor.cellRow, cursor.cellCol);
+      return {
+        type: node.type,
+        before: text.slice(Math.max(0, cursor.offset - beforeLength), cursor.offset),
+        after: text.slice(cursor.offset, cursor.offset + afterLength),
+      };
+    },
+    { beforeLength, afterLength },
+  );
 }

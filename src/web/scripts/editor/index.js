@@ -435,7 +435,7 @@ export class Editor extends EditorData {
       case `heading6`:
         return `###### ${content}`;
       case `blockquote`:
-        return `> ${content}`;
+        return new SyntaxNode(type, content).toMarkdown();
       case `list-item`: {
         const indent = `  `.repeat(attributes?.indent || 0);
         const marker = attributes?.ordered ? `${attributes?.number || 1}. ` : `- `;

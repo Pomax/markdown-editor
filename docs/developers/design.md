@@ -139,7 +139,7 @@ src/
 │
 └── tauri/                    # The Tauri backend
     ├── main.rs               # Entry point, window, session, close flow
-    ├── preload.js            # The bridge, injected into the page
+    ├── backend-bridge.js     # The bridge, injected into the page
     ├── ipc_handler.rs        # The commands the bridge invokes
     ├── menu_builder.rs       # Application menu and context menu
     ├── file_manager.rs       # Current file, recent files, export paths
@@ -184,7 +184,7 @@ test/
 │   ├── word-count/
 │   │   └── word-count-modal.test.js
 │   ├── bridge/
-│   │   └── preload.test.js       # The bridge, run in a Node VM against a fake Tauri
+│   │   └── backend-bridge.test.js # The bridge, run in a Node VM against a fake Tauri
 │   ├── tauri/                    # The configuration the app relies on
 │   │   ├── capabilities.test.js
 │   │   ├── cargo-config.test.js

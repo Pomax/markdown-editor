@@ -35,6 +35,7 @@
     "allow-view-open-files-changed",
     "allow-app-reload",
     "allow-web-contents-reply",
-    "allow-context-menu"
+    "allow-context-menu",
+    "allow-tab-context-menu"
   ]
 }

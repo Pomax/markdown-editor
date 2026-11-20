@@ -1,22 +1,32 @@
 /**
- * @fileoverview Integration tests verifying that the syntax tree cursor
- * (editor.syntaxTree.treeCursor) is correctly set after every editing
- * operation.
+ * @fileoverview Integration tests for the caret after editing, in a
+ * normal markdown document: after an edit in one view and a switch to
+ * the other, the caret is exactly where the edit left it, in every kind
+ * of block the edit is made in.
  *
- * The syntax tree is the single source of truth for cursor state.
- * These tests exercise the main code paths and assert that the cursor
- * value is defined (or undefined after blur).
+ * The syntax tree is the single source of truth for cursor state, so
+ * after an edit in the source view the tests check the tree cursor.
  */
 
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
 import { expect, test } from '@playwright/test';
 import {
-  clickInEditor,
+  clickSourceViewBetween,
+  clickWritingViewBetween,
   closeApp,
+  defocusEditor,
+  FIXTURE_DOCUMENT,
+  HOME,
   launchApp,
   loadContent,
   setSource2View,
   setWritingView,
+  sourceViewTextAroundCaret,
+  treeCursorTextAround,
 } from '../../test-utils.js';
+
+const FIXTURE_TEXT = readFileSync(FIXTURE_DOCUMENT, `utf8`);
 
 /** @type {import('../../tauri-app.js').TauriApp} */
 let app;
@@ -24,285 +34,245 @@ let app;
 /** @type {import('@playwright/test').Page} */
 let page;
 
+/**
+ * Edits made in the source view, as what the edit is, the markdown
+ * around the place it is made with `|` at the caret, the edit itself,
+ * and the type of the block and the content around the tree cursor
+ * afterwards, with `|` at the tree cursor.
+ * @type {[string, string, () => Promise<void>, string, string][]}
+ */
+const SOURCE_VIEW_EDITS = [
+  [
+    `typing text in a paragraph`,
+    `Selecting| "properties"`,
+    () => page.keyboard.type(` the entry`),
+    `paragraph`,
+    `Selecting the entry| "properties"`,
+  ],
+  [
+    `Backspace in a paragraph`,
+    `Selecting| "properties"`,
+    () => page.keyboard.press(`Backspace`),
+    `paragraph`,
+    `Selectin| "properties"`,
+  ],
+  [
+    `Delete in a paragraph`,
+    `Selecting| "properties"`,
+    () => page.keyboard.press(`Delete`),
+    `paragraph`,
+    `Selecting|"properties"`,
+  ],
+  [
+    `two Enters splitting a paragraph`,
+    `Selecting |"properties"`,
+    async () => {
+      await page.keyboard.press(`Enter`);
+      await page.keyboard.press(`Enter`);
+    },
+    `paragraph`,
+    `|"properties" should`,
+  ],
+  [
+    `typing a heading prefix at the start of a paragraph`,
+    `Closing| notes go`,
+    async () => {
+      await page.keyboard.press(HOME);
+      await page.keyboard.type(`## `);
+    },
+    `heading2`,
+    `|Closing notes go`,
+  ],
+  [
+    `typing at the end of a line of a code block`,
+    `Serial.begin(9600);|\n}`,
+    () => page.keyboard.type(` // start`),
+    `code-block`,
+    `Serial.begin(9600); // start|\n}`,
+  ],
+  [
+    `Enter and typing in a code block`,
+    `Serial.begin(9600);|\n}`,
+    async () => {
+      await page.keyboard.press(`Enter`);
+      await page.keyboard.type(`pinMode(A0, INPUT);`);
+    },
+    `code-block`,
+    `pinMode(A0, INPUT);|\n}`,
+  ],
+  [
+    `typing a new list item after the last item of a list`,
+    `a small enclosure.|\n1.`,
+    async () => {
+      await page.keyboard.press(`Enter`);
+      await page.keyboard.type(`- a power cable`);
+    },
+    `list-item`,
+    `a power cable|`,
+  ],
+];
+
+/**
+ * Edits made in the writing view, as what the edit is, the text around
+ * the place it is made with `|` at the caret, the edit itself, and the
+ * markdown around the caret afterwards in the source view, with `|` at
+ * the caret.
+ * @type {[string, string, () => Promise<void>, string][]}
+ */
+const WRITING_VIEW_EDITS = [
+  [
+    `typing text in a paragraph`,
+    `Selecting| "properties"`,
+    () => page.keyboard.type(` the entry`),
+    `Selecting the entry| "properties"`,
+  ],
+  [
+    `Backspace in a paragraph`,
+    `Selecting| "properties"`,
+    () => page.keyboard.press(`Backspace`),
+    `Selectin| "properties"`,
+  ],
+  [
+    `Delete in a paragraph`,
+    `Selecting| "properties"`,
+    () => page.keyboard.press(`Delete`),
+    `Selecting|"properties"`,
+  ],
+  [
+    `Enter splitting a paragraph`,
+    `Selecting |"properties"`,
+    () => page.keyboard.press(`Enter`),
+    `\n\n|"properties" should`,
+  ],
+  [
+    `typing in the last item of a list`,
+    `a small| enclosure`,
+    () => page.keyboard.type(` plastic`),
+    `a small plastic| enclosure`,
+  ],
+  [
+    `typing in a list item nested two deep`,
+    `Deepest| wiring step`,
+    () => page.keyboard.type(` final`),
+    `Deepest final| wiring step`,
+  ],
+  [
+    `typing in the second line of a blockquote`,
+    `connect| the power`,
+    () => page.keyboard.type(` up`),
+    `connect up| the power`,
+  ],
+  [
+    `typing in a code block`,
+    `Serial.begin|(9600)`,
+    () => page.keyboard.type(`Fast`),
+    `Serial.beginFast|(9600)`,
+  ],
+  [`typing in a table cell`, `Rudder| trim`, () => page.keyboard.type(`s`), `Rudders| trim`],
+  [
+    `typing in a level 4 heading`,
+    `Testing| the device`,
+    () => page.keyboard.type(` out`),
+    `Testing out| the device`,
+  ],
+];
+
 test.beforeAll(async () => {
-  ({ app, page } = await launchApp());
+  ({ app, page } = await launchApp([FIXTURE_DOCUMENT]));
+  await expect(
+    page.locator(`#tab-bar .tab-button`, { hasText: path.basename(FIXTURE_DOCUMENT) }),
+  ).toBeVisible();
 });
 
 test.afterAll(async () => {
   await closeApp(app);
 });
 
-test(`cursors sync after loading content`, async () => {
-  await loadContent(page, `# Hello\n\nWorld`);
-  await setSource2View(page);
-  const editor = page.locator(`#editor`);
-  await clickInEditor(page, editor);
-  await page.waitForTimeout(100);
-  const cursor = await page.evaluate(
-    () => /** @type {any} */ (window).__editor?.syntaxTree?.treeCursor,
-  );
-  expect(cursor, `syntaxTree.treeCursor should be set after load + click`).toBeDefined();
-});
-
-test(`cursors sync after typing text`, async () => {
-  await loadContent(page, ``);
-  await setSource2View(page);
-  const editor = page.locator(`#editor`);
-  await clickInEditor(page, editor);
-  await page.waitForTimeout(100);
-
-  await page.keyboard.type(`hello`);
-  await page.waitForTimeout(100);
-  const cursor = await page.evaluate(
-    () => /** @type {any} */ (window).__editor?.syntaxTree?.treeCursor,
-  );
-  expect(cursor, `syntaxTree.treeCursor should be set after typing "hello"`).toBeDefined();
-});
-
-test(`cursors sync after typing a heading prefix`, async () => {
-  await loadContent(page, ``);
-  await setSource2View(page);
-  const editor = page.locator(`#editor`);
-  await clickInEditor(page, editor);
-  await page.waitForTimeout(100);
-
-  for (const ch of [`#`, ` `, `T`, `i`, `t`, `l`, `e`]) {
-    await page.keyboard.press(ch);
-  }
-  await page.waitForTimeout(100);
-  const cursor = await page.evaluate(
-    () => /** @type {any} */ (window).__editor?.syntaxTree?.treeCursor,
-  );
-  expect(cursor, `syntaxTree.treeCursor should be set after typing "# Title"`).toBeDefined();
-});
-
-test(`cursors sync after backspace`, async () => {
-  await loadContent(page, `abcdef`);
-  await setSource2View(page);
-  const editor = page.locator(`#editor`);
-  await clickInEditor(page, editor);
-  await page.waitForTimeout(100);
-
-  // Move to end and backspace
-  await page.keyboard.press(`End`);
-  await page.waitForTimeout(50);
-  await page.keyboard.press(`Backspace`);
-  await page.waitForTimeout(100);
-  const cursor = await page.evaluate(
-    () => /** @type {any} */ (window).__editor?.syntaxTree?.treeCursor,
-  );
-  expect(cursor, `syntaxTree.treeCursor should be set after backspace`).toBeDefined();
-});
-
-test(`cursors sync after delete`, async () => {
-  await loadContent(page, `abcdef`);
-  await setSource2View(page);
-  const editor = page.locator(`#editor`);
-  await clickInEditor(page, editor);
-  await page.waitForTimeout(100);
-
-  // Move to start and delete
-  await page.keyboard.press(`Home`);
-  await page.waitForTimeout(50);
-  await page.keyboard.press(`Delete`);
-  await page.waitForTimeout(100);
-  const cursor = await page.evaluate(
-    () => /** @type {any} */ (window).__editor?.syntaxTree?.treeCursor,
-  );
-  expect(cursor, `syntaxTree.treeCursor should be set after delete`).toBeDefined();
-});
-
-test(`cursors sync after Enter splits a paragraph`, async () => {
-  await loadContent(page, `first second`);
-  await setSource2View(page);
-  const editor = page.locator(`#editor`);
-  await clickInEditor(page, editor);
-  await page.waitForTimeout(100);
-
-  // Place cursor in the middle by pressing Home then ArrowRight 5 times
-  await page.keyboard.press(`Home`);
-  for (let i = 0; i < 5; i++) {
-    await page.keyboard.press(`ArrowRight`);
-  }
-  await page.waitForTimeout(50);
-  await page.keyboard.press(`Enter`);
-  await page.waitForTimeout(100);
-  const cursor = await page.evaluate(
-    () => /** @type {any} */ (window).__editor?.syntaxTree?.treeCursor,
-  );
-  expect(cursor, `syntaxTree.treeCursor should be set after Enter`).toBeDefined();
-});
-
-test(`cursors sync in writing view after clicking a node`, async () => {
-  await loadContent(page, `# Heading\n\nParagraph text here`);
+test.beforeEach(async () => {
   await setWritingView(page);
-
-  const paragraph = page.locator(`#editor .md-paragraph`);
-  await clickInEditor(page, paragraph);
-  await page.waitForTimeout(200);
-  const cursor = await page.evaluate(
-    () => /** @type {any} */ (window).__editor?.syntaxTree?.treeCursor,
-  );
-  expect(
-    cursor,
-    `syntaxTree.treeCursor should be set after clicking paragraph in writing view`,
-  ).toBeDefined();
+  await loadContent(page, FIXTURE_TEXT);
 });
 
-test(`cursors sync after typing in a code block`, async () => {
-  await loadContent(page, ``);
-  await setSource2View(page);
-  const editor = page.locator(`#editor`);
-  await clickInEditor(page, editor);
-  await page.waitForTimeout(100);
+for (const [edit, around, makeEdit, type, cursor] of SOURCE_VIEW_EDITS) {
+  const [before, after] = around.split(`|`);
+  const [cursorBefore, cursorAfter] = cursor.split(`|`);
 
-  // Create a code block via ``` + Enter, then type into it
-  await page.keyboard.type(`\`\`\``);
-  await page.keyboard.press(`Enter`);
-  await page.waitForTimeout(100);
-
-  await page.keyboard.type(`const x = 1;`);
-  await page.waitForTimeout(100);
-  const cursor = await page.evaluate(
-    () => /** @type {any} */ (window).__editor?.syntaxTree?.treeCursor,
-  );
-  expect(cursor, `syntaxTree.treeCursor should be set after typing in code block`).toBeDefined();
-});
-
-test(`cursors sync after Enter inside a code block`, async () => {
-  await loadContent(page, ``);
-  await setSource2View(page);
-  const editor = page.locator(`#editor`);
-  await clickInEditor(page, editor);
-  await page.waitForTimeout(100);
-
-  // Create a code block via ``` + Enter, type a line, then Enter again
-  await page.keyboard.type(`\`\`\``);
-  await page.keyboard.press(`Enter`);
-  await page.waitForTimeout(100);
-
-  await page.keyboard.type(`line one`);
-  await page.waitForTimeout(50);
-  await page.keyboard.press(`Enter`);
-  await page.waitForTimeout(100);
-  const cursor = await page.evaluate(
-    () => /** @type {any} */ (window).__editor?.syntaxTree?.treeCursor,
-  );
-  expect(cursor, `syntaxTree.treeCursor should be set after Enter in code block`).toBeDefined();
-});
-
-test(`cursors sync after creating and exiting a list item`, async () => {
-  await loadContent(page, ``);
-  await setSource2View(page);
-  const editor = page.locator(`#editor`);
-  await clickInEditor(page, editor);
-  await page.waitForTimeout(100);
-
-  // Type a list item
-  for (const ch of [`-`, ` `, `i`, `t`, `e`, `m`]) {
-    await page.keyboard.press(ch);
-  }
-  await page.waitForTimeout(100);
-  const cursorItem = await page.evaluate(
-    () => /** @type {any} */ (window).__editor?.syntaxTree?.treeCursor,
-  );
-  expect(cursorItem, `syntaxTree.treeCursor should be set after typing list item`).toBeDefined();
-
-  // Enter to create new list item
-  await page.keyboard.press(`Enter`);
-  await page.waitForTimeout(100);
-  const cursorEnter = await page.evaluate(
-    () => /** @type {any} */ (window).__editor?.syntaxTree?.treeCursor,
-  );
-  expect(cursorEnter, `syntaxTree.treeCursor should be set after Enter in list`).toBeDefined();
-
-  // Enter again on empty item to exit list
-  await page.keyboard.press(`Enter`);
-  await page.waitForTimeout(100);
-  const cursorExit = await page.evaluate(
-    () => /** @type {any} */ (window).__editor?.syntaxTree?.treeCursor,
-  );
-  expect(cursorExit, `syntaxTree.treeCursor should be set after exiting list`).toBeDefined();
-});
-
-test(`cursors sync after fence-to-code-block conversion`, async () => {
-  await loadContent(page, ``);
-  await setSource2View(page);
-  const editor = page.locator(`#editor`);
-  await clickInEditor(page, editor);
-  await page.waitForTimeout(100);
-
-  // Type ``` + Enter to create a code block
-  await page.keyboard.type(`\`\`\``);
-  await page.waitForTimeout(50);
-  await page.keyboard.press(`Enter`);
-  await page.waitForTimeout(100);
-  const cursor = await page.evaluate(
-    () => /** @type {any} */ (window).__editor?.syntaxTree?.treeCursor,
-  );
-  expect(cursor, `syntaxTree.treeCursor should be set after \`\`\` + Enter`).toBeDefined();
-});
-
-test(`treeCursor persists after blur in writing view`, async () => {
-  await loadContent(page, `# Heading\n\nParagraph`);
-  await setWritingView(page);
-
-  // Click a node first
-  const paragraph = page.locator(`#editor .md-paragraph`);
-  await clickInEditor(page, paragraph);
-  await page.waitForTimeout(200);
-  const cursorBefore = await page.evaluate(
-    () => /** @type {any} */ (window).__editor?.syntaxTree?.treeCursor,
-  );
-  expect(cursorBefore, `syntaxTree.treeCursor should be set before blur`).toBeDefined();
-
-  // Blur the editor
-  await page.evaluate(() => /** @type {HTMLElement|null} */ (document.activeElement)?.blur());
-  await page.waitForTimeout(200);
-
-  const cursorAfter = await page.evaluate(
-    () => /** @type {any} */ (window).__editor?.syntaxTree?.treeCursor,
-  );
-  expect(cursorAfter, `syntaxTree.treeCursor should persist after blur`).toBeDefined();
-  expect(cursorAfter.offset).toBe(cursorBefore.offset);
-});
-
-test(`cursor position is preserved after source2 → writing → source2 round-trip`, async () => {
-  const content = `this is <em>a test</em> lol`;
-  await loadContent(page, content);
-  await setSource2View(page);
-
-  const textarea = page.locator(`#editor textarea`);
-  await textarea.click();
-
-  // Place cursor inside "a test" between the <em> tags.
-  const emIdx = content.indexOf(`<em>`);
-  const cursorPos = emIdx + `<em>`.length + 2;
-  await page.evaluate((pos) => {
-    const ta = /** @type {HTMLTextAreaElement} */ (document.querySelector(`#editor textarea`));
-    ta.selectionStart = pos;
-    ta.selectionEnd = pos;
-  }, cursorPos);
-
-  // Switch to writing view, then back to source2.
-  await setWritingView(page);
-  await setSource2View(page);
-
-  // The textarea should have focus and the cursor should be within the <em> region.
-  const result = await page.evaluate(() => {
-    const ta = /** @type {HTMLTextAreaElement} */ (document.querySelector(`#editor textarea`));
-    return {
-      hasFocus: document.activeElement === ta,
-      selectionStart: ta.selectionStart,
-    };
+  test(`after ${edit} in the source view, the tree cursor in the writing view is where the edit left the caret`, async () => {
+    await setSource2View(page);
+    await clickSourceViewBetween(page, before, after);
+    await expect
+      .poll(() => sourceViewTextAroundCaret(page, before.length, after.length), {
+        message: `the click put the caret after "${before}" in the source view`,
+        timeout: 2_000,
+      })
+      .toEqual({ before, after, focused: true });
+    await makeEdit();
+    await setWritingView(page);
+    await expect
+      .poll(
+        () =>
+          treeCursorTextAround(
+            page,
+            Math.max(1, cursorBefore.length),
+            Math.max(1, cursorAfter.length),
+          ),
+        { timeout: 2_000 },
+      )
+      .toEqual({ type, before: cursorBefore, after: cursorAfter });
   });
+}
 
-  expect(result.hasFocus, `textarea should have focus after round-trip`).toBe(true);
-  const emStart = emIdx + `<em>`.length;
-  const emEnd = content.indexOf(`</em>`);
-  expect(
-    result.selectionStart,
-    `cursor should be within the <em> region (${emStart}–${emEnd})`,
-  ).toBeGreaterThanOrEqual(emStart);
-  expect(result.selectionStart).toBeLessThanOrEqual(emEnd);
+for (const [edit, around, makeEdit, caret] of WRITING_VIEW_EDITS) {
+  const [before, after] = around.split(`|`);
+  const [caretBefore, caretAfter] = caret.split(`|`);
+
+  test(`after ${edit} in the writing view, the caret in the source view is where the edit left it`, async () => {
+    await clickWritingViewBetween(page, before, after);
+    await expect
+      .poll(() => treeCursorTextAround(page, before.length, after.length), {
+        message: `the click put the tree cursor after "${before}" in the writing view`,
+        timeout: 2_000,
+      })
+      .toMatchObject({ before, after });
+    await makeEdit();
+    await setSource2View(page);
+    await expect
+      .poll(() => sourceViewTextAroundCaret(page, caretBefore.length, caretAfter.length), {
+        timeout: 2_000,
+      })
+      .toEqual({ before: caretBefore, after: caretAfter, focused: true });
+  });
+}
+
+test(`the tree cursor stays where a click put it when the editor loses the focus`, async () => {
+  const expected = { type: `paragraph`, before: `Selecting`, after: ` "properties"` };
+  await clickWritingViewBetween(page, `Selecting`, ` "properties"`);
+  await expect
+    .poll(() => treeCursorTextAround(page, `Selecting`.length, ` "properties"`.length), {
+      timeout: 2_000,
+    })
+    .toEqual(expected);
+  await defocusEditor(page);
+  expect(await treeCursorTextAround(page, `Selecting`.length, ` "properties"`.length)).toEqual(
+    expected,
+  );
+});
+
+test(`a caret inside inline html is in the same place after source → writing → source`, async () => {
+  const expected = { before: `<kbd>Ct`, after: `rl</kbd>`, focused: true };
+  await setSource2View(page);
+  await clickSourceViewBetween(page, `<kbd>Ct`, `rl</kbd>`);
+  await expect
+    .poll(() => sourceViewTextAroundCaret(page, `<kbd>Ct`.length, `rl</kbd>`.length), {
+      message: `the click put the caret inside <kbd>Ctrl</kbd> in the source view`,
+      timeout: 2_000,
+    })
+    .toEqual(expected);
+  await setWritingView(page);
+  await setSource2View(page);
+  await expect
+    .poll(() => sourceViewTextAroundCaret(page, `<kbd>Ct`.length, `rl</kbd>`.length), {
+      timeout: 2_000,
+    })
+    .toEqual(expected);
 });

@@ -18,9 +18,10 @@ pub type WebContentsState = Mutex<WebContents>;
 /// The managed file state.
 pub type FileManagerState = Mutex<FileManager>;
 
-/// A file named on the command line, held until the bridge is ready and
-/// then sent to the renderer as a `file:loaded` menu action, once.
-pub type PendingCliFile = Mutex<Option<Value>>;
+/// The path of a file named on the command line, held until the first page
+/// load, after the saved session is restored, and then opened as a tab of
+/// its own, once.
+pub type PendingCliFile = Mutex<Option<String>>;
 
 /// The document stylesheets embedded for HTML export, in load order.
 const EXPORT_CSS: [&str; 4] = [
@@ -750,6 +751,13 @@ pub fn app_reload(app: AppHandle) -> Value {
 #[tauri::command]
 pub fn context_menu(x: f64, y: f64, window: WebviewWindow) {
     crate::menu_builder::show_context_menu(&window, x, y);
+}
+
+/// Shows a tab's context menu at a point of the page, in CSS pixels, for
+/// the tab's file, or for a tab that has no file.
+#[tauri::command]
+pub fn tab_context_menu(file_path: Option<String>, x: f64, y: f64, window: WebviewWindow) {
+    crate::menu_builder::show_tab_context_menu(&window, x, y, file_path.as_deref());
 }
 
 /// `settings:get`: returns `{ success, value? }`, omitting value when the

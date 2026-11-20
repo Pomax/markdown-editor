@@ -360,6 +360,8 @@ export class AppData {
   documentStates = new Map();
   /** @type {Map<string, HTMLElement>} */
   tabContainers = new Map();
+  /** @type {Promise<void>} */
+  fileActions = Promise.resolve();
   /** @type {HTMLElement} */
   scrollContainer;
   /** @type {number} */

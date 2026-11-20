@@ -130,7 +130,7 @@ The page reaches the backend only through the bridge. The backend reaches the pa
 
 ### The bridge
 
-`src/tauri/preload.js` is injected before any page script on every load. Rust replaces `__MEDIA_ORIGIN__` in it first. It defines the frozen object `window.pageToBackendBridge` with these members:
+`src/tauri/backend-bridge.js` is injected before any page script on every load. Rust replaces `__MEDIA_ORIGIN__` in it first. It defines the frozen object `window.pageToBackendBridge` with these members:
 
 `toDisplayUrl`, `fromDisplayUrl`, `version`, `newDocument`, `loadFile`, `loadFilePath`, `saveFile`, `saveFileAs`, `exportHtml`, `setUnsavedChanges`, `confirmClose`, `undo`, `redo`, `setWritingView`, `setSource2View`, `notifyOpenFiles`, `confirmDialog`, `reload`, `getRecentFiles`, `getSettings`, `getSetting`, `setSetting`, `browseForImage`, `getPathForFile`, `renameImage`, `toRelativeImagePath`, `changeElementType`, `applyFormat`, `onMenuAction`.
 
@@ -353,7 +353,7 @@ All of this is in `create_window` in `main.rs` or called from it:
 
 ### Blocker 1: the bridge will not install
 
-`preload.js:21` accepts only these origins:
+`backend-bridge.js:21` accepts only these origins:
 
 ```js
 const appOrigins = [`http://tauri.localhost`, `https://tauri.localhost`, `http://localhost:1420`];
@@ -362,7 +362,7 @@ const appOrigins = [`http://tauri.localhost`, `https://tauri.localhost`, `http:/
 Tauri serves the app from `tauri://localhost` on macOS and Linux. If that holds, `window.pageToBackendBridge` will not exist there, and the app will open but cannot load, save, read settings or receive menu actions.
 
 1. Measure first: log `window.location.origin` from the running app.
-2. Add a failing case to `test/unit/bridge/preload.test.js` for that origin.
+2. Add a failing case to `test/unit/bridge/backend-bridge.test.js` for that origin.
 3. Add the origin to `appOrigins`.
 4. Confirm a foreign origin is still refused, and that the Windows origins still work.
 

@@ -2,13 +2,16 @@
  * @fileoverview Integration tests for the right-click context menu.
  *
  * The app pops up Copy, Cut, Paste, a separator and Inspect Element
- * on every right-click the page did not prevent. The test build records
- * the menu with the pointer position instead of popping it up, so these
- * tests check what was recorded, that nothing is recorded where the page
- * prevented the event, that Copy, Cut and Paste send the same keystrokes
- * as the Edit items, and that Inspect Element opens DevTools: on the
- * element under the pointer on Windows, where WebView2 can inspect a
- * point, and with no element chosen elsewhere.
+ * on a right-click in the document that the page did not prevent, and no
+ * menu at all, not even the webview's own, on a right-click anywhere in
+ * its UI: the toolbar, the table of contents, the tab bar beside the
+ * tabs, and the margin beside the page. The test build records the menu
+ * with the pointer position instead of popping it up, so these tests
+ * check what was recorded, that nothing is recorded where the page
+ * prevented the event or over the UI, that Copy, Cut and Paste send the
+ * same keystrokes as the Edit items, and that Inspect Element opens
+ * DevTools: on the element under the pointer on Windows, where WebView2
+ * can inspect a point, and with no element chosen elsewhere.
  */
 
 import process from 'node:process';
@@ -17,14 +20,14 @@ import { closeApp, launchApp, loadContent } from '../../test-utils.js';
 
 /**
  * The items of the context menu, as the test hooks describe them.
- * @type {{ label?: string, type?: string }[]}
+ * @type {{ label?: string, enabled?: boolean, type?: string }[]}
  */
 const CONTEXT_MENU_ITEMS = [
-  { label: `Copy` },
-  { label: `Cut` },
-  { label: `Paste` },
+  { label: `Copy`, enabled: true },
+  { label: `Cut`, enabled: true },
+  { label: `Paste`, enabled: true },
   { type: `separator` },
-  { label: `Inspect Element` },
+  { label: `Inspect Element`, enabled: true },
 ];
 
 /** @type {import('../../tauri-app.js').TauriApp} */
@@ -72,6 +75,90 @@ async function openContextMenu() {
   await page.mouse.click(x, y, { button: `right` });
   await expect.poll(recordedCount).toBe(count + 1);
 }
+
+/**
+ * The middle of an element, in whole CSS pixels.
+ * @param {string} selector
+ * @returns {Promise<{ x: number, y: number }>}
+ */
+async function middleOf(selector) {
+  const box = await page.locator(selector).boundingBox();
+  if (!box) throw new Error(`${selector} not laid out`);
+  return { x: Math.round(box.x + box.width / 2), y: Math.round(box.y + box.height / 2) };
+}
+
+/**
+ * Right-clicks a point and reports how many menus that recorded, and
+ * whether the right-click's default was prevented, which is what keeps
+ * the webview's own menu from showing.
+ * @param {{ x: number, y: number }} point
+ * @returns {Promise<{ recorded: number, prevented: boolean }>}
+ */
+async function rightClickAt({ x, y }) {
+  const count = await recordedCount();
+  await page.evaluate(() => {
+    const own = /** @type {any} */ (window);
+    own.__contextMenuPrevented = undefined;
+    window.addEventListener(
+      `contextmenu`,
+      (event) => {
+        own.__contextMenuPrevented = event.defaultPrevented;
+      },
+      { once: true },
+    );
+  });
+  await page.mouse.click(x, y, { button: `right` });
+  await expect
+    .poll(() => page.evaluate(() => /** @type {any} */ (window).__contextMenuPrevented))
+    .toBeDefined();
+  await page.waitForTimeout(300);
+  return {
+    recorded: (await recordedCount()) - count,
+    prevented: await page.evaluate(() => /** @type {any} */ (window).__contextMenuPrevented),
+  };
+}
+
+test(`no menu shows for a right-click on the toolbar`, async () => {
+  expect(await rightClickAt(await middleOf(`#toolbar-container`))).toEqual({
+    recorded: 0,
+    prevented: true,
+  });
+});
+
+test(`no menu shows for a right-click on the table of contents`, async () => {
+  expect(await rightClickAt(await middleOf(`#toc-sidebar`))).toEqual({
+    recorded: 0,
+    prevented: true,
+  });
+});
+
+test(`no menu shows for a right-click on the tab bar beside the tabs`, async () => {
+  const box = await page.locator(`#tab-bar`).boundingBox();
+  if (!box) throw new Error(`#tab-bar not laid out`);
+  const point = { x: Math.round(box.x + box.width - 10), y: Math.round(box.y + box.height / 2) };
+  const onTab = await page.evaluate(
+    ({ x, y }) => document.elementFromPoint(x, y)?.closest(`.tab-button`) !== null,
+    point,
+  );
+  expect(onTab).toBe(false);
+  expect(await rightClickAt(point)).toEqual({ recorded: 0, prevented: true });
+});
+
+test(`no menu shows for a right-click in the margin beside the page`, async () => {
+  const box = await page.locator(`#editor-container`).boundingBox();
+  if (!box) throw new Error(`#editor-container not laid out`);
+  const point = { x: Math.round(box.x + 10), y: Math.round(box.y + box.height / 2) };
+  const inDocument = await page.evaluate(
+    ({ x, y }) => document.elementFromPoint(x, y)?.closest(`.editor`) !== null,
+    point,
+  );
+  expect(inDocument).toBe(false);
+  expect(await rightClickAt(point)).toEqual({ recorded: 0, prevented: true });
+});
+
+test(`a right-click in the document still shows the document's menu`, async () => {
+  expect(await rightClickAt(await paragraphPoint())).toEqual({ recorded: 1, prevented: true });
+});
 
 test(`a right-click records the context menu at the pointer`, async () => {
   const count = await recordedCount();

@@ -20,7 +20,7 @@ mod webview_settings;
 
 /// The bridge, injected before any page script on every load, with the
 /// media protocol's origin written in for `__MEDIA_ORIGIN__`.
-const PRELOAD: &str = include_str!("preload.js");
+const BACKEND_BRIDGE: &str = include_str!("backend-bridge.js");
 
 /// The media protocol's origin on this platform: WebView2 serves a custom
 /// protocol from an http address, the other webviews under its own scheme.
@@ -81,6 +81,7 @@ fn main() {
             ipc_handler::app_reload,
             ipc_handler::web_contents_reply,
             ipc_handler::context_menu,
+            ipc_handler::tab_context_menu,
         ])
         .setup(|app| {
             use tauri::Manager;
@@ -94,12 +95,10 @@ fn main() {
             init_settings(app);
             init_file_manager(app);
             create_window(app.handle())?;
-            let cli_file = cli_file_path();
-            if cli_file.is_none() && std::env::var("TESTING").is_err() {
+            if std::env::var("TESTING").is_err() {
                 restore_on_next_load();
             }
-            let pending = cli_file.and_then(|file_path| load_recent_file(app.handle(), &file_path));
-            app.manage(std::sync::Mutex::new(pending));
+            app.manage(std::sync::Mutex::new(cli_file_path()));
             menu_builder::install_menu(app.handle());
             fit_main_window(app.handle())?;
             #[cfg(all(feature = "test-hooks", target_os = "macos"))]
@@ -234,7 +233,7 @@ fn create_window(app: &tauri::AppHandle) -> tauri::Result<()> {
     let mut builder =
         WebviewWindowBuilder::new(app, "main", WebviewUrl::App("web/index.html".into()))
             .title("Markdown Editor")
-            .initialization_script(&PRELOAD.replace("__MEDIA_ORIGIN__", MEDIA_ORIGIN))
+            .initialization_script(&BACKEND_BRIDGE.replace("__MEDIA_ORIGIN__", MEDIA_ORIGIN))
             .visible(false);
 
     let app_handle = app.clone();
@@ -243,7 +242,7 @@ fn create_window(app: &tauri::AppHandle) -> tauri::Result<()> {
         .on_new_window(move |url, _features| webview_settings::handle_new_window(&app_handle, url))
         .on_permission_request(|_webview, _kind| tauri::webview::PermissionResponse::Deny)
         .on_page_load(|window, payload| {
-            use tauri::{Emitter, Manager};
+            use tauri::Manager;
             match payload.event() {
                 tauri::webview::PageLoadEvent::Started => {
                     if let Some(state) = window.try_state::<ipc_handler::WebContentsState>() {
@@ -255,26 +254,22 @@ fn create_window(app: &tauri::AppHandle) -> tauri::Result<()> {
                         return;
                     }
                     show_on_first_load(&window);
-                    // Deliver a file named on the command line only once the
-                    // page's own listeners are set up.
+                    // Open a file named on the command line only once the
+                    // page's own listeners are set up, and after the saved
+                    // session is restored, so it joins the session's tabs.
                     let pending = window
                         .try_state::<ipc_handler::PendingCliFile>()
                         .and_then(|state| state.lock().expect("pending cli file lock").take());
-                    if let Some(result) = pending {
-                        if let Some(state) = window.try_state::<ipc_handler::WebContentsState>() {
-                            let payload = json!({ "action": "file:loaded", "args": [result] });
-                            let ready = state
-                                .lock()
-                                .expect("web contents lock")
-                                .send("menu:action", payload);
-                            if let Some((event, payload)) = ready {
-                                let _ = window.emit(&event, payload);
-                            }
-                        }
-                    }
+                    let app = window.app_handle().clone();
                     if RESTORE_ON_LOAD.swap(false, std::sync::atomic::Ordering::SeqCst) {
-                        let app = window.app_handle().clone();
-                        std::thread::spawn(move || restore_saved_open_files(&app));
+                        std::thread::spawn(move || {
+                            restore_saved_open_files(&app);
+                            if let Some(file_path) = pending {
+                                open_cli_file(&app, &file_path);
+                            }
+                        });
+                    } else if let Some(file_path) = pending {
+                        open_cli_file(&app, &file_path);
                     }
                 }
             }
@@ -317,6 +312,20 @@ static RESTORE_ON_LOAD: std::sync::atomic::AtomicBool = std::sync::atomic::Atomi
 /// Has the next page load restore the open files saved in the settings.
 pub fn restore_on_next_load() {
     RESTORE_ON_LOAD.store(true, std::sync::atomic::Ordering::SeqCst);
+}
+
+/// Opens a file named on the command line in a tab of its own, or switches
+/// to its tab when it is open already.
+fn open_cli_file(app: &tauri::AppHandle, file_path: &str) {
+    use tauri::Manager;
+    let Some(window) = app.get_webview_window("main") else {
+        return;
+    };
+    let Some(result) = load_recent_file(app, file_path) else {
+        return;
+    };
+    let web_contents = app.state::<ipc_handler::WebContentsState>();
+    ipc_handler::emit_menu_action(&window, web_contents.inner(), "file:loaded", vec![result]);
 }
 
 /// Restores the open files saved in the settings that still exist on disk.
@@ -364,21 +373,10 @@ pub fn restore_open_files(app: &tauri::AppHandle, entries: &[Value]) {
         return;
     };
     let web_contents = app.state::<ipc_handler::WebContentsState>();
-    let load_first = format!(
-        "(function () {{
-            function tryRestore() {{
-                var api = window.editorAPI;
-                if (!api) {{ setTimeout(tryRestore, 50); return; }}
-                window.__editorFilePath = {path};
-                api.setContent({content});
-            }}
-            tryRestore();
-        }})()",
-        path = web_contents::js_string(&first.1),
-        content = web_contents::js_string(&first.2),
-    );
-    let _ = web_contents::execute_javascript(&window, web_contents.inner(), &load_first);
-    for (_, path, content) in &loaded[1..] {
+    // Every file is a `file:loaded` menu action, in order, so the page
+    // handles them one after the other: the first goes into the page's own
+    // tab, which is still empty, and each later one into a tab of its own.
+    for (_, path, content) in &loaded {
         ipc_handler::emit_menu_action(
             &window,
             web_contents.inner(),

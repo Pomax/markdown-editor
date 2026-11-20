@@ -49,7 +49,7 @@ This runs `tauri dev`: it builds the backend (the first build compiles all the R
 markdown-editor/
 ├── src/
 │   ├── parsers/old/       # DFA tokenizer, parser and syntax tree
-│   ├── tauri/             # The Tauri backend: the Rust modules, the bridge (preload.js),
+│   ├── tauri/             # The Tauri backend: the Rust modules, the bridge (backend-bridge.js),
 │   │                      #   build.rs, the capabilities and the icons
 │   ├── types.d.ts         # Global TypeScript type declarations
 │   └── web/               # What the webview loads
@@ -111,7 +111,7 @@ markdown-editor/
 | File | Purpose |
 |------|---------|
 | `src/tauri/main.rs` | Backend entry point, window, session and close flow |
-| `src/tauri/preload.js` | The bridge: the page's `pageToBackendBridge` |
+| `src/tauri/backend-bridge.js` | The bridge: the page's `pageToBackendBridge` |
 | `src/tauri/ipc_handler.rs` | The commands the page calls |
 | `src/tauri/file_manager.rs` | Current file, recent files, export paths |
 | `src/tauri/menu_builder.rs` | Application menu and context menu |

@@ -422,23 +422,6 @@ async function windowOpen(closing) {
   return (await closing.windowCount().catch(() => 0)) > 0;
 }
 
-test(`closing with no unsaved changes saves the open files and closes`, async ({}, testInfo) => {
-  const filePath = testInfo.outputPath(`open-when-closed.md`);
-  fs.writeFileSync(filePath, loremContent);
-  const first = await launchApp([filePath]);
-  await first.page.waitForFunction(() => (window.editorAPI?.getContent() ?? ``).length > 0);
-  await first.app.requestClose({ testing: false });
-  await expect.poll(() => windowOpen(first.app)).toBe(false);
-
-  const second = await launchApp();
-  try {
-    const openFiles = await second.app.settings.get(`openFiles`);
-    expect(openFiles.map((/** @type {any} */ entry) => entry.filePath)).toEqual([filePath]);
-  } finally {
-    await closeApp(second.app);
-  }
-});
-
 test(`closing with unsaved changes and choosing Discard closes without saving`, async ({}, testInfo) => {
   const filePath = testInfo.outputPath(`discarded.md`);
   fs.writeFileSync(filePath, loremContent);

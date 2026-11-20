@@ -1,5 +1,5 @@
 /**
- * @fileoverview Unit tests for the Tauri bridge (src/tauri/preload.js),
+ * @fileoverview Unit tests for the Tauri bridge (src/tauri/backend-bridge.js),
  * run in a Node VM against a fake window.__TAURI_INTERNALS__.
  *
  * The bridge must expose window.pageToBackendBridge with exactly the
@@ -18,7 +18,7 @@ import { fileURLToPath } from 'node:url';
 import { createContext, runInContext } from 'node:vm';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), `..`, `..`, `..`);
-const source = readFileSync(join(root, `src`, `tauri`, `preload.js`), `utf-8`);
+const source = readFileSync(join(root, `src`, `tauri`, `backend-bridge.js`), `utf-8`);
 
 const APP_ORIGIN = `http://tauri.localhost`;
 const APP_ORIGIN_ON_MACOS_AND_LINUX = `tauri://localhost`;
@@ -64,6 +64,7 @@ const EXPECTED_MEMBERS = [
   `changeElementType`,
   `applyFormat`,
   `onMenuAction`,
+  `showTabContextMenu`,
 ];
 
 /** A stand-in for the page's File: a name and no content. */
@@ -303,6 +304,17 @@ describe(`Tauri bridge`, () => {
     const [image, notes] = dispatched[0].dataTransfer.files;
     assert.strictEqual(window.pageToBackendBridge.getPathForFile(image), `C:\\images\\photo.png`);
     assert.strictEqual(window.pageToBackendBridge.getPathForFile(notes), `/notes/todo.md`);
+  });
+
+  it(`shows a tab's context menu through tab_context_menu with its file path and point`, async () => {
+    const { window, invokeCalls } = runBridge(APP_ORIGIN);
+    await window.pageToBackendBridge.showTabContextMenu(`/notes/todo.md`, 12, 34);
+    // The bridge runs in its own context, so its objects are compared as
+    // plain copies.
+    assert.deepStrictEqual(JSON.parse(JSON.stringify(invokeCalls.at(-1))), {
+      command: `tab_context_menu`,
+      args: { filePath: `/notes/todo.md`, x: 12, y: 34 },
+    });
   });
 
   it(`invokes a command through the Tauri internals`, async () => {

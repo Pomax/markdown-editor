@@ -231,6 +231,20 @@ pub fn build_context_menu() -> Value {
     ])
 }
 
+/// The context menu of a tab in the tab bar: Copy File Path, which copies
+/// the tab's file path, disabled for a tab that has no file.
+pub fn build_tab_context_menu(file_path: Option<&str>) -> Value {
+    let mut copy_path = json!({
+        "label": "Copy File Path",
+        "enabled": file_path.is_some(),
+        "action": "tab:copyPath"
+    });
+    if let Some(path) = file_path {
+        copy_path["actionArg"] = json!(path);
+    }
+    json!([copy_path])
+}
+
 /// The About box text.
 pub fn about_box(version: &str) -> Value {
     let repo = REPOSITORY_URL;
@@ -857,22 +871,49 @@ pub fn handle_menu_event(app: &AppHandle, id: &str) {
     }
 }
 
-/// What the context menu's item with the given id does.
+/// What the item with the given id in the last popped-up menu does.
 fn context_item(id: &str) -> Option<ItemInfo> {
-    let mut items = HashMap::new();
-    record_items(&build_context_menu(), &mut items);
-    items.remove(id)
+    POPUP_ITEMS
+        .lock()
+        .expect("popup items lock")
+        .as_ref()
+        .and_then(|items| items.get(id).cloned())
 }
+
+/// What each item of the last popped-up menu does, by id.
+static POPUP_ITEMS: std::sync::Mutex<Option<HashMap<String, ItemInfo>>> =
+    std::sync::Mutex::new(None);
 
 /// The point of the page, in CSS pixels, the last context menu was asked
 /// for, where its Inspect Element inspects.
 static CONTEXT_POINT: std::sync::Mutex<Option<(f64, f64)>> = std::sync::Mutex::new(None);
 
-/// Shows the context menu at a point of the page, in CSS pixels. The test build records the
-/// menu and the point instead of popping it up.
+/// Shows the document's context menu at a point of the page, in CSS
+/// pixels.
 pub fn show_context_menu(window: &tauri::WebviewWindow, x: f64, y: f64) {
     *CONTEXT_POINT.lock().expect("context point lock") = Some((x, y));
-    let Ok(menu) = build_popup_menu(window.app_handle(), &build_context_menu()) else {
+    show_popup(window, x, y, &build_context_menu());
+}
+
+/// Shows a tab's context menu at a point of the page, in CSS pixels, for
+/// the tab's file, or for a tab that has no file.
+pub fn show_tab_context_menu(
+    window: &tauri::WebviewWindow,
+    x: f64,
+    y: f64,
+    file_path: Option<&str>,
+) {
+    show_popup(window, x, y, &build_tab_context_menu(file_path));
+}
+
+/// Pops up a menu built from a template at a point of the page, in CSS
+/// pixels, keeping what its items do. The test build records the menu and
+/// the point instead of popping it up.
+fn show_popup(window: &tauri::WebviewWindow, x: f64, y: f64, template: &Value) {
+    let mut items = HashMap::new();
+    record_items(template, &mut items);
+    *POPUP_ITEMS.lock().expect("popup items lock") = Some(items);
+    let Ok(menu) = build_popup_menu(window.app_handle(), template) else {
         return;
     };
     #[cfg(feature = "test-hooks")]
@@ -891,15 +932,19 @@ fn build_popup_menu(app: &AppHandle, template: &Value) -> tauri::Result<Menu<Wry
 }
 
 /// Each entry of a built context menu: its label, or none for a
-/// separator, and its id.
+/// separator, its id, and whether it is enabled.
 #[cfg(feature = "test-hooks")]
-fn context_entries(menu: &Menu<Wry>) -> Vec<(Option<String>, String)> {
+fn context_entries(menu: &Menu<Wry>) -> Vec<crate::test_hooks::ContextEntry> {
     menu.items()
         .unwrap_or_default()
         .iter()
         .map(|kind| {
             let label = label_of(kind).filter(|label| !label.is_empty());
-            (label, kind.id().0.clone())
+            (
+                label,
+                kind.id().0.clone(),
+                kind_enabled(kind).unwrap_or(true),
+            )
         })
         .collect()
 }
@@ -918,6 +963,7 @@ fn run_item(app: &AppHandle, info: &ItemInfo) {
         Some("file:loadRecent") => handle_load_recent(app, &arg),
         Some("file:clearRecent") => clear_recent_files(app),
         Some("file:copyPath") => copy_file_path(app),
+        Some("tab:copyPath") if !arg.is_empty() => copy_to_clipboard(app, &arg),
         Some("app:exit") => handle_exit(app),
         Some("app:reload") => handle_reload(app),
         Some("app:debug") => handle_debug(app),
@@ -989,10 +1035,15 @@ fn clear_recent_files(app: &AppHandle) {
 /// File > Utilities > Copy File Path: copies the current file's path to
 /// the system clipboard.
 fn copy_file_path(app: &AppHandle) {
-    use tauri_plugin_clipboard_manager::ClipboardExt;
     if let Some(path) = current_file_path(app) {
-        let _ = app.clipboard().write_text(path);
+        copy_to_clipboard(app, &path);
     }
+}
+
+/// Copies text to the system clipboard.
+fn copy_to_clipboard(app: &AppHandle, text: &str) {
+    use tauri_plugin_clipboard_manager::ClipboardExt;
+    let _ = app.clipboard().write_text(text.to_string());
 }
 
 /// File > Exit: closes the window.
@@ -1369,7 +1420,14 @@ fn find_item(app: &AppHandle, labels: &[String]) -> Option<MenuItemKind<Wry>> {
 /// Whether the entry at a label path is enabled.
 #[cfg(feature = "test-hooks")]
 pub fn item_enabled(app: &AppHandle, labels: &[String]) -> Option<bool> {
-    match find_item(app, labels)? {
+    kind_enabled(&find_item(app, labels)?)
+}
+
+/// Whether a built menu entry is enabled, for the kinds that can be
+/// disabled.
+#[cfg(feature = "test-hooks")]
+fn kind_enabled(kind: &MenuItemKind<Wry>) -> Option<bool> {
+    match kind {
         MenuItemKind::Submenu(submenu) => submenu.is_enabled().ok(),
         MenuItemKind::MenuItem(item) => item.is_enabled().ok(),
         MenuItemKind::Check(item) => item.is_enabled().ok(),
@@ -1748,6 +1806,23 @@ mod tests {
         assert_eq!(submenu[0]["action"], "app:reload");
         assert_eq!(submenu[2]["accelerator"], "F12");
         assert_eq!(submenu[4]["action"], "help:about");
+    }
+
+    #[test]
+    fn menu_builder_tab_context_menu_copies_that_tab_s_path() {
+        assert_eq!(
+            build_tab_context_menu(Some("/docs/notes.md")),
+            json!([{
+                "label": "Copy File Path",
+                "enabled": true,
+                "action": "tab:copyPath",
+                "actionArg": "/docs/notes.md"
+            }])
+        );
+        assert_eq!(
+            build_tab_context_menu(None),
+            json!([{ "label": "Copy File Path", "enabled": false, "action": "tab:copyPath" }])
+        );
     }
 
     #[test]
