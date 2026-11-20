@@ -20,6 +20,8 @@ import {
   setWritingView,
 } from '../../test-utils.js';
 
+import { parser } from '../../../../src/parsers/old/dfa-parser.js';
+
 const readmeContent = fs.readFileSync(path.join(projectRoot, `README.md`), `utf-8`);
 
 /** @type {import('../../tauri-app.js').TauriApp} */
@@ -328,18 +330,21 @@ test.describe(`Source2 toolbar — README.md content`, () => {
     const textarea = page.locator(`#editor.source-view-v2 textarea`);
     await textarea.focus();
 
-    // The README starts with "# Pomax's Markdown Editor" — select "Markdown"
+    // Select the text of the README's first node
+    const [readmeNode] = (await parser.parse(readmeContent)).children;
+    const nodeMarkdown = readmeNode.toMarkdown();
     const value = await getTextareaValue(page);
-    const markdownIdx = value.indexOf(`Markdown`);
-    expect(markdownIdx).toBeGreaterThan(-1);
+    const nodeIdx = value.indexOf(nodeMarkdown);
+    expect(nodeIdx).toBeGreaterThan(-1);
+    const textEnd = nodeIdx + nodeMarkdown.length;
     await textarea.evaluate(
       (/** @type {HTMLTextAreaElement} */ el, range) => el.setSelectionRange(range[0], range[1]),
-      [markdownIdx, markdownIdx + 8],
+      [textEnd - readmeNode.content.length, textEnd],
     );
 
     await clickToolbarButton(page, `bold`);
 
     const after = await getTextareaValue(page);
-    expect(after).toContain(`**Markdown**`);
+    expect(after).toContain(`**${readmeNode.content}**`);
   });
 });

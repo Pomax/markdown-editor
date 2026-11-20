@@ -30,10 +30,13 @@
 //! caller can wait until the page has seen every release; the other input
 //! commands answer `true`.
 
+#[cfg(target_os = "linux")]
 use serde_json::{Value, json};
+#[cfg(target_os = "linux")]
 use std::io::{BufRead, Write};
 
 /// The keysym of a modifier key name.
+#[cfg(target_os = "linux")]
 fn modifier_keysym(name: &str) -> Option<u32> {
     match name.to_ascii_lowercase().as_str() {
         "control" | "ctrl" => Some(0xffe3),
@@ -47,6 +50,7 @@ fn modifier_keysym(name: &str) -> Option<u32> {
 /// The keysym that types a character: a newline is Return, a tab is Tab,
 /// a Latin-1 character is its own keysym, and every other character is
 /// its Unicode keysym.
+#[cfg(target_os = "linux")]
 fn char_keysym(character: char) -> u32 {
     let code = character as u32;
     match character {
@@ -61,6 +65,7 @@ fn char_keysym(character: char) -> u32 {
 /// (a letter whatever its case, as on Windows, so Shift is pressed only
 /// when the combination names it), a function key, a punctuation key's
 /// name, or a named key.
+#[cfg(target_os = "linux")]
 fn key_keysym(name: &str) -> Option<u32> {
     let mut chars = name.chars();
     if let (Some(single), None) = (chars.next(), chars.next()) {
@@ -106,6 +111,7 @@ fn key_keysym(name: &str) -> Option<u32> {
 /// A key combination written as `Modifier+...+Key`: the keysyms of the
 /// modifiers to hold, and of the key to press. A modifier on its own
 /// (`Alt`) is pressed as the key.
+#[cfg(target_os = "linux")]
 fn parse_combo(combo: &str) -> Result<(Vec<u32>, u32), String> {
     let parts: Vec<&str> = combo.split('+').collect();
     let (key, modifiers) = parts
@@ -123,6 +129,7 @@ fn parse_combo(combo: &str) -> Result<(Vec<u32>, u32), String> {
 
 /// The X button number of a button name: 1 for `left`, 2 for `middle`,
 /// 3 for `right`.
+#[cfg(target_os = "linux")]
 fn button_number(name: &str) -> Result<u8, String> {
     match name {
         "left" => Ok(1),
@@ -134,13 +141,14 @@ fn button_number(name: &str) -> Result<u8, String> {
 
 /// The keyboard mapping: the first keycode, how many keysyms each keycode
 /// has, and those keysyms, keycode by keycode.
-#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+#[cfg(target_os = "linux")]
 struct Keymap {
     first: u8,
     per_keycode: usize,
     keysyms: Vec<u32>,
 }
 
+#[cfg(target_os = "linux")]
 impl Keymap {
     /// The keycode that types a keysym, and whether it needs Shift: the
     /// first keycode with the keysym unshifted, or else the first with it
@@ -161,6 +169,14 @@ impl Keymap {
     }
 }
 
+/// Off Linux there is no X11, so the runner only says it works on Linux only.
+#[cfg(not(target_os = "linux"))]
+fn main() {
+    eprintln!("the runner works on Linux only");
+    std::process::exit(1);
+}
+
+#[cfg(target_os = "linux")]
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
     if args == ["serve"] {
@@ -182,6 +198,7 @@ fn main() {
 /// Runs the commands that arrive on `input` until it ends, each a line
 /// holding the JSON array of one run's arguments, and answers each with a
 /// line on `output`: `{"ok": answer}`, or `{"error": message}`.
+#[cfg(target_os = "linux")]
 fn serve(
     input: impl BufRead,
     mut output: impl Write,
@@ -206,13 +223,6 @@ fn serve(
 #[cfg(target_os = "linux")]
 fn run(args: &[String]) -> Result<Value, String> {
     x11_input::run(args)
-}
-
-/// The runner sends input through X11 on Linux only.
-#[cfg(not(target_os = "linux"))]
-fn run(_args: &[String]) -> Result<Value, String> {
-    let _ = (parse_combo, char_keysym, button_number, Keymap::find);
-    Err("the runner works on Linux only".to_string())
 }
 
 #[cfg(target_os = "linux")]
@@ -716,7 +726,7 @@ mod x11_input {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, target_os = "linux"))]
 mod tests {
     use super::*;
 

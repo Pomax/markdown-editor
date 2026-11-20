@@ -8,6 +8,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { expect, test } from '@playwright/test';
 import { closeApp, launchApp, projectRoot } from '../../test-utils.js';
+import { parser } from '../../../../src/parsers/old/dfa-parser.js';
 
 const readmePath = path.join(projectRoot, `README.md`);
 const readmeContent = fs.readFileSync(readmePath, `utf-8`);
@@ -53,15 +54,18 @@ test(`reload restores a saved file from disk`, async () => {
   );
 
   // Wait for the content to be restored from disk
+  const [readmeNode] = (await parser.parse(readmeContent)).children;
+  const nodeMarkdown = readmeNode.toMarkdown();
   await page.waitForFunction(
-    () => {
+    (markdown) => {
       const content = window.editorAPI?.getContent() ?? ``;
-      return content.includes(`Markdown Editor`);
+      return content.includes(markdown);
     },
+    nodeMarkdown,
     { timeout: 10000 },
   );
 
   // Verify the content matches the on-disk file
   const contentAfter = await page.evaluate(() => window.editorAPI?.getContent() ?? ``);
-  expect(contentAfter).toContain(`# Pomax's Markdown Editor`);
+  expect(contentAfter).toContain(nodeMarkdown);
 });
