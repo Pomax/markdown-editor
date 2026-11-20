@@ -1,5 +1,11 @@
 # Release Log
 
+## v3.0.0
+
+This is a port from Electron (Node.js) to Tauri (Rust + native webview) which turns the app from an idiotic 300MB into something around five. Not five hundred, just five.
+
+At the same time, the releases are now simply the application, without the OS or version baked into the file name. Windows users get an .exe, MacOS users get a .dmg, and Linux users get a .deb file because the release CI builds it on Ubunutu. If you are on a different platform, you'll want to compile it yourself: see the [README.md](./README.md) for instructions on that.
+
 ## v2.2.0
 
 ### New Features

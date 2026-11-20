@@ -1,56 +1,51 @@
 # Pomax's Markdown Editor
 
-A GitHub-flavoured markdown editor built using the web stack, running in Tauri (the operating system's own web view, with a Rust backend), featuring a syntactic tree-based document model for fast editing of large documents (e.g. 50k+ work documents like https://pomax.github.io/are-we-flying).
+A GitHub-flavoured markdown editor proof of concept built using the web stack and running in Tauri (a Rust alternative to the idiotically bloated Electron), built to make editing _actual_ documents (e.g. 50k+ word documents like [https://pomax.github.io/are-we-flying](https://pomax.github.io/are-we-flying)) relatively painless.
 
-![A screenshot of the editor](./screenshot-1.png)
+<img src="./editor.png" style="width: 90%;" />
 
-## Current version: v2.2.0
+## Current version: v3.0.0
 
 See the [release log](./RELEASE_LOG.md) for what's new in this version.
 
 ### Downloads
 
-This editor is released as a standalone, installer-free executable for Windows, MacOS, and Linux, packaged as a zip file.
+This editor is released as a single executable. The current download links are:
 
-The current download links are:
-
-- Windows: [Markdown-Editor-2.2.0-win.zip](https://github.com/Pomax/Pomax-s-Markdown-Editor/releases/download/v2.2.0/Markdown-Editor-2.2.0-win.zip)
-- MacOS: [Markdown-Editor-2.2.0-mac-arm64.zip](https://github.com/Pomax/Pomax-s-Markdown-Editor/releases/download/v2.2.0/Markdown-Editor-2.2.0-mac-arm64.zip)
-- Linux: [Markdown-Editor-2.2.0-linux.zip](https://github.com/Pomax/Pomax-s-Markdown-Editor/releases/download/v2.2.0/Markdown-Editor-2.2.0-linux.zip)
-
-Note: Linux users will need to mark the executable as executable after unpacking: `chmod +x "Markdown Editor/markdown-editor"`
+- Windows: [Markdown-Editor.exe](https://github.com/Pomax/Pomax-s-Markdown-Editor/releases/download/v3.0.0/Markdown-Editor.exe)
+- MacOS: [Markdown-Editor.dmg](https://github.com/Pomax/Pomax-s-Markdown-Editor/releases/download/v3.0.0/Markdown-Editor.dmg)
+- Linux: [Markdown-Editor.deb](https://github.com/Pomax/Pomax-s-Markdown-Editor/releases/download/v3.0.0/Markdown-Editor.deb)
 
 Previous versions can be found over on the [Releases](https://github.com/Pomax/Pomax-s-Markdown-Editor/releases/latest) page.
 
-Alternatively, of course, you can just clone the repo and use `npm start` with all the dependencies installed.
+Alternatively, of course, you can just clone the repo, install all the dependencies, and then run the start script from the `scripts` directory.
 
-## Eww, Electron?
+## So... what is this?
 
-Sorry, did you not have 8+GB if RAM and 1TB+ of disk space? Stop pretending you care about Electron, you care about whether the tools are useful or not. Yes, it's dumb that 2 MB of resources needs 100MB of UI runner, but on the other hand, it's literally a browser, and have you looked at what browsers need to support these days? Can you even _count_ the number of web APIs? =P
+I needed a standalone, GitHub flavoured markdown editor that can open individual files, has both wysiwyg and plain source modes with seamless toggling between those, has *full* "arbitrary html in markdown" support, _including stylesheets_, and the ability to load 50,000+ word documents in a way that edits are (near) immediate instead of trying to update a single, giant, string. Which rules out literally every markdown editor out there. Think of your favourite markdown editor: it fails at least one of those criteria.
 
-# Fine... so what is this?
+So this is that. It's a markdown editor that does what I need, and gets updated anytime I run into something it should do, but can't. Or does something wrong. It's a proof of concept put together using Claude, careful ATTD, and a fuckton of yelling out loud at how much of a piece of shit Anthropic's baby is.
 
-This is part experiment, part "solving a problem I have that no one else will solve for me": I need a wysiwyg GitHub flavoured markdown editor with full "html in markdown" support, and the ability to load 50,000+ word documents backed by a document tree, so that edits aren't based on "updating a single, giant, string". Which rules out literally every markdown editor out there. Think of you favourite markdown editor: it fails at least one of those criteria.
+### I don't want to use something made using AI
 
-That's the tooling part, the experimental part is where I am not writing this code, I am instead directing code generation tools to write the code for me, in order to understand where and how those tools break down. Primarily, this codebase is developed by Opus 4.6, and it gets it wrong. A lot. Which in turn means I learn something about which seemingly simple problem descriptions are orders of magnitude too complex, and which order of operations are guaranteed to yield nonsense, or at best hours instead of minutes of work.
+That's fine. This is a tool that ***I*** need. I'm putting it up on GitHub with a public domain license because that's what I do with almost everything I make, and if you don't want to use this, no one's forcing you to use it. Heck no one even forced you to make it this far in the README, just close this tab; no hard feelings.
 
-## So this is a vibe coded project?
+## Running from source
 
-Not really, no. This is literally an experiment into how _not_ to vibe code, and instead use these tools in a way that actually makes the same amount of sense as any other IDE automation. Because there is _so much_ these tools can't do, without telling you, and if you just let them "do their thing" instead of making them perform very specific targetted tasks based on you tracking the task list and acceptance criteria, that's on you.
-
-## Well I don't want to use something made by AI
-
-That's fine. There's a reason I gave this project the name that it has: this is a tool that ***I*** need. I'm putting it up on GitHub with a public domain license because that's what I do with almost everything I make, and if you don't like it, no one's forcing you to use it, or even keep reading.
-
-# Running from source
-
-You can obviously just run this project from source if you want. It's just a web stack project wrapped by Tauri.
+There are prebuilt executables, but if you want to run the project from source, compiled on your own machine, go for it.
 
 ### Prerequisites
 
-- Node.js 22.0.0 or higher
-- Rust (the stable toolchain, installed with `rustup`)
-- On Windows, the Microsoft C++ build tools and the WebView2 runtime; on macOS, the Xcode command line tools; on Linux, the WebKitGTK 4.1 development packages. See [Getting Started](./docs/developers/getting-started.md) for the details.
+Software:
+
+- A currently supported version of Node.js (I recommend using [nvm](https://www.nvmnode.com/guide/download.html))
+- [Rust](https://rust-lang.org/tools/install)
+
+Build tools:
+
+- On Windows, the Microsoft C++ build tools and the WebView2 runtime
+- on macOS, the Xcode command line tools
+- on Linux, the WebKitGTK 4.1 development packages. 
 
 ### Installation
 
@@ -59,65 +54,19 @@ npm install --ignore-scripts
 npm run setup
 ```
 
-`npm run setup` installs the Playwright Firefox browser used by the integration tests.
+The setup script installs the Playwright Firefox browser used for integration testing, so it's technically optional if all you want to do is compile the editor, but like... you might as well, so you can run the tests to make sure everything works?
 
-### Running the Application
+### Building
 
-```sh
-npm start
-```
+For Windows users, run `scripts\build.bat`, for MacOS and Linux, run `./scripts/build.sh`
 
-# Testing
+### Running the build executable
 
-You run the full test suite using `npm test`. Nice and obvious. This will run linting, formatting, consistency testing, unit testing, the backend's Rust tests, and integration testing.
+For Windows users, run `scripts\run.bat`, for MacOS and Linux, run `./scripts/run.sh`
 
-### Linting
+### Testing
 
-The general linting task performs both linting and formatting using Biome, and consistency testing using the typescript transpiler set to JS with `--no-emit` so that it performs analysis only.
-
-```sh
-npm run lint
-```
-
-### Unit Tests
-
-Unit tests use Node's built in testing framework, and can be run on their own using:
-
-```sh
-npm run test:unit
-```
-
-### Backend Tests
-
-The Rust backend's unit tests can be run on their own using:
-
-```sh
-npm run test:rust
-```
-
-### Integration Tests
-
-Integration testing uses Playwright, driving the app itself (with its window hidden) and, for the tests that only need the page, Firefox. They can be run on their own using:
-
-```sh
-npm run test:integration
-```
-
-To run specific individual spec files, use:
-
-```sh
-npm run test:integration -- test/integration/your.file.spec.js
-```
-
-## Building Executables
-
-To build a standalone executable for the current platform (a single `.exe` on Windows, a `.dmg` on macOS, a `.deb` on Linux, which has apt install WebKitGTK and GTK from the system):
-
-```sh
-npm run build
-```
-
-Build output goes to the `dist/` directory. The GitHub Actions workflow that builds all three platforms on every push to `main` lives outside this folder and still builds the Electron version.
+You run the full test suite using the `scripts\test.bat` or `./scripts/test.sh` scripts. Nice and simple. This will run linting, formatting, consistency testing, unit testing, the backend's Rust tests, and integration testing.
 
 ## License
 
