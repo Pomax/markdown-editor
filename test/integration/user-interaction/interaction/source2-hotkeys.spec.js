@@ -3,11 +3,14 @@
  *
  * Verifies that formatting hotkeys (Ctrl+B, Ctrl+I, Ctrl+K, etc.) work
  * in the source2 textarea by triggering the same code path as toolbar
- * button clicks.
+ * button clicks, and that Ctrl+Z undoes an edit made in either view from
+ * either view.
  */
 import { expect, test } from '@playwright/test';
 import {
+  END,
   MOD,
+  clickInEditor,
   closeApp,
   launchApp,
   loadContent,
@@ -15,18 +18,18 @@ import {
   setWritingView,
 } from '../../test-utils.js';
 
-/** @type {import('@playwright/test').ElectronApplication} */
-let electronApp;
+/** @type {import('../../tauri-app.js').TauriApp} */
+let app;
 
 /** @type {import('@playwright/test').Page} */
 let page;
 
 test.beforeAll(async () => {
-  ({ electronApp, page } = await launchApp());
+  ({ app, page } = await launchApp());
 });
 
 test.afterAll(async () => {
-  await closeApp(electronApp);
+  await closeApp(app);
 });
 
 test.beforeEach(async () => {
@@ -39,6 +42,14 @@ test.beforeEach(async () => {
  */
 async function getTextareaValue() {
   return page.locator(`#editor.source-view-v2 textarea`).inputValue();
+}
+
+/**
+ * Returns the editor's markdown.
+ * @returns {Promise<string>}
+ */
+async function getEditorContent() {
+  return page.evaluate(() => window.editorAPI?.getContent() ?? ``);
 }
 
 test.describe(`Source2 hotkey formatting`, () => {
@@ -552,6 +563,22 @@ test.describe(`Source2 hotkey formatting`, () => {
     expect(value).toContain(`\`\`\``);
   });
 
+  test(`Ctrl+Shift+C on an indented list item fences it at its own indentation`, async () => {
+    await loadContent(page, `- item\n  - nested item`);
+    await setSource2View(page);
+
+    const textarea = page.locator(`#editor.source-view-v2 textarea`);
+    await textarea.focus();
+    await textarea.evaluate((/** @type {HTMLTextAreaElement} */ el) =>
+      el.setSelectionRange(12, 12),
+    );
+    await page.keyboard.press(`${MOD}+Shift+c`);
+    await expect.poll(getTextareaValue).toBe(`- item\n  \`\`\`\n  - nested item\n  \`\`\``);
+
+    await page.keyboard.press(`${MOD}+Shift+c`);
+    await expect.poll(getTextareaValue).toBe(`- item\n  - nested item`);
+  });
+
   test(`applying same format twice with collapsed cursor toggles it off`, async () => {
     await loadContent(page, `some text`);
     await setSource2View(page);
@@ -574,5 +601,70 @@ test.describe(`Source2 hotkey formatting`, () => {
 
     value = await getTextareaValue();
     expect(value).toBe(`some text`);
+  });
+});
+
+test.describe(`Undo across views`, () => {
+  test(`Ctrl+Z in source view undoes text typed in writing view`, async () => {
+    await loadContent(page, `start`);
+    await clickInEditor(page, page.locator(`#editor [data-node-id]`).first());
+    await page.keyboard.press(END);
+    await page.keyboard.type(` more`);
+    await expect.poll(getEditorContent).toBe(`start more`);
+    await setSource2View(page);
+
+    const textarea = page.locator(`#editor.source-view-v2 textarea`);
+    await textarea.focus();
+    await page.keyboard.press(`${MOD}+z`);
+
+    await expect.poll(getTextareaValue).toBe(`start`);
+  });
+
+  test(`Ctrl+Z in writing view undoes text typed in source view`, async () => {
+    await loadContent(page, `start`);
+    await setSource2View(page);
+
+    const textarea = page.locator(`#editor.source-view-v2 textarea`);
+    await textarea.focus();
+    await textarea.evaluate((/** @type {HTMLTextAreaElement} */ el) => el.setSelectionRange(5, 5));
+    await page.keyboard.type(` more`);
+    await expect.poll(getTextareaValue).toBe(`start more`);
+    await setWritingView(page);
+    const paragraph = page.locator(`#editor [data-node-id]`).first();
+    await paragraph.waitFor();
+    await clickInEditor(page, paragraph);
+    await page.keyboard.press(`${MOD}+z`);
+
+    await expect.poll(getEditorContent).toBe(`start`);
+  });
+
+  test(`Ctrl+Z in source view undoes text typed in source view`, async () => {
+    await loadContent(page, `start`);
+    await setSource2View(page);
+
+    const textarea = page.locator(`#editor.source-view-v2 textarea`);
+    await textarea.focus();
+    await textarea.evaluate((/** @type {HTMLTextAreaElement} */ el) => el.setSelectionRange(5, 5));
+    await page.keyboard.type(` more`);
+    await expect.poll(getTextareaValue).toBe(`start more`);
+    await page.keyboard.press(`${MOD}+z`);
+
+    await expect.poll(getTextareaValue).toBe(`start`);
+  });
+
+  test(`Ctrl+Z in source view leaves the caret where the undone typing was`, async () => {
+    await loadContent(page, `one three`);
+    await setSource2View(page);
+
+    const textarea = page.locator(`#editor.source-view-v2 textarea`);
+    await textarea.focus();
+    await textarea.evaluate((/** @type {HTMLTextAreaElement} */ el) => el.setSelectionRange(3, 3));
+    await page.keyboard.type(` two`);
+    await expect.poll(getTextareaValue).toBe(`one two three`);
+    await page.keyboard.press(`${MOD}+z`);
+    await expect.poll(getTextareaValue).toBe(`one three`);
+    await page.keyboard.type(`X`);
+
+    await expect.poll(getTextareaValue).toBe(`oneX three`);
   });
 });

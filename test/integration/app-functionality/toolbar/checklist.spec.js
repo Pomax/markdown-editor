@@ -24,18 +24,18 @@ import {
   setWritingView,
 } from '../../test-utils.js';
 
-/** @type {import('@playwright/test').ElectronApplication} */
-let electronApp;
+/** @type {import('../../tauri-app.js').TauriApp} */
+let app;
 
 /** @type {import('@playwright/test').Page} */
 let page;
 
 test.beforeAll(async () => {
-  ({ electronApp, page } = await launchApp());
+  ({ app, page } = await launchApp());
 });
 
 test.afterAll(async () => {
-  await closeApp(electronApp);
+  await closeApp(app);
 });
 
 test(`writing view renders checkbox for checklist item`, async () => {
@@ -362,9 +362,7 @@ test(`multi-select across html-block converts all nodes to checklist after confi
   await setWritingView(page);
 
   // Mock dialog.showMessageBox to auto-confirm (response 0 = "Convert")
-  await electronApp.evaluate((electron) => {
-    electron.dialog.showMessageBox = async () => ({ response: 0, checkboxChecked: false });
-  });
+  await app.setMessageBoxResponse(0);
 
   // Programmatically set cross-node selection (drag doesn't work reliably
   // in writing mode — re-renders destroy the DOM selection mid-drag).
@@ -407,9 +405,7 @@ test(`multi-select across html-block aborts on cancel`, async () => {
   await setWritingView(page);
 
   // Mock dialog.showMessageBox to cancel (response 1 = "Cancel")
-  await electronApp.evaluate((electron) => {
-    electron.dialog.showMessageBox = async () => ({ response: 1, checkboxChecked: false });
-  });
+  await app.setMessageBoxResponse(1);
 
   // Programmatically set cross-node selection.
   await setCrossNodeSelection(page, `paragraph one`, 0, `paragraph two`, 13);

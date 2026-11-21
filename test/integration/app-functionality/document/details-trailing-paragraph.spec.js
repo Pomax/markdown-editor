@@ -23,18 +23,18 @@ const End = isMac ? `Meta+ArrowRight` : `End`;
 /** A tiny document that ends with </details>. */
 const markdownEndingInDetails = `# Title\n\n<details>\n\n<summary>Summary</summary>\n\nbody\n\n</details>`;
 
-/** @type {import('@playwright/test').ElectronApplication} */
-let electronApp;
+/** @type {import('../../tauri-app.js').TauriApp} */
+let app;
 
 /** @type {import('@playwright/test').Page} */
 let page;
 
 test.beforeAll(async () => {
-  ({ electronApp, page } = await launchApp());
+  ({ app, page } = await launchApp());
 });
 
 test.afterAll(async () => {
-  await closeApp(electronApp);
+  await closeApp(app);
 });
 
 test(`loading a document that ends in </details> appends an empty paragraph`, async () => {

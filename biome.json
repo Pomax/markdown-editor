@@ -35,6 +35,6 @@
     },
     "files": {
         "include": ["src/**/*.js", "test/**/*.js", "scripts/**/*.js"],
-        "ignore": ["node_modules", "dist", ".cache"]
+        "ignore": ["node_modules", "dist", ".cache", "build", "target", "gen"]
     }
 }

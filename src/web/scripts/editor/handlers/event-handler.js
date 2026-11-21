@@ -228,6 +228,32 @@ export class EventHandler extends EventHandlerData {
   }
 
   /**
+   * Takes the whitespace that a double-click selects after a word off the
+   * selection, in either view, so that the selection is the word alone.
+   */
+  handleDoubleClick() {
+    if (this.editor.viewMode === `source2`) {
+      const textarea = this.editor.sourceRendererV2.textarea;
+      if (!textarea) return;
+      const { selectionStart, selectionEnd, value } = textarea;
+      const selected = value.slice(selectionStart, selectionEnd);
+      const trailing = selected.length - selected.trimEnd().length;
+      if (trailing > 0 && trailing < selected.length) {
+        textarea.setSelectionRange(selectionStart, selectionEnd - trailing);
+      }
+      return;
+    }
+    const selection = window.getSelection();
+    if (!selection || selection.isCollapsed) return;
+    const selected = selection.toString();
+    const trailing = selected.length - selected.trimEnd().length;
+    if (trailing === 0 || trailing === selected.length) return;
+    for (let i = 0; i < trailing; i++) {
+      selection.modify(`extend`, `backward`, `character`);
+    }
+  }
+
+  /**
    * Handles dragover events — allows image files to be dropped.
    * @param {DragEvent} event
    */
@@ -282,8 +308,8 @@ export class EventHandler extends EventHandlerData {
     if (markdownFiles.length) {
       event.preventDefault();
       for (const file of markdownFiles) {
-        const filePath = window.electronAPI?.getPathForFile(file) ?? file.name;
-        const result = await window.electronAPI?.loadFilePath(filePath);
+        const filePath = window.pageToBackendBridge?.getPathForFile(file) ?? file.name;
+        const result = await window.pageToBackendBridge?.loadFilePath(filePath);
         if (result?.success) {
           document.dispatchEvent(new CustomEvent(`file:loaded`, { detail: result }));
         }
@@ -304,8 +330,8 @@ export class EventHandler extends EventHandlerData {
     const before = this.editor.syntaxTree.toMarkdown();
 
     for (const file of imageFiles) {
-      // Use the Electron webUtils bridge to get the real filesystem path.
-      const filePath = window.electronAPI?.getPathForFile(file) ?? file.name;
+      // The bridge knows the real filesystem path of a dropped file.
+      const filePath = window.pageToBackendBridge?.getPathForFile(file) ?? file.name;
 
       await this.insertDroppedImage(filePath, file.name);
     }

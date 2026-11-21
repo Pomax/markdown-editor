@@ -151,9 +151,9 @@ export class ImageModal extends BaseModal {
    * Opens a file dialog to browse for an image.
    */
   async browse() {
-    if (!window.electronAPI) return;
+    if (!window.pageToBackendBridge) return;
 
-    const result = await window.electronAPI.browseForImage();
+    const result = await window.pageToBackendBridge.browseForImage();
     if (result.success && result.filePath) {
       this.getInput(`image-src`).value = result.filePath;
       this.updateRename();
@@ -176,7 +176,7 @@ export class ImageModal extends BaseModal {
     if (!previewContainer || !previewImg) return;
 
     if (src) {
-      previewImg.src = src;
+      previewImg.src = window.pageToBackendBridge?.toDisplayUrl(src) ?? src;
       previewImg.alt = this.getInput(`image-alt`).value.trim() || `Preview`;
 
       previewImg.onerror = () => {

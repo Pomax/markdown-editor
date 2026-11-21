@@ -20,20 +20,22 @@ import {
   setWritingView,
 } from '../../test-utils.js';
 
+import { parser } from '../../../../src/parsers/old/dfa-parser.js';
+
 const readmeContent = fs.readFileSync(path.join(projectRoot, `README.md`), `utf-8`);
 
-/** @type {import('@playwright/test').ElectronApplication} */
-let electronApp;
+/** @type {import('../../tauri-app.js').TauriApp} */
+let app;
 
 /** @type {import('@playwright/test').Page} */
 let page;
 
 test.beforeAll(async () => {
-  ({ electronApp, page } = await launchApp());
+  ({ app, page } = await launchApp());
 });
 
 test.afterAll(async () => {
-  await closeApp(electronApp);
+  await closeApp(app);
 });
 
 test.beforeEach(async () => {
@@ -181,18 +183,20 @@ test.describe(`Source2 round-trip with edits`, () => {
     const textarea = page.locator(`#editor.source-view-v2 textarea`);
     await textarea.focus();
 
-    // Find "Markdown Editor" in the textarea and replace "Editor" with "Tool"
+    // Replace the text of the README's first node
+    const [readmeNode] = (await parser.parse(readmeContent)).children;
+    const nodeMarkdown = readmeNode.toMarkdown();
     const value = await getTextareaValue(page);
-    const editorIdx = value.indexOf(`Markdown Editor`);
-    expect(editorIdx).toBeGreaterThan(-1);
+    const nodeIdx = value.indexOf(nodeMarkdown);
+    expect(nodeIdx).toBeGreaterThan(-1);
 
-    const replaceStart = editorIdx + `Markdown `.length;
-    const replaceEnd = replaceStart + `Editor`.length;
+    const replaceEnd = nodeIdx + nodeMarkdown.length;
+    const replaceStart = replaceEnd - readmeNode.content.length;
     await textarea.evaluate(
       (/** @type {HTMLTextAreaElement} */ el, range) => el.setSelectionRange(range[0], range[1]),
       [replaceStart, replaceEnd],
     );
-    await page.keyboard.type(`Tool`);
+    await page.keyboard.type(`Edited text`);
     await page.waitForTimeout(200);
 
     await setWritingView(page);
@@ -200,7 +204,7 @@ test.describe(`Source2 round-trip with edits`, () => {
     await page.waitForTimeout(300);
 
     const firstNode = await page.locator(`#editor [data-node-id]`).first().innerText();
-    expect(firstNode).toContain(`Markdown Tool`);
+    expect(firstNode).toContain(`Edited text`);
   });
 });
 

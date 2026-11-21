@@ -19,18 +19,18 @@ import {
   setWritingView,
 } from '../../test-utils.js';
 
-/** @type {import('@playwright/test').ElectronApplication} */
-let electronApp;
+/** @type {import('../../tauri-app.js').TauriApp} */
+let app;
 
 /** @type {import('@playwright/test').Page} */
 let page;
 
 test.beforeAll(async () => {
-  ({ electronApp, page } = await launchApp());
+  ({ app, page } = await launchApp());
 });
 
 test.afterAll(async () => {
-  await closeApp(electronApp);
+  await closeApp(app);
 });
 
 test.beforeEach(async () => {
@@ -236,8 +236,17 @@ test.describe(`Code-block language tag dialog`, () => {
     );
     await page.mouse.click(box.x + 5, box.y + box.height / 2);
 
-    // Select "hello" by double-clicking it.
+    // Select "hello" by double-clicking it, and wait until the editor's
+    // range covers its five letters.
     await page.mouse.dblclick(box.x + 15, box.y + box.height / 2);
+    await expect
+      .poll(() =>
+        page.evaluate(() => {
+          const range = /** @type {any} */ (window).__editor?.treeRange;
+          return range ? range.endOffset - range.startOffset : 0;
+        }),
+      )
+      .toBe(5);
 
     // Read treeRange before opening the dialog.
     const rangeBefore = await page.evaluate(() => {

@@ -7,8 +7,8 @@
 import { expect, test } from '@playwright/test';
 import { clickInEditor, closeApp, launchApp, loadContent } from '../../test-utils.js';
 
-/** @type {import('@playwright/test').ElectronApplication} */
-let electronApp;
+/** @type {import('../../tauri-app.js').TauriApp} */
+let app;
 
 /** @type {import('@playwright/test').Page} */
 let page;
@@ -19,11 +19,11 @@ const CONTENT = [`First paragraph.`, ``, `Visit [Example](https://example.com) f
 );
 
 test.beforeAll(async () => {
-  ({ electronApp, page } = await launchApp());
+  ({ app, page } = await launchApp());
 });
 
 test.afterAll(async () => {
-  await closeApp(electronApp);
+  await closeApp(app);
 });
 
 test(`single click on a link in an unfocused paragraph opens the edit modal`, async () => {

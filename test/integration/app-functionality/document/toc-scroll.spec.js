@@ -72,3 +72,26 @@ test(`clicking a TOC link scrolls the heading to the top of the editor container
   expect(/** @type {number} */ (offset)).toBeGreaterThanOrEqual(-100);
   expect(/** @type {number} */ (offset)).toBeLessThanOrEqual(100);
 });
+
+test(`TOC lists h4 headings nested under their h3`, async ({ page }) => {
+  await page.goto(baseURL);
+  await page.waitForSelector(`#editor [data-node-id]`);
+
+  const md = [
+    `# Level One`,
+    `## Level Two`,
+    `### Level Three`,
+    `#### Level Four`,
+    `##### Level Five`,
+  ].join(`\n`);
+
+  await page.evaluate((content) => window.editorAPI?.setContent(content), md);
+  await page.waitForSelector(`#toc-sidebar .toc-link`);
+
+  const h4Link = page.locator(`#toc-sidebar .toc-level-3 > .toc-list > .toc-level-4 > .toc-link`);
+  await expect(h4Link).toHaveCount(1);
+  await expect(h4Link).toHaveText(`Level Four`);
+
+  const h5Link = page.locator(`#toc-sidebar .toc-link`, { hasText: `Level Five` });
+  await expect(h5Link).toHaveCount(0);
+});

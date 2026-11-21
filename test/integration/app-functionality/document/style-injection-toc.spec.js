@@ -96,24 +96,24 @@ const FIXTURE = [
   `</style>`,
 ].join(`\n`);
 
-/** @type {import('@playwright/test').ElectronApplication} */
-let electronApp;
+/** @type {import('../../tauri-app.js').TauriApp} */
+let app;
 
 /** @type {import('@playwright/test').Page} */
 let page;
 
 test.beforeAll(async () => {
-  ({ electronApp, page } = await launchApp());
+  ({ app, page } = await launchApp());
 });
 
 test.afterAll(async () => {
-  await closeApp(electronApp);
+  await closeApp(app);
 });
 
 test.describe(`style injection must not break the ToC`, () => {
   test.beforeEach(async () => {
     await page.evaluate(() => {
-      window.electronAPI?.setSetting(`enableStyleElements`, false);
+      window.pageToBackendBridge?.setSetting(`enableStyleElements`, false);
       document.dispatchEvent(
         new CustomEvent(`content:settingsChanged`, {
           detail: { detailsClosed: false, enableStyleElements: false },
@@ -144,7 +144,7 @@ test.describe(`style injection must not break the ToC`, () => {
 
     // Enable style injection
     await page.evaluate(() => {
-      window.electronAPI?.setSetting(`enableStyleElements`, true);
+      window.pageToBackendBridge?.setSetting(`enableStyleElements`, true);
       document.dispatchEvent(
         new CustomEvent(`content:settingsChanged`, {
           detail: { detailsClosed: false, enableStyleElements: true },

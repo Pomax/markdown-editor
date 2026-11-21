@@ -2,11 +2,13 @@
  * @fileoverview Integration tests for HTML <img> tag support.
  * Verifies that HTML img tags are parsed as image nodes, rendered
  * correctly in both view modes, and that the image modal includes a
- * style field that round-trips through editing.
+ * style field that round-trips through editing. The images are a fixture
+ * image given as a file URL, so they load in every webview.
  */
 
 import { expect, test } from '@playwright/test';
 import {
+  FIXTURE_IMAGE,
   clickInEditor,
   closeApp,
   launchApp,
@@ -14,22 +16,22 @@ import {
   setWritingView,
 } from '../../test-utils.js';
 
-/** @type {import('@playwright/test').ElectronApplication} */
-let electronApp;
+/** @type {import('../../tauri-app.js').TauriApp} */
+let app;
 
 /** @type {import('@playwright/test').Page} */
 let page;
 
-const HTML_IMG = `<img src="image.png" alt="HTML image" style="display: inline-block; zoom: 80%;" />`;
-const HTML_IMG_CLASS = `<img src="image.png" alt="HTML image" class="wide framed" />`;
-const HTML_IMG_CLASS_STYLE = `<img src="image.png" alt="HTML image" class="wide framed" style="zoom: 80%;" />`;
+const HTML_IMG = `<img src="${FIXTURE_IMAGE}" alt="HTML image" style="display: inline-block; zoom: 80%;" />`;
+const HTML_IMG_CLASS = `<img src="${FIXTURE_IMAGE}" alt="HTML image" class="wide framed" />`;
+const HTML_IMG_CLASS_STYLE = `<img src="${FIXTURE_IMAGE}" alt="HTML image" class="wide framed" style="zoom: 80%;" />`;
 
 test.beforeAll(async () => {
-  ({ electronApp, page } = await launchApp());
+  ({ app, page } = await launchApp());
 });
 
 test.afterAll(async () => {
-  await closeApp(electronApp);
+  await closeApp(app);
 });
 
 test(`HTML img tag is parsed as an image node in writing mode`, async () => {
@@ -70,7 +72,7 @@ test(`clicking HTML img in writing mode opens edit modal with style field`, asyn
   const altInput = page.locator(`#image-alt`);
   const styleInput = page.locator(`#image-style`);
 
-  await expect(srcInput).toHaveValue(`image.png`);
+  await expect(srcInput).toHaveValue(`${FIXTURE_IMAGE}`);
   await expect(altInput).toHaveValue(`HTML image`);
   await expect(styleInput).toHaveValue(`display: inline-block; zoom: 80%;`);
 
@@ -130,12 +132,12 @@ test(`clearing style converts HTML img to markdown syntax`, async () => {
 
   // Verify the markdown now uses standard markdown syntax
   const markdown = await page.evaluate(() => window.editorAPI?.getContent() ?? ``);
-  expect(markdown).toContain(`![HTML image](image.png)`);
+  expect(markdown).toContain(`![HTML image](${FIXTURE_IMAGE})`);
   expect(markdown).not.toContain(`<img`);
 });
 
 test(`markdown image without style does not show style in modal`, async () => {
-  await loadContent(page, `some text\n\n![Photo](image.png)`);
+  await loadContent(page, `some text\n\n![Photo](${FIXTURE_IMAGE})`);
   await setWritingView(page);
 
   // Navigate to the image
@@ -235,7 +237,7 @@ test(`editing class via modal updates the parse tree and the rendered image`, as
 });
 
 test(`adding a class to a markdown image converts it to an HTML img`, async () => {
-  await loadContent(page, `![Photo](image.png)`);
+  await loadContent(page, `![Photo](${FIXTURE_IMAGE})`);
   await setWritingView(page);
 
   const image = page.locator(`.md-image img`);
@@ -253,7 +255,7 @@ test(`adding a class to a markdown image converts it to an HTML img`, async () =
   await expect(dialog).not.toBeVisible();
 
   const markdown = await page.evaluate(() => window.editorAPI?.getContent() ?? ``);
-  expect(markdown).toContain(`<img src="image.png" alt="Photo" class="wide" />`);
+  expect(markdown).toContain(`<img src="${FIXTURE_IMAGE}" alt="Photo" class="wide" />`);
 });
 
 test(`clearing style keeps the HTML img when a class is set`, async () => {
@@ -274,7 +276,7 @@ test(`clearing style keeps the HTML img when a class is set`, async () => {
   await expect(dialog).not.toBeVisible();
 
   const markdown = await page.evaluate(() => window.editorAPI?.getContent() ?? ``);
-  expect(markdown).toContain(`<img src="image.png" alt="HTML image" class="wide framed" />`);
+  expect(markdown).toContain(`<img src="${FIXTURE_IMAGE}" alt="HTML image" class="wide framed" />`);
   expect(markdown).not.toContain(`style=`);
 });
 
@@ -296,6 +298,6 @@ test(`clearing class converts HTML img to markdown syntax`, async () => {
   await expect(dialog).not.toBeVisible();
 
   const markdown = await page.evaluate(() => window.editorAPI?.getContent() ?? ``);
-  expect(markdown).toContain(`![HTML image](image.png)`);
+  expect(markdown).toContain(`![HTML image](${FIXTURE_IMAGE})`);
   expect(markdown).not.toContain(`<img`);
 });

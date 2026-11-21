@@ -52,6 +52,7 @@ export async function startServer(PORT = 0) {
       const ext = path.extname(filePath);
       res.writeHead(200, {
         'Content-Type': CONTENT_TYPES[ext] || `application/octet-stream`,
+        'Permissions-Policy': `fullscreen=()`,
       });
       res.end(content);
     } catch {

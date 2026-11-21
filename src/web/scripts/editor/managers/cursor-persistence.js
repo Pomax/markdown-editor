@@ -8,6 +8,105 @@
  * persisted to restore the cursor on next launch.
  */
 
+import { separatorBetween } from '../../../../parsers/old/syntax-tree.js';
+import { TableModal } from '../content-types/table/table-modal.js';
+
+/**
+ * The offset into a block's content of a tree cursor in it.  A caret in a
+ * table cell is at its offset into that cell's text.
+ * @param {SyntaxNode} node
+ * @param {TreeCursor} cursor
+ * @returns {number}
+ */
+function contentOffsetOf(node, cursor) {
+  if (node.type !== `table` || cursor.cellRow === undefined || cursor.cellCol === undefined) {
+    return cursor.offset;
+  }
+  const cell = TableModal.locateTableCells(node.content)[cursor.cellRow]?.[cursor.cellCol];
+  if (!cell) return 0;
+  return cell.start + Math.min(cursor.offset, cell.text.length);
+}
+
+/**
+ * The tree cursor in a table for an offset into the table's content: in
+ * the cell whose text the offset is in, or else in the last cell that
+ * starts before it, kept inside that cell's text.
+ * @param {SyntaxNode} node
+ * @param {number} contentOffset
+ * @returns {TreeCursor}
+ */
+function tableCellCursor(node, contentOffset) {
+  let found = { cellRow: 0, cellCol: 0, offset: 0 };
+  TableModal.locateTableCells(node.content).forEach((row, cellRow) => {
+    row.forEach((cell, cellCol) => {
+      if (cell.start <= contentOffset) {
+        const offset = Math.min(contentOffset - cell.start, cell.text.length);
+        found = { cellRow, cellCol, offset };
+      }
+    });
+  });
+  return { nodeId: node.id, ...found };
+}
+
+/**
+ * The text between two blocks inside an html block's markdown, which is
+ * always a blank line.
+ * @returns {string}
+ */
+function separatorInsideHtmlBlock() {
+  return `\n\n`;
+}
+
+/**
+ * The length of the syntax in front of each line after the first of a
+ * block's markdown: a blockquote has its `> ` on every line, other
+ * blocks only have syntax in front of their first line.
+ * @param {SyntaxNode} node
+ * @param {number} prefix - The length of the syntax in front of the first line.
+ * @returns {number}
+ */
+function linePrefixLength(node, prefix) {
+  return node.type === `blockquote` ? prefix : 0;
+}
+
+/**
+ * The offset into a block's markdown of an offset into its content.
+ * @param {SyntaxNode} node
+ * @param {number} offset - Offset into the node's content.
+ * @param {number} prefix - The length of the syntax in front of the first line.
+ * @returns {number}
+ */
+function contentToMarkdownOffset(node, offset, prefix) {
+  const lineBreaks = node.content.slice(0, offset).split(`\n`).length - 1;
+  return prefix + offset + lineBreaks * linePrefixLength(node, prefix);
+}
+
+/**
+ * The offset into a block's content of an offset into its markdown at or
+ * after the end of the syntax in front of the first line.  An offset in
+ * the syntax in front of a later line gives the start of that line, and
+ * one past the content gives its end.
+ * @param {SyntaxNode} node
+ * @param {number} markdownOffset - Offset into the node's markdown.
+ * @param {number} prefix - The length of the syntax in front of the first line.
+ * @returns {number}
+ */
+function markdownToContentOffset(node, markdownOffset, prefix) {
+  const lines = node.content.split(`\n`);
+  const linePrefix = linePrefixLength(node, prefix);
+  let lineStart = prefix;
+  let contentStart = 0;
+  for (let i = 0; i < lines.length; i++) {
+    const lineEnd = lineStart + lines[i].length;
+    if (markdownOffset <= lineEnd || i === lines.length - 1) {
+      return contentStart + Math.max(0, Math.min(markdownOffset - lineStart, lines[i].length));
+    }
+    lineStart = lineEnd + 1 + linePrefix;
+    contentStart += lines[i].length + 1;
+  }
+  return node.content.length;
+}
+
 /**
  * Computes the absolute character offset into the raw markdown source
  * for the current tree cursor position.
@@ -31,12 +130,12 @@ export function cursorToAbsoluteOffset(tree, cursor, buildMarkdownLine, getPrefi
    * `SyntaxNode.toMarkdown()` / `SyntaxTree.toMarkdown()`.
    *
    * @param {SyntaxNode[]} nodes
-   * @param {string} separator
+   * @param {(previous: SyntaxNode, next: SyntaxNode) => string} separatorFor
    * @returns {number} The absolute offset, or -1 if not found in this subtree.
    */
-  function walk(nodes, separator) {
+  function walk(nodes, separatorFor) {
     for (let i = 0; i < nodes.length; i++) {
-      if (i > 0) pos += separator.length;
+      if (i > 0) pos += separatorFor(nodes[i - 1], nodes[i]).length;
 
       const node = nodes[i];
 
@@ -60,7 +159,7 @@ export function cursorToAbsoluteOffset(tree, cursor, buildMarkdownLine, getPrefi
           return pos + cursor.prefixOffset;
         } else {
           const prefix = getPrefixLength(node.type, node.attributes);
-          return pos + prefix + cursor.offset;
+          return pos + contentToMarkdownOffset(node, contentOffsetOf(node, cursor), prefix);
         }
       }
 
@@ -90,7 +189,7 @@ export function cursorToAbsoluteOffset(tree, cursor, buildMarkdownLine, getPrefi
         // Separator between opening tag and first child
         pos += `\n\n`.length;
 
-        const result = walk(node.children, `\n\n`);
+        const result = walk(node.children, separatorInsideHtmlBlock);
         if (result !== -1) return result;
 
         // Closing tag
@@ -106,7 +205,7 @@ export function cursorToAbsoluteOffset(tree, cursor, buildMarkdownLine, getPrefi
     return -1;
   }
 
-  return walk(tree.children, `\n\n`);
+  return walk(tree.children, separatorBetween);
 }
 
 /**
@@ -127,12 +226,12 @@ export function absoluteOffsetToCursor(tree, absoluteOffset, getPrefixLength) {
 
   /**
    * @param {SyntaxNode[]} nodes
-   * @param {string} separator
+   * @param {(previous: SyntaxNode, next: SyntaxNode) => string} separatorFor
    * @returns {TreeCursor | undefined}
    */
-  function walk(nodes, separator) {
+  function walk(nodes, separatorFor) {
     for (let i = 0; i < nodes.length; i++) {
-      if (i > 0) pos += separator.length;
+      if (i > 0) pos += separatorFor(nodes[i - 1], nodes[i]).length;
 
       const node = nodes[i];
       const md = node.toMarkdown();
@@ -173,7 +272,7 @@ export function absoluteOffsetToCursor(tree, absoluteOffset, getPrefixLength) {
           }
 
           pos += openingTag.length + `\n\n`.length;
-          const result = walk(node.children, `\n\n`);
+          const result = walk(node.children, separatorInsideHtmlBlock);
           if (result) return result;
 
           // If we get here, offset is in the closing tag area
@@ -193,8 +292,7 @@ export function absoluteOffsetToCursor(tree, absoluteOffset, getPrefixLength) {
 
         // Leaf node — the offset falls within this node's content.
         const prefix = getPrefixLength(node.type, node.attributes);
-        const contentOffset = absoluteOffset - pos - prefix;
-        if (contentOffset < 0) {
+        if (absoluteOffset - pos < prefix) {
           // Cursor is inside the syntax prefix (source view).
           return {
             nodeId: node.id,
@@ -202,10 +300,9 @@ export function absoluteOffsetToCursor(tree, absoluteOffset, getPrefixLength) {
             prefixOffset: absoluteOffset - pos,
           };
         }
-        return {
-          nodeId: node.id,
-          offset: Math.min(contentOffset, node.content.length),
-        };
+        const contentOffset = markdownToContentOffset(node, absoluteOffset - pos, prefix);
+        if (node.type === `table`) return tableCellCursor(node, contentOffset);
+        return { nodeId: node.id, offset: contentOffset };
       }
 
       pos += md.length;
@@ -213,7 +310,7 @@ export function absoluteOffsetToCursor(tree, absoluteOffset, getPrefixLength) {
     return undefined;
   }
 
-  const cursor = walk(tree.children, `\n\n`);
+  const cursor = walk(tree.children, separatorBetween);
   if (cursor) return cursor;
 
   // Offset past the end — place cursor at end of last node.
