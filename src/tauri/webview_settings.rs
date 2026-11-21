@@ -426,16 +426,35 @@ fn finish_script_dialog(id: u64, accepted: bool) {
     }
 }
 
-/// Has the page report the English locale, whatever the system's is.
+/// The locale the page is given under test, so the tests see one locale on
+/// every machine. The app itself leaves the page the system's locale. Each
+/// platform's webview takes it its own way: WebView2 as a browser argument
+/// (see `browser_arguments`), and WKWebView and WebKitGTK through
+/// `use_testing_locale`.
+pub const TESTING_LOCALE: &str = "en-US";
+
+/// Has the page report the testing locale, whatever the system's is.
 #[cfg(target_os = "macos")]
-pub fn use_english_locale() {
+pub fn use_testing_locale() {
     use objc2_foundation::{NSArray, NSString, NSUserDefaults, ns_string};
-    let languages = NSArray::from_retained_slice(&[NSString::from_str("en-US")]);
+    let languages = NSArray::from_retained_slice(&[NSString::from_str(TESTING_LOCALE)]);
     // Safe: the value is an array of strings, as this key holds.
     unsafe {
         NSUserDefaults::standardUserDefaults()
             .setObject_forKey(Some(&languages), ns_string!("AppleLanguages"));
     }
+}
+
+/// Has the page report the testing locale, whatever the system's is:
+/// WebKitGTK otherwise gives the page the language of the process locale.
+#[cfg(target_os = "linux")]
+pub fn use_testing_locale(window: &tauri::WebviewWindow) -> tauri::Result<()> {
+    window.with_webview(|webview| {
+        use webkit2gtk::{WebContextExt, WebViewExt};
+        if let Some(context) = WebViewExt::context(&webview.inner()) {
+            context.set_preferred_languages(&[TESTING_LOCALE]);
+        }
+    })
 }
 
 /// A page dialog waiting for its box to be answered, with the handler that
@@ -640,18 +659,21 @@ fn finish_page_dialog(id: u64, accepted: bool) {
 
 /// The browser arguments: the Chromium features Tauri's own arguments turn
 /// off (passing any arguments replaces Tauri's), the JavaScript heap limit
-/// lifted, the English locale, and autoplay without a user gesture; under test also the DevTools
+/// lifted, and autoplay without a user gesture; the testing locale when it
+/// is asked for; under test also the DevTools
 /// port and the switches that keep a hidden page rendering. Chromium
 /// honours only the last `--disable-features`, so every disabled feature
 /// goes in one switch.
 #[cfg_attr(not(windows), allow(dead_code))]
-pub fn browser_arguments(testing_port: Option<&str>) -> String {
+pub fn browser_arguments(testing_port: Option<&str>, testing_locale: bool) -> String {
     let mut features = vec!["msWebOOUI", "msPdfOOUI", "msSmartScreenProtection"];
     let mut arguments = vec![
         "--js-flags=--max-old-space-size=0".to_string(),
-        "--lang=en-US".to_string(),
         "--autoplay-policy=no-user-gesture-required".to_string(),
     ];
+    if testing_locale {
+        arguments.push(format!("--lang={TESTING_LOCALE}"));
+    }
     if let Some(port) = testing_port {
         features.push("CalculateNativeWinOcclusion");
         arguments.push(format!("--remote-debugging-port={port}"));

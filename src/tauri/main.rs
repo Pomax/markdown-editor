@@ -42,7 +42,9 @@ const KEEP_PAGE_DIALOGS: &str = "for (const name of ['alert', 'confirm']) {
 
 fn main() {
     #[cfg(target_os = "macos")]
-    webview_settings::use_english_locale();
+    if testing_locale() {
+        webview_settings::use_testing_locale();
+    }
     tauri::Builder::default()
         .append_invoke_initialization_script(KEEP_PAGE_DIALOGS)
         .register_asynchronous_uri_scheme_protocol("media", |_context, request, responder| {
@@ -281,12 +283,16 @@ fn create_window(app: &tauri::AppHandle) -> tauri::Result<()> {
     #[cfg(windows)]
     {
         let port = testing_devtools_port(std::env::var("TESTING").is_ok());
-        let args = webview_settings::browser_arguments(port.as_deref());
+        let args = webview_settings::browser_arguments(port.as_deref(), testing_locale());
         webview_settings::record_browser_arguments(&args);
         builder = builder.additional_browser_args(&args);
     }
 
     let window = builder.build()?;
+    #[cfg(target_os = "linux")]
+    if testing_locale() {
+        webview_settings::use_testing_locale(&window)?;
+    }
     #[cfg(any(target_os = "linux", target_os = "macos"))]
     webview_settings::handle_page_requests(&window)?;
     #[cfg(windows)]
@@ -298,6 +304,14 @@ fn create_window(app: &tauri::AppHandle) -> tauri::Result<()> {
     #[cfg(windows)]
     webview_settings::answer_context_menus(&window)?;
     Ok(())
+}
+
+/// Whether the page is given the testing locale
+/// (`webview_settings::TESTING_LOCALE`): only in the test build under
+/// TESTING, on every platform. The app itself leaves the page the system's
+/// locale.
+fn testing_locale() -> bool {
+    cfg!(feature = "test-hooks") && std::env::var("TESTING").is_ok()
 }
 
 /// The DevTools port the webview opens under TESTING, so Playwright can

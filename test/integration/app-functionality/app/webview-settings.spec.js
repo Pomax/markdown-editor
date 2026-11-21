@@ -2,7 +2,8 @@
  * @fileoverview Checks the WebView2 settings and browser arguments the
  * app gives the webview, read back through the
  * `webviewSettings` hook, on Windows, and their effects as the page sees
- * them, everywhere: an English locale, media allowed to play without a
+ * them, everywhere: the English locale the test build takes under
+ * TESTING, media allowed to play without a
  * user gesture, and a fullscreen request refused with a TypeError, thrown
  * by the request where fullscreen is turned off or from its promise where
  * it is not allowed, with nothing going fullscreen.
