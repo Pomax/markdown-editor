@@ -7,8 +7,12 @@
  * virtual display of its own, so a maximized window there fills the work
  * area while the bounds it restores to stay saved. The page keeps the
  * window's own size; the hooks report its outer bounds, its page size and
- * its monitor's work area in logical pixels. The tests run in order, each
- * launch seeing the settings the previous one saved.
+ * its monitor's work area in logical pixels. For a shown window they
+ * report the position and the maximized state the app last heard from the
+ * window manager, which reach it some time after the window shows, so the
+ * bounds a launch restores are read until they are the restored ones. The
+ * tests run in order, each launch seeing the settings the previous one
+ * saved.
  */
 
 import fs from 'node:fs';
@@ -226,11 +230,14 @@ test(`a move and a resize are saved as ratios of the work area`, async () => {
 test(`the saved bounds are restored on the next launch`, async () => {
   const { app } = await launchMeasured();
   try {
-    const state = await windowState(app);
-    expect({ x: state.x, y: state.y, width: state.width, height: state.height }).toEqual(
-      movedInWorkArea(state.workArea),
-    );
-    expect(state.maximized).toBe(false);
+    const { workArea } = await windowState(app);
+    await expect
+      .poll(async () => {
+        const state = await windowState(app);
+        return { x: state.x, y: state.y, width: state.width, height: state.height };
+      })
+      .toEqual(movedInWorkArea(workArea));
+    expect((await windowState(app)).maximized).toBe(false);
   } finally {
     await closeApp(app);
   }
@@ -256,6 +263,18 @@ test(`a maximized window is restored maximized, with the bounds it restores to`,
 
   const second = await launchMeasured();
   try {
+    if (SHOWN) {
+      await expect
+        .poll(async () => {
+          const { maximized, width, height } = await windowState(second.app);
+          return { maximized, width, height };
+        })
+        .toEqual({
+          maximized: true,
+          width: Math.round(workArea.width),
+          height: Math.round(workArea.height),
+        });
+    }
     const state = await windowState(second.app);
     expect(state.maximized).toBe(true);
     expect(state.visible).toBe(SHOWN);

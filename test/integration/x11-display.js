@@ -3,8 +3,9 @@
  * display for each launch of the app, an Xvfb server on the first free
  * display number with the openbox window manager on it, so the app's
  * window is mapped, renders, can be maximized and takes real input
- * without appearing on the user's screen; and X11Input, which sends that
- * input through the X11 runner to the app's window on its display.
+ * without appearing on the user's screen, and a session bus of its own
+ * that starts no services; and X11Input, which sends that input through
+ * the X11 runner to the app's window on its display.
  */
 
 import { execFile, spawn } from 'node:child_process';
@@ -19,6 +20,17 @@ import { X11_RUNNER_BINARY } from '../../scripts/build-test-app.js';
 const OPENBOX_CONFIG = fileURLToPath(new URL(`openbox.xml`, import.meta.url));
 
 /**
+ * The session bus's configuration: a bus with no services to start. Each
+ * of the app's GTK processes asks the session bus to start the desktop
+ * portal as it starts, and waits for the answer. On a machine whose
+ * session bus has the portal installed but no graphical session for it
+ * to start in, as on a CI runner, each wait lasts until the start times
+ * out, and the page loads half a minute late. This bus refuses at once.
+ * @type {string}
+ */
+const SESSION_BUS_CONFIG = fileURLToPath(new URL(`session-bus.conf`, import.meta.url));
+
+/**
  * The virtual screen's size and colour depth: larger than the standard
  * viewport plus the window's menu bar.
  * @type {string}
@@ -26,11 +38,62 @@ const OPENBOX_CONFIG = fileURLToPath(new URL(`openbox.xml`, import.meta.url));
 const SCREEN = `2560x1600x24`;
 
 /**
- * A running Xvfb server: its display name, and a way to stop it.
+ * A running Xvfb server and its session bus: the display name, the bus's
+ * address, and a way to stop both.
  * @typedef {object} VirtualDisplay
  * @property {string} name - The display name, such as `:1`.
+ * @property {string} busAddress - The session bus's address.
  * @property {() => void} stop
  */
+
+/**
+ * Starts a session bus that starts no services, and resolves with its
+ * address once it accepts connections.
+ * @returns {Promise<{ address: string, bus: import('node:child_process').ChildProcess }>}
+ */
+function startSessionBus() {
+  const bus = spawn(
+    `dbus-daemon`,
+    [`--config-file`, SESSION_BUS_CONFIG, `--nofork`, `--print-address=3`],
+    { stdio: [`ignore`, `ignore`, `pipe`, `pipe`] },
+  );
+  return new Promise((resolve, reject) => {
+    let address = ``;
+    let errors = ``;
+    bus.stderr?.on(`data`, (chunk) => {
+      errors += chunk;
+    });
+    bus.stdio[3]?.on(`data`, (chunk) => {
+      address += chunk;
+      if (address.includes(`\n`)) resolve({ address: address.trim(), bus });
+    });
+    bus.on(`error`, reject);
+    bus.on(`exit`, (code) =>
+      reject(new Error(`dbus-daemon exited with ${code}: ${errors.trim()}`)),
+    );
+  });
+}
+
+/**
+ * The environment of a process that runs on a virtual display: the
+ * current one without Wayland, with the display, its session bus, GTK on
+ * X11, software rendering and no accessibility bridge.
+ * @param {{ name: string, busAddress?: string }} display
+ * @returns {NodeJS.ProcessEnv}
+ */
+export function displayEnvironment(display) {
+  const environment = { ...process.env };
+  delete environment.WAYLAND_DISPLAY;
+  if (display.busAddress) environment.DBUS_SESSION_BUS_ADDRESS = display.busAddress;
+  return {
+    ...environment,
+    DISPLAY: display.name,
+    GDK_BACKEND: `x11`,
+    LIBGL_ALWAYS_SOFTWARE: `1`,
+    WEBKIT_SKIA_ENABLE_CPU_RENDERING: `1`,
+    NO_AT_BRIDGE: `1`,
+  };
+}
 
 /**
  * Starts an Xvfb server on the first free display number and resolves
@@ -58,8 +121,9 @@ function startServer() {
 
 /**
  * Starts an Xvfb server on the first free display number with openbox on
- * it, and resolves with its display name once the server accepts
- * connections and openbox has started.
+ * it, and a session bus, and resolves with the display name and the
+ * bus's address once the server and the bus accept connections and
+ * openbox has started.
  * @returns {Promise<VirtualDisplay>}
  */
 export async function startVirtualDisplay() {
@@ -73,17 +137,21 @@ export async function startVirtualDisplay() {
       manager.once(`spawn`, resolve);
       manager.once(`error`, reject);
     });
+    const { address, bus } = await startSessionBus();
+    return {
+      name,
+      busAddress: address,
+      stop: () => {
+        bus.kill();
+        manager.kill();
+        server.kill();
+      },
+    };
   } catch (error) {
+    manager.kill();
     server.kill();
     throw error;
   }
-  return {
-    name,
-    stop: () => {
-      manager.kill();
-      server.kill();
-    },
-  };
 }
 
 /**

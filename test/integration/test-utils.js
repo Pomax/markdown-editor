@@ -32,7 +32,7 @@ import { LinuxPage } from './linux-page.js';
 import { MacInput, MacInspector } from './mac-webview.js';
 import { TauriApp } from './tauri-app.js';
 import { WebKitInspector } from './webkit-inspector.js';
-import { X11Input, startVirtualDisplay } from './x11-display.js';
+import { X11Input, displayEnvironment, startVirtualDisplay } from './x11-display.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -267,16 +267,9 @@ async function startOnLinux({ extraArgs, keepWindowSize, webviewDir, settingsDir
   started.add({ kill: display.stop });
   cleanup.push(() => display.stop());
   const port = await freePort();
-  const environment = { ...process.env };
-  delete environment.WAYLAND_DISPLAY;
   const child = spawn(TEST_APP_BINARY, extraArgs, {
     env: {
-      ...environment,
-      DISPLAY: display.name,
-      GDK_BACKEND: `x11`,
-      LIBGL_ALWAYS_SOFTWARE: `1`,
-      WEBKIT_SKIA_ENABLE_CPU_RENDERING: `1`,
-      NO_AT_BRIDGE: `1`,
+      ...displayEnvironment(display),
       XDG_DATA_HOME: webviewDir,
       XDG_CACHE_HOME: webviewDir,
       WEBKIT_INSPECTOR_HTTP_SERVER: `127.0.0.1:${port}`,
