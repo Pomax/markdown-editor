@@ -11,6 +11,13 @@
 //! arguments, and answers each with a JSON line on standard output:
 //! `{"ok": answer}`, or `{"error": message}`.
 //!
+//! Run as `serve desktop`, it serves the app on the desktop the user sits
+//! at instead: the keys and pointer moves go through the desktop portal's
+//! RemoteDesktop session, which the desktop delivers with its own pointer
+//! and keyboard focus, and `shot` photographs the window from the
+//! portal's ScreenCast stream. The desktop asks the user once to allow
+//! both, and the token it answers with is kept next to the runner.
+//!
 //! Commands:
 //! - `window <pid>`: the window's title, whether it is mapped and has the
 //!   input focus, and its client area on the screen
@@ -25,6 +32,8 @@
 //! - `down <pid> <x> <y> [button]` and `up <pid> <x> <y> [button]`: moves
 //!   the pointer to a point of the client area, and presses or releases a
 //!   button there, the left one when it is not given
+//! - `shot <pid> <path>`: writes a picture of the client area as it is on
+//!   the screen to a PNG file, when serving the desktop
 //!
 //! `keys` and `type` answer with the number of keys they released, so a
 //! caller can wait until the page has seen every release; the other input
@@ -34,6 +43,24 @@
 use serde_json::{Value, json};
 #[cfg(target_os = "linux")]
 use std::io::{BufRead, Write};
+
+#[cfg(target_os = "linux")]
+#[path = "x11-runner/portal.rs"]
+mod portal;
+
+#[cfg(target_os = "linux")]
+#[path = "x11-runner/screen.rs"]
+mod screen;
+
+/// A place on the screen: its left and top edges, and its size.
+#[cfg(target_os = "linux")]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct Rect {
+    x: i32,
+    y: i32,
+    width: i32,
+    height: i32,
+}
 
 /// The keysym of a modifier key name.
 #[cfg(target_os = "linux")]
@@ -179,7 +206,19 @@ fn main() {
 #[cfg(target_os = "linux")]
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
-    if args == ["serve"] {
+    if args == ["serve"] || args == ["serve", "desktop"] {
+        let desktop = if args.len() == 2 {
+            match open_portal() {
+                Ok(portal) => Some(portal),
+                Err(error) => {
+                    eprintln!("{error}");
+                    std::process::exit(1);
+                }
+            }
+        } else {
+            None
+        };
+        let run = |args: &[String]| x11_input::run(args, desktop);
         if let Err(error) = serve(std::io::stdin().lock(), std::io::stdout().lock(), run) {
             eprintln!("{error}");
             std::process::exit(1);
@@ -222,12 +261,26 @@ fn serve(
 /// Runs one command.
 #[cfg(target_os = "linux")]
 fn run(args: &[String]) -> Result<Value, String> {
-    x11_input::run(args)
+    x11_input::run(args, None)
+}
+
+/// Opens the desktop portal session that serving the desktop sends its
+/// input and takes its pictures through, with the token kept in a
+/// `portal` directory next to the runner.
+#[cfg(target_os = "linux")]
+fn open_portal() -> Result<&'static portal::Portal, String> {
+    let runner = std::env::current_exe().map_err(|error| format!("no runner path: {error}"))?;
+    let cache = runner
+        .parent()
+        .ok_or_else(|| "the runner is in no directory".to_string())?
+        .join("portal");
+    Ok(Box::leak(Box::new(portal::Portal::open(&cache)?)))
 }
 
 #[cfg(target_os = "linux")]
 mod x11_input {
-    use super::{Keymap, button_number, char_keysym, parse_combo};
+    use super::portal::Portal;
+    use super::{Keymap, Rect, button_number, char_keysym, parse_combo, screen};
     use serde_json::{Value, json};
     use std::time::Duration;
     use x11rb::CURRENT_TIME;
@@ -344,18 +397,20 @@ mod x11_input {
         Ok((number(0)?, number(1)?))
     }
 
-    /// The display, and the app's process and main window on it.
+    /// The display, the app's process and main window on it, and the
+    /// desktop portal session when serving the desktop.
     struct App {
         connection: RustConnection,
         root: Window,
         pid: u32,
         pid_atom: u32,
         window: Window,
+        desktop: Option<&'static Portal>,
     }
 
     impl App {
         /// Opens the display and finds the process's main window on it.
-        fn open(pid: u32) -> Result<App, String> {
+        fn open(pid: u32, desktop: Option<&'static Portal>) -> Result<App, String> {
             let (connection, screen) = x11rb::connect(None)
                 .map_err(|error| format!("cannot open the X display: {error}"))?;
             let root = connection.setup().roots[screen].root;
@@ -368,6 +423,29 @@ mod x11_input {
                 pid,
                 pid_atom,
                 window,
+                desktop,
+            })
+        }
+
+        /// The window's client area on the screen.
+        fn client_area(&self) -> Result<Rect, String> {
+            let geometry = self
+                .connection
+                .get_geometry(self.window)
+                .map_err(failed)?
+                .reply()
+                .map_err(failed)?;
+            let origin = self
+                .connection
+                .translate_coordinates(self.window, self.root, 0, 0)
+                .map_err(failed)?
+                .reply()
+                .map_err(failed)?;
+            Ok(Rect {
+                x: i32::from(origin.dst_x),
+                y: i32::from(origin.dst_y),
+                width: i32::from(geometry.width),
+                height: i32::from(geometry.height),
             })
         }
 
@@ -590,6 +668,17 @@ mod x11_input {
                     .ok_or_else(|| format!("no key for modifier {modifier:#x}"))?;
                 held.push(code);
             }
+            if let Some(portal) = self.desktop {
+                for modifier in modifiers {
+                    portal.key(*modifier, true)?;
+                }
+                portal.key(key, true)?;
+                portal.key(key, false)?;
+                for modifier in modifiers.iter().rev() {
+                    portal.key(*modifier, false)?;
+                }
+                return Ok(held.len() as u32 + 1);
+            }
             for code in &held {
                 self.fake(KEY_PRESS_EVENT, *code)?;
             }
@@ -604,8 +693,13 @@ mod x11_input {
 
         /// Moves the pointer to a point of the client area, when one of the
         /// app's windows, or the frame around its window, is the one under
-        /// it.
+        /// it. On the desktop the window must also have the input focus,
+        /// which keeps the desktop's own windows, which X does not know
+        /// of, from being in front of it.
         fn move_pointer(&self, x: i32, y: i32) -> Result<(), String> {
+            if self.desktop.is_some() {
+                self.require_focus()?;
+            }
             let origin = self
                 .connection
                 .translate_coordinates(self.window, self.root, 0, 0)
@@ -629,6 +723,9 @@ mod x11_input {
             {
                 return Err("the app's window is not under the point".to_string());
             }
+            if let Some(portal) = self.desktop {
+                return portal.pointer_to(f64::from(root_x), f64::from(root_y));
+            }
             self.connection
                 .xtest_fake_input(
                     MOTION_NOTIFY_EVENT,
@@ -646,14 +743,18 @@ mod x11_input {
 
         /// Presses or releases a button where the pointer is.
         fn button(&self, kind: u8, number: u8) -> Result<(), String> {
+            if let Some(portal) = self.desktop {
+                return portal.button(number, kind == BUTTON_PRESS_EVENT);
+            }
             self.fake(kind, number)?;
             self.connection.sync().map_err(failed)?;
             Ok(())
         }
     }
 
-    /// Runs one command.
-    pub fn run(args: &[String]) -> Result<Value, String> {
+    /// Runs one command, with the input sent through the desktop portal
+    /// session when one is given, and through XTEST otherwise.
+    pub fn run(args: &[String], desktop: Option<&'static Portal>) -> Result<Value, String> {
         let (command, rest) = args
             .split_first()
             .ok_or_else(|| "a command is needed".to_string())?;
@@ -662,7 +763,7 @@ mod x11_input {
             .and_then(|pid| pid.parse::<u32>().ok())
             .ok_or_else(|| "a process id is needed".to_string())?;
         let arguments = &rest[1..];
-        let app = App::open(pid)?;
+        let app = App::open(pid, desktop)?;
         match command.as_str() {
             "window" => app.describe(),
             "focus" => {
@@ -719,6 +820,16 @@ mod x11_input {
                     BUTTON_RELEASE_EVENT
                 };
                 app.button(kind, number)?;
+                Ok(json!(true))
+            }
+            "shot" => {
+                let portal = app.desktop.ok_or_else(|| {
+                    "pictures are taken only when serving the desktop".to_string()
+                })?;
+                let path = arguments
+                    .first()
+                    .ok_or_else(|| "a path to write the picture to is needed".to_string())?;
+                screen::shot(portal, app.client_area()?, std::path::Path::new(path))?;
                 Ok(json!(true))
             }
             other => Err(format!("unknown command {other}")),

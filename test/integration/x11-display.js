@@ -126,9 +126,10 @@ export function runCommand(display, pid, command, args) {
  */
 
 /**
- * Real keyboard and mouse input to the app's window on its virtual
- * display, through one X11 runner that serves every command, started with
- * the first command and ended by `close`.
+ * Real keyboard and mouse input to the app's window on its display,
+ * through one X11 runner that serves every command, started with the
+ * first command and ended by `close`. On a virtual display the input is
+ * XTEST input; on the user's desktop it goes through the desktop portal.
  */
 export class X11Input {
   /** @type {string} */
@@ -137,16 +138,22 @@ export class X11Input {
   /** @type {number} */
   #pid;
 
+  /** @type {boolean} */
+  #desktop;
+
   /** @type {ServingRunner | undefined} */
   #runner;
 
   /**
    * @param {string} display - The app's display name.
    * @param {number} pid - The app's process id.
+   * @param {{ desktop?: boolean }} [options] - Whether the display is the
+   *   user's desktop.
    */
-  constructor(display, pid) {
+  constructor(display, pid, { desktop = false } = {}) {
     this.#display = display;
     this.#pid = pid;
+    this.#desktop = desktop;
   }
 
   /**
@@ -155,7 +162,7 @@ export class X11Input {
    * @returns {ServingRunner}
    */
   #start() {
-    const child = spawn(X11_RUNNER_BINARY, [`serve`], {
+    const child = spawn(X11_RUNNER_BINARY, this.#desktop ? [`serve`, `desktop`] : [`serve`], {
       env: { ...process.env, DISPLAY: this.#display },
     });
     /** @type {ServingRunner} */

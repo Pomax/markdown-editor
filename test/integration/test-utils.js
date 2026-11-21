@@ -77,6 +77,15 @@ export const HOME = isMac ? `Meta+ArrowLeft` : `Home`;
 export const END = isMac ? `Meta+ArrowRight` : `End`;
 
 /**
+ * Whether the Linux tests run the app on the user's own desktop, with
+ * TEST_ON_DESKTOP set, instead of on a virtual display: its window is
+ * shown on the desktop at the size it opens at, and the input goes
+ * through the desktop portal, with the desktop's own pointer and keyboard
+ * focus.
+ */
+export const ON_DESKTOP = process.platform === `linux` && !!process.env.TEST_ON_DESKTOP;
+
+/**
  * What {@link closeApp} undoes for each returned TauriApp: `detach` before
  * the app closes (the Playwright browser attached to its process, or on
  * Linux the inspector connection), and `release` after (on Linux, the
@@ -252,7 +261,9 @@ async function startOverDevtools({
  * @returns {Promise<{ app: TauriApp, page: import('@playwright/test').Page }>}
  */
 async function startOnLinux({ extraArgs, keepWindowSize, webviewDir, settingsDir, cleanup }) {
-  const display = await startVirtualDisplay();
+  const display = ON_DESKTOP
+    ? { name: process.env.DISPLAY ?? ``, stop: () => {} }
+    : await startVirtualDisplay();
   started.add({ kill: display.stop });
   cleanup.push(() => display.stop());
   const port = await freePort();
@@ -281,7 +292,7 @@ async function startOnLinux({ extraArgs, keepWindowSize, webviewDir, settingsDir
   const inspector = await WebKitInspector.connect(port, `web/index.html`, 15000);
   cleanup.push(() => inspector.close());
   const app = new TauriApp(/** @type {any} */ (child));
-  const input = new X11Input(display.name, child.pid ?? 0);
+  const input = new X11Input(display.name, child.pid ?? 0, { desktop: ON_DESKTOP });
   cleanup.push(() => input.close());
   const page = new LinuxPage(inspector, input, {
     url: inspector.url,
@@ -289,7 +300,7 @@ async function startOnLinux({ extraArgs, keepWindowSize, webviewDir, settingsDir
   });
   await page.waitForFunction(() => document.readyState === `complete`);
   await page.focusWindow();
-  if (!keepWindowSize) await page.setViewportSize(VIEWPORT);
+  if (!keepWindowSize && !ON_DESKTOP) await page.setViewportSize(VIEWPORT);
   attachments.set(app, {
     detach: async () => page.disconnect(),
     release: async () => {
@@ -456,6 +467,7 @@ export async function loadContent(page, fixtureContent) {
   } else {
     await page.waitForSelector(`#editor [data-node-id]`);
   }
+  await renderingSettled(page);
 }
 
 /**
@@ -587,6 +599,26 @@ export async function setWritingView(page) {
   if (current === `writing`) return;
   await page.evaluate(() => window.editorAPI?.setViewMode(`writing`));
   await page.locator(`#editor[data-view-mode="writing"]`).waitFor();
+  await renderingSettled(page);
+}
+
+/**
+ * Waits until the page has drawn two frames, or for at most 100 ms, so
+ * that what the webview leaves for its next rendering update has run. In
+ * WebKit that includes scrolling the caret the editor has just placed
+ * into view: a scroll made before then is undone by it, and a click
+ * aimed at what that scroll showed lands somewhere else.
+ *
+ * @param {import('@playwright/test').Page} page
+ */
+async function renderingSettled(page) {
+  await page.evaluate(
+    () =>
+      new Promise((resolve) => {
+        requestAnimationFrame(() => requestAnimationFrame(resolve));
+        setTimeout(resolve, 100);
+      }),
+  );
 }
 
 /**
@@ -600,6 +632,7 @@ export async function setSource2View(page) {
   if (current === `source2`) return;
   await page.evaluate(() => window.editorAPI?.setViewMode(`source2`));
   await page.locator(`#editor[data-view-mode="source2"]`).waitFor();
+  await renderingSettled(page);
 }
 
 /**

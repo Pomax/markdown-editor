@@ -51,6 +51,10 @@ webview2-com = "0.39"
 x11rb = { version = "0.13", features = ["xtest"] }
 webkit2gtk = { version = "=2.0.2", features = ["v2_38"] }
 gtk = "0.18"
+ashpd = { version = "0.11", default-features = false, features = ["async-std"], optional = true }
+pollster = { version = "0.4", optional = true }
+image = { version = "0.25", default-features = false, features = ["png"], optional = true }
+libc = { version = "0.2", optional = true }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 block2 = "0.6"
@@ -61,7 +65,7 @@ objc2-foundation = "0.3"
 objc2-web-kit = { version = "0.3", default-features = false, features = ["std", "block2", "objc2-app-kit", "WKPreferences", "WKUIDelegate", "WKUserContentController", "WKUserScript", "WKWebView", "WKWebViewConfiguration"] }
 
 [features]
-test-hooks = ["dep:objc2-app-kit", "dep:objc2-core-graphics"]
+test-hooks = ["dep:objc2-app-kit", "dep:objc2-core-graphics", "dep:ashpd", "dep:pollster", "dep:image", "dep:libc"]
 
 [profile.release]
 strip = "symbols"

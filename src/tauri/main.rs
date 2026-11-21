@@ -94,10 +94,10 @@ fn main() {
             app.manage(WindowTrackerState::default());
             init_settings(app);
             init_file_manager(app);
-            create_window(app.handle())?;
             if std::env::var("TESTING").is_err() {
                 restore_on_next_load();
             }
+            create_window(app.handle())?;
             app.manage(std::sync::Mutex::new(cli_file_path()));
             menu_builder::install_menu(app.handle());
             fit_main_window(app.handle())?;
@@ -245,6 +245,9 @@ fn create_window(app: &tauri::AppHandle) -> tauri::Result<()> {
             use tauri::Manager;
             match payload.event() {
                 tauri::webview::PageLoadEvent::Started => {
+                    if RESTORE_ON_LOAD.swap(false, std::sync::atomic::Ordering::SeqCst) {
+                        RESTORE_THIS_LOAD.store(true, std::sync::atomic::Ordering::SeqCst);
+                    }
                     if let Some(state) = window.try_state::<ipc_handler::WebContentsState>() {
                         state.lock().expect("web contents lock").on_unload();
                     }
@@ -261,7 +264,7 @@ fn create_window(app: &tauri::AppHandle) -> tauri::Result<()> {
                         .try_state::<ipc_handler::PendingCliFile>()
                         .and_then(|state| state.lock().expect("pending cli file lock").take());
                     let app = window.app_handle().clone();
-                    if RESTORE_ON_LOAD.swap(false, std::sync::atomic::Ordering::SeqCst) {
+                    if RESTORE_THIS_LOAD.swap(false, std::sync::atomic::Ordering::SeqCst) {
                         std::thread::spawn(move || {
                             restore_saved_open_files(&app);
                             if let Some(file_path) = pending {
@@ -308,6 +311,13 @@ fn testing_devtools_port(testing: bool) -> Option<String> {
 /// Whether the next page load restores the open files saved in the
 /// settings: the first page load, and the one after a reload.
 static RESTORE_ON_LOAD: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// Whether the page load under way restores the open files saved in the
+/// settings once it finishes: one that started after the next load was
+/// asked to. A load that finishes without having started since, as one
+/// that a second reload cancels does, leaves the restore to the load
+/// that replaces it.
+static RESTORE_THIS_LOAD: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
 /// Has the next page load restore the open files saved in the settings.
 pub fn restore_on_next_load() {

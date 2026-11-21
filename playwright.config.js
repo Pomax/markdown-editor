@@ -49,6 +49,10 @@ if (CI_RUN) {
   Object.assign(config, overrides);
 }
 
+if (platform === `linux` && process.env.TEST_ON_DESKTOP) {
+  Object.assign(config, { timeout: 240_000, workers: 1 });
+}
+
 export default defineConfig({
   ...config,
   testDir: `./test/integration`,
