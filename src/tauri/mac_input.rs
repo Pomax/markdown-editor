@@ -2,23 +2,26 @@
 //! leave the real pointer and keyboard alone: under TESTING the window is
 //! on screen but fully transparent, so WebKit keeps rendering the page,
 //! and this module builds the key and mouse events AppKit would get and
-//! hands them to that window inside the app's process.
+//! hands them to that window's views inside the app's process.
 //!
 //! The commands are the X11 runner's, without the process id: `window`,
 //! `focus`, `keys <combination>...`, `type <text>`, `click <x> <y> [count]
 //! [button]`, `move <x> <y>`, and `down` and `up <x> <y> [button]`, with
 //! points of the client area in physical pixels, and `resize <width>
-//! <height>`, which gives the page a size in CSS pixels, and `initScript
+//! <height>`, which gives the client area that size in physical pixels,
+//! and `initScript
 //! <source>`, which every later page load runs first. `keys` and `type`
 //! answer with the number of key releases the page sees.
 //!
-//! AppKit drops key commands sent to an app that is not active, and the
-//! test app must not take the user's keyboard by becoming active, so under
-//! TESTING the app only reports that it is.
+//! The test app must not take the user's keyboard, so under TESTING it
+//! never becomes the active app: the calls that activate an app do nothing,
+//! and the app only reports that it is active. The window of an app that is
+//! not active drops key commands and takes a click only to come forward, so
+//! each event goes straight to the view the window would send it to.
 
 use objc2::rc::Retained;
 use objc2::runtime::{AnyClass, AnyObject, Bool, Imp, NSObjectProtocol, Sel};
-use objc2::{MainThreadMarker, msg_send, sel};
+use objc2::{ClassType, MainThreadMarker, msg_send, sel};
 use objc2_app_kit::{
     NSApplication, NSEvent, NSEventModifierFlags, NSEventType, NSView, NSWindow,
     NSWindowDidChangeScreenNotification,
@@ -29,6 +32,7 @@ use objc2_foundation::{
 };
 use objc2_web_kit::{WKUserScript, WKUserScriptInjectionTime, WKWebView};
 use serde_json::{Value, json};
+use std::cell::RefCell;
 use std::sync::atomic::{AtomicBool, AtomicIsize, AtomicPtr, Ordering};
 use std::time::Duration;
 use tauri::{AppHandle, Manager};
@@ -305,12 +309,26 @@ fn text_key_event(
     NSEvent::eventWithCGEvent(&event).ok_or_else(|| "AppKit took no key event".to_string())
 }
 
+/// Hands a key event straight to the window's first responder, which is
+/// where the window sends it in the app the user is in; the window of an
+/// app that is not active does not pass every event on.
+fn deliver_key(window: &NSWindow, event: &NSEvent) {
+    let Some(responder) = window.firstResponder() else {
+        return;
+    };
+    match event.r#type() {
+        NSEventType::KeyDown => responder.keyDown(event),
+        NSEventType::KeyUp => responder.keyUp(event),
+        _ => responder.flagsChanged(event),
+    }
+}
+
 /// Hands a key press to AppKit: a press with Command goes to the page first
 /// as a key equivalent, and anything else, or a press nothing took, to the
 /// window's first responder.
 fn deliver_key_down(window: &NSWindow, event: &NSEvent, command: bool) {
     if !command || !window.performKeyEquivalent(event) {
-        window.sendEvent(event);
+        deliver_key(window, event);
     }
 }
 
@@ -351,7 +369,7 @@ fn press(window: &NSWindow, modifiers: &[Modifier], key: Option<&Key>) -> Result
             "",
             "",
         )?;
-        window.sendEvent(&event);
+        deliver_key(window, &event);
     }
     let command = held.contains(&Modifier::Command);
     let mut released = held.len() as u32;
@@ -365,7 +383,7 @@ fn press(window: &NSWindow, modifiers: &[Modifier], key: Option<&Key>) -> Result
         let down = text_key_event(true, key_flags, key.code, text)?;
         deliver_key_down(window, &down, command);
         let up = text_key_event(false, key_flags, key.code, text)?;
-        window.sendEvent(&up);
+        deliver_key(window, &up);
         if !command {
             released += 1;
         }
@@ -380,7 +398,7 @@ fn press(window: &NSWindow, modifiers: &[Modifier], key: Option<&Key>) -> Result
             "",
             "",
         )?;
-        window.sendEvent(&event);
+        deliver_key(window, &event);
     }
     Ok(released)
 }
@@ -442,14 +460,63 @@ fn button_events(name: &str) -> Result<(NSEventType, NSEventType), String> {
     }
 }
 
+thread_local! {
+    /// The view that took the last press of a mouse button, which also gets
+    /// the drags and the release that follow the press.
+    static PRESSED_VIEW: RefCell<Option<Retained<NSView>>> = const { RefCell::new(None) };
+}
+
+/// Hands a mouse button event straight to the view under it, which is where
+/// the window sends it in the app the user is in; the window of an app that
+/// is not active takes a press only to come forward, and drops it. A press
+/// of the left button makes the view the first responder, and the drags and
+/// the release after a press go to the view that took the press.
+fn deliver_mouse(
+    window: &NSWindow,
+    kind: NSEventType,
+    location: NSPoint,
+    clicks: isize,
+) -> Result<(), String> {
+    let event = mouse_event(window, kind, location, clicks)?;
+    let under_pointer = content_view(window)?.hitTest(location);
+    let pressing = matches!(
+        kind,
+        NSEventType::LeftMouseDown | NSEventType::RightMouseDown | NSEventType::OtherMouseDown
+    );
+    if pressing {
+        let Some(view) = under_pointer else {
+            return Ok(());
+        };
+        if kind == NSEventType::LeftMouseDown && view.acceptsFirstResponder() {
+            window.makeFirstResponder(Some(&view));
+        }
+        PRESSED_VIEW.with(|pressed| *pressed.borrow_mut() = Some(view.clone()));
+        match kind {
+            NSEventType::LeftMouseDown => view.mouseDown(&event),
+            NSEventType::RightMouseDown => view.rightMouseDown(&event),
+            _ => view.otherMouseDown(&event),
+        }
+        return Ok(());
+    }
+    let pressed = PRESSED_VIEW.with(|pressed| pressed.borrow().clone());
+    let Some(view) = pressed.or(under_pointer) else {
+        return Ok(());
+    };
+    match kind {
+        NSEventType::LeftMouseUp => view.mouseUp(&event),
+        NSEventType::RightMouseUp => view.rightMouseUp(&event),
+        NSEventType::OtherMouseUp => view.otherMouseUp(&event),
+        _ => view.mouseDragged(&event),
+    }
+    Ok(())
+}
+
 /// Moves the pointer to a point of the window: a drag while the left
 /// button is held, and otherwise a move, which goes to the view under the
 /// point, as AppKit's tracking areas send it there.
 fn move_pointer(window: &NSWindow, location: NSPoint) -> Result<(), String> {
     if LEFT_HELD.load(Ordering::SeqCst) {
-        let event = mouse_event(window, NSEventType::LeftMouseDragged, location, 1)?;
-        window.sendEvent(&event);
-        return Ok(());
+        return deliver_mouse(window, NSEventType::LeftMouseDragged, location, 1);
     }
     let event = mouse_event(window, NSEventType::MouseMoved, location, 0)?;
     match content_view(window)?.hitTest(location) {
@@ -520,8 +587,8 @@ fn run_command(
                     .and_then(|value| value.parse::<f64>().ok())
                     .ok_or_else(|| "a width and a height are needed".to_string())
             };
-            let title_bar = window.frame().size.height - window.contentLayoutRect().size.height;
-            window.setContentSize(NSSize::new(number(0)?, number(1)? - title_bar));
+            let scale = window.backingScaleFactor();
+            window.setContentSize(NSSize::new(number(0)? / scale, number(1)? / scale));
             announce_screen(window);
             Ok(json!(true))
         }
@@ -556,8 +623,8 @@ fn run_command(
             let (down, up) = button_events(button)?;
             move_pointer(window, location)?;
             for click in 1..=count {
-                window.sendEvent(&*mouse_event(window, down, location, click)?);
-                window.sendEvent(&*mouse_event(window, up, location, click)?);
+                deliver_mouse(window, down, location, click)?;
+                deliver_mouse(window, up, location, click)?;
             }
             Ok(json!(true))
         }
@@ -572,7 +639,7 @@ fn run_command(
             move_pointer(window, location)?;
             let pressing = command == "down";
             let kind = if pressing { down } else { up };
-            window.sendEvent(&*mouse_event(window, kind, location, 1)?);
+            deliver_mouse(window, kind, location, 1)?;
             if button == "left" {
                 LEFT_HELD.store(pressing, Ordering::SeqCst);
             }
@@ -637,6 +704,59 @@ fn add_method(class: *const AnyClass, selector: Sel, method: *const (), types: &
             types.as_ptr(),
         );
     }
+}
+
+/// Replaces a class's own method for a selector.
+fn replace_method(
+    class: *const AnyClass,
+    selector: Sel,
+    method: *const (),
+    types: &std::ffi::CStr,
+) {
+    // Safe: each caller passes a function with the selector's signature,
+    // which the encoding spells out, and the class outlives the process.
+    unsafe {
+        objc2::ffi::class_replaceMethod(
+            class.cast_mut(),
+            selector,
+            std::mem::transmute::<*const (), Imp>(method),
+            types.as_ptr(),
+        );
+    }
+}
+
+/// A call to activate the app, with its flag, that does nothing.
+extern "C-unwind" fn ignored_activation(
+    _application: *mut AnyObject,
+    _selector: Sel,
+    _ignoring_other_apps: Bool,
+) {
+}
+
+/// A call to activate the app that does nothing.
+extern "C-unwind" fn ignored_plain_activation(_application: *mut AnyObject, _selector: Sel) {}
+
+/// Keeps the app from becoming the active app under TESTING, so a test run
+/// never takes the keyboard from the app the user is in: the calls that
+/// activate an app do nothing. It runs before the app starts, as the window
+/// library activates the app while it launches.
+pub fn stay_in_background() {
+    if std::env::var("TESTING").is_err() {
+        return;
+    }
+    let class: *const AnyClass = NSApplication::class();
+    replace_method(
+        class,
+        sel!(activateIgnoringOtherApps:),
+        ignored_activation as *const (),
+        c"v@:c",
+    );
+    replace_method(
+        class,
+        sel!(activate),
+        ignored_plain_activation as *const (),
+        c"v@:",
+    );
 }
 
 /// Lets the window grow past the screen, as the tests' standard viewport

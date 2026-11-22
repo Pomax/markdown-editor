@@ -9,10 +9,10 @@
  * {@link TauriApp} for the main-process hooks plus the page.
  *
  * WebKitGTK has no DevTools Protocol, so on Linux each launch gets a
- * virtual X display of its own instead, and the page is a LinuxPage: the
+ * virtual X display of its own instead, and the page is a WebviewPage: the
  * part of Playwright's Page that the specs use, over WebKitGTK's own
  * inspector, with real X11 input. WKWebView has neither, so on macOS the
- * page is a LinuxPage over the app's test hooks, with key and mouse events
+ * page is a WebviewPage over the app's test hooks, with key and mouse events
  * sent to the app's unseen window inside its own process.
  *
  * The standard viewport is 1920 × 1280 so layout-sensitive tests behave
@@ -28,7 +28,7 @@ import process from 'node:process';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { chromium, test } from '@playwright/test';
 import { TEST_APP_BINARY } from '../../scripts/build-test-app.js';
-import { LinuxPage } from './linux-page.js';
+import { WebviewPage } from './webview-page.js';
 import { MacInput, MacInspector } from './mac-webview.js';
 import { TauriApp } from './tauri-app.js';
 import { WebKitInspector } from './webkit-inspector.js';
@@ -253,7 +253,7 @@ async function startOverDevtools({
  * two frames, and input sent meanwhile reaches the page late), with
  * WebKitGTK's inspector on a
  * port of its own and its webview data in the webview directory, attaches
- * a LinuxPage to its page, and gives the
+ * a WebviewPage to its page, and gives the
  * window the input focus. The window is mapped on that display, since
  * WebKitGTK stops rendering the page of a hidden window, so the standard
  * viewport is set by resizing the window.
@@ -287,7 +287,7 @@ async function startOnLinux({ extraArgs, keepWindowSize, webviewDir, settingsDir
   const app = new TauriApp(/** @type {any} */ (child));
   const input = new X11Input(display.name, child.pid ?? 0, { desktop: ON_DESKTOP });
   cleanup.push(() => input.close());
-  const page = new LinuxPage(inspector, input, {
+  const page = new WebviewPage(inspector, input, {
     url: inspector.url,
     resizeWindow: (bounds) => app.setWindowBounds(bounds),
   });
@@ -313,7 +313,7 @@ async function startOnLinux({ extraArgs, keepWindowSize, webviewDir, settingsDir
  * moving the pointer until the page reports seeing it, for at most a
  * second.
  * @param {TauriApp} app
- * @param {LinuxPage} page
+ * @param {WebviewPage} page
  * @returns {Promise<void>}
  */
 async function waitForPageInput(app, page) {
@@ -328,7 +328,7 @@ async function waitForPageInput(app, page) {
 }
 
 /**
- * Starts the test binary on macOS, attaches a LinuxPage to its page over
+ * Starts the test binary on macOS, attaches a WebviewPage to its page over
  * the test hooks, and gives the window the input focus.
  * @param {LaunchAttempt} attempt
  * @returns {Promise<{ app: TauriApp, page: import('@playwright/test').Page }>}
@@ -344,7 +344,7 @@ async function startOnMac({ extraArgs, keepWindowSize, settingsDir, cleanup }) {
   const app = new TauriApp(/** @type {any} */ (child));
   const inspector = new MacInspector(app);
   exited.then(() => inspector.close());
-  const page = new LinuxPage(
+  const page = new WebviewPage(
     /** @type {any} */ (inspector),
     /** @type {any} */ (new MacInput(app)),
     {

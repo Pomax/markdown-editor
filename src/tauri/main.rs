@@ -45,6 +45,8 @@ fn main() {
     if testing_locale() {
         webview_settings::use_testing_locale();
     }
+    #[cfg(all(feature = "test-hooks", target_os = "macos"))]
+    mac_input::stay_in_background();
     tauri::Builder::default()
         .append_invoke_initialization_script(KEEP_PAGE_DIALOGS)
         .register_asynchronous_uri_scheme_protocol("media", |_context, request, responder| {

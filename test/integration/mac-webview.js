@@ -1,7 +1,7 @@
 /**
  * @fileoverview The macOS side of the WebKit test harness. WKWebView has
  * no inspector server to connect to and macOS has no virtual display, so
- * both of what LinuxPage needs go through the app's test hooks: MacInspector
+ * both of what WebviewPage needs go through the app's test hooks: MacInspector
  * evaluates script in the page, and MacInput sends key and mouse events to
  * the app's window inside its own process, which leaves the real pointer
  * and keyboard alone.
@@ -37,7 +37,7 @@ export class MacInspector {
   /**
    * Evaluates an expression in the page, waits for it if it is a promise,
    * and resolves with its value. A page that unloads meanwhile fails the
-   * call with the error LinuxPage retries on.
+   * call with the error WebviewPage retries on.
    * @param {string} expression
    * @returns {Promise<any>}
    */
@@ -53,8 +53,8 @@ export class MacInspector {
   }
 
   /**
-   * Runs the inspector commands LinuxPage sends that have a macOS form.
-   * LinuxPage sends every init script so far each time, and WebKit keeps
+   * Runs the inspector commands WebviewPage sends that have a macOS form.
+   * WebviewPage sends every init script so far each time, and WebKit keeps
    * the ones it was given, so only the new part is added.
    * @param {string} method
    * @param {{ source?: string }} [params]

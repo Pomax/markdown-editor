@@ -163,6 +163,14 @@ pub fn build_file_menu(current_file_path: Option<&str>, recent_files: &[String])
     })
 }
 
+/// The label of the Edit menu's preferences item: Settings… on macOS,
+/// spelled as macOS spells it, and Preferences elsewhere.
+pub const PREFERENCES_LABEL: &str = if cfg!(target_os = "macos") {
+    "Settings…"
+} else {
+    "Preferences"
+};
+
 /// The Edit menu template.
 pub fn build_edit_menu() -> Value {
     json!({
@@ -179,7 +187,7 @@ pub fn build_edit_menu() -> Value {
             separator(),
             submenu("Images", vec![item_plain("Gather", "edit:gatherImages")]),
             separator(),
-            item("Preferences", "CmdOrCtrl+,", "edit:preferences"),
+            item(PREFERENCES_LABEL, "CmdOrCtrl+,", "edit:preferences"),
         ]
     })
 }
@@ -1747,7 +1755,7 @@ mod tests {
                 "<separator>",
                 "Images",
                 "<separator>",
-                "Preferences",
+                PREFERENCES_LABEL,
             ]
         );
         let submenu = menu["submenu"].as_array().unwrap();

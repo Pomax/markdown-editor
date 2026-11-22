@@ -10,7 +10,7 @@ const CI_RUN = !!process.env.GITHUB_ACTIONS;
 const platform = os.platform();
 
 const config = {
-  retries: platform === `darwin` ? 1 : 0,
+  retries: 0,
   timeout: platform === `darwin` ? 20_000 : 5_000,
   workers: { win32: 8, linux: 4, darwin: 1 }[platform] ?? 4,
 };

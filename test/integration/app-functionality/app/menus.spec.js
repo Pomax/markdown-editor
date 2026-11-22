@@ -53,6 +53,9 @@ const PAGE_HANDLED = [
 /** @type {MenuEntry} */
 const SEPARATOR = { type: `separator` };
 
+/** The Edit menu's preferences item (`PREFERENCES_LABEL` in menu_builder.rs). */
+const PREFERENCES = process.platform === `darwin` ? `Settings…` : `Preferences`;
+
 /** @type {import('../../tauri-app.js').TauriApp} */
 let app;
 
@@ -134,7 +137,7 @@ function expectedMenuTemplate({ filePath, recentFiles, openFiles }) {
       SEPARATOR,
       submenu(`Images`, [item(`Gather`)]),
       SEPARATOR,
-      item(`Preferences`, `CmdOrCtrl+,`),
+      item(PREFERENCES, `CmdOrCtrl+,`),
     ]),
     submenu(`View`, view),
     submenu(`Help`, [
@@ -304,29 +307,20 @@ function changedEntries(before, after) {
 }
 
 /**
- * Whether the built menu matches the expected template for the state.
- * @param {string | undefined} filePath
- * @param {string[]} files
- * @returns {Promise<boolean>}
- */
-async function menuMatches(filePath, files) {
-  const openFiles = await openFilesFromTabBar();
-  const expected = expectedMenuTemplate({ filePath, recentFiles: files, openFiles });
-  return isDeepStrictEqual(shown(await app.menu.items()), expected);
-}
-
-/**
- * Asserts the built menu matches the expected template for the state.
+ * Asserts the built menu matches the expected template for the state,
+ * waiting for the menu to be rebuilt, and showing how they differ when
+ * it never matches.
  * @param {string | undefined} filePath
  * @param {string[]} files
  */
 async function expectMenuToMatch(filePath, files) {
   await flushOpenFiles();
-  await expect.poll(() => menuMatches(filePath, files)).toBe(true);
-  const openFiles = await openFilesFromTabBar();
-  expect(shown(await app.menu.items())).toEqual(
-    expectedMenuTemplate({ filePath, recentFiles: files, openFiles }),
-  );
+  await expect(async () => {
+    const openFiles = await openFilesFromTabBar();
+    expect(shown(await app.menu.items())).toEqual(
+      expectedMenuTemplate({ filePath, recentFiles: files, openFiles }),
+    );
+  }).toPass({ timeout: 5_000 });
 }
 
 test(`the menu matches the expected template with no file open`, async () => {
@@ -363,7 +357,7 @@ test(`Writing View and Source View switch the view mode`, async () => {
 });
 
 test(`Preferences and Word Count open their dialogs`, async () => {
-  await app.menu.click([`Edit`, `Preferences`]);
+  await app.menu.click([`Edit`, PREFERENCES]);
   await expect(page.locator(`dialog.preferences-dialog`)).toBeVisible();
   await page.keyboard.press(`Escape`);
   await expect(page.locator(`dialog.preferences-dialog`)).toBeHidden();

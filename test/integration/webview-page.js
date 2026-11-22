@@ -1,15 +1,17 @@
 /**
- * @fileoverview The page object of the Linux test harness. WebKitGTK has
- * no Chrome DevTools Protocol for Playwright to attach to, so LinuxPage
- * gives the specs the part of Playwright's Page that they use, over
- * WebKitGTK's own inspector protocol (WebKitInspector): evaluating script
- * in the page, waiting, locators, and keyboard and mouse input.
- *
- * Input is real X11 input, sent through the X11 runner (X11Input) to the
- * app's window on its virtual display, so the page gets trusted events as
- * it would from a user. Each input call waits until the page has seen the
- * events it sent, or for at most INPUT_WAIT_MS when some never reach the
- * page, such as the release of a key that opened the menu bar.
+ * @fileoverview The page object of the Linux and macOS test harness.
+ * WebKitGTK and WKWebView have no Chrome DevTools Protocol for Playwright
+ * to attach to, so WebviewPage gives the specs the part of Playwright's
+ * Page that they use: evaluating script in the page, waiting, locators,
+ * and keyboard and mouse input. On Linux it works over WebKitGTK's own
+ * inspector protocol (WebKitInspector) with real X11 input sent through
+ * the X11 runner (X11Input) to the app's window on its virtual display;
+ * on macOS over the app's test hooks (MacInspector and MacInput), with
+ * input events delivered to the app's window. Either way the page gets
+ * trusted events as it would from a user. Each input call waits until the
+ * page has seen the events it sent, or for at most INPUT_WAIT_MS when some
+ * never reach the page, such as the release of a key that opened the menu
+ * bar.
  *
  * Locators query the page again on every call, as Playwright's do, with
  * Playwright's rules for visibility, element text and text matching, and
@@ -418,7 +420,7 @@ export function pageHarness() {
         return { matches: matchesText(element.value), received: element.value };
       }
     }
-    throw new Error(`the Linux harness does not support ${expression}`);
+    throw new Error(`the webview harness does not support ${expression}`);
   };
 
   /**
@@ -573,11 +575,11 @@ function withNewHarness(body) {
 /**
  * Keyboard input to the app's window.
  */
-class LinuxKeyboard {
-  /** @type {LinuxPage} */
+class WebviewKeyboard {
+  /** @type {WebviewPage} */
   #page;
 
-  /** @param {LinuxPage} page */
+  /** @param {WebviewPage} page */
   constructor(page) {
     this.#page = page;
   }
@@ -602,14 +604,14 @@ class LinuxKeyboard {
 /**
  * Mouse input to the app's window, at points of the page in CSS pixels.
  */
-class LinuxMouse {
-  /** @type {LinuxPage} */
+class WebviewMouse {
+  /** @type {WebviewPage} */
   #page;
 
   /** @type {{ x: number, y: number }} */
   #position = { x: 0, y: 0 };
 
-  /** @param {LinuxPage} page */
+  /** @param {WebviewPage} page */
   constructor(page) {
     this.#page = page;
   }
@@ -682,11 +684,11 @@ class LinuxMouse {
 /**
  * A lazy reference to elements of the page, as Playwright's Locator is.
  */
-export class LinuxLocator {
+export class WebviewLocator {
   /** What Playwright's `expect` checks a locator by. */
   _apiName = `Locator`;
 
-  /** @type {LinuxPage} */
+  /** @type {WebviewPage} */
   #page;
 
   /** @type {any[]} */
@@ -696,7 +698,7 @@ export class LinuxLocator {
   #description;
 
   /**
-   * @param {LinuxPage} page
+   * @param {WebviewPage} page
    * @param {any[]} steps
    * @param {string} description
    */
@@ -711,7 +713,7 @@ export class LinuxLocator {
     return this.#description;
   }
 
-  /** @returns {LinuxPage} */
+  /** @returns {WebviewPage} */
   page() {
     return this.#page;
   }
@@ -720,10 +722,10 @@ export class LinuxLocator {
    * The elements matching a selector inside this locator's elements.
    * @param {string} selector
    * @param {{ hasText?: string | RegExp, hasNotText?: string | RegExp }} [options]
-   * @returns {LinuxLocator}
+   * @returns {WebviewLocator}
    */
   locator(selector, options) {
-    return new LinuxLocator(
+    return new WebviewLocator(
       this.#page,
       [...this.#steps, ...selectorSteps(selector), ...optionSteps(options)],
       `${this.#description}.locator(${JSON.stringify(selector)})`,
@@ -733,10 +735,10 @@ export class LinuxLocator {
   /**
    * This locator's elements that pass the options.
    * @param {{ hasText?: string | RegExp, hasNotText?: string | RegExp }} options
-   * @returns {LinuxLocator}
+   * @returns {WebviewLocator}
    */
   filter(options) {
-    return new LinuxLocator(
+    return new WebviewLocator(
       this.#page,
       [...this.#steps, ...optionSteps(options)],
       `${this.#description}.filter(...)`,
@@ -746,22 +748,22 @@ export class LinuxLocator {
   /**
    * The element at an index, counted from the end when it is negative.
    * @param {number} index
-   * @returns {LinuxLocator}
+   * @returns {WebviewLocator}
    */
   nth(index) {
-    return new LinuxLocator(
+    return new WebviewLocator(
       this.#page,
       [...this.#steps, { kind: `nth`, index }],
       `${this.#description}.nth(${index})`,
     );
   }
 
-  /** @returns {LinuxLocator} */
+  /** @returns {WebviewLocator} */
   first() {
     return this.nth(0);
   }
 
-  /** @returns {LinuxLocator} */
+  /** @returns {WebviewLocator} */
   last() {
     return this.nth(-1);
   }
@@ -1056,9 +1058,9 @@ export class LinuxLocator {
 
 /**
  * The part of Playwright's Page that the specs use, for the app's page on
- * Linux.
+ * Linux and macOS.
  */
-export class LinuxPage {
+export class WebviewPage {
   /** @type {import('./webkit-inspector.js').WebKitInspector} */
   #inspector;
 
@@ -1104,8 +1106,8 @@ export class LinuxPage {
     this.#url = options.url;
     this.#resizeWindow = options.resizeWindow;
     this.#inputWaitMs = options.inputWaitMs ?? INPUT_WAIT_MS;
-    this.keyboard = new LinuxKeyboard(this);
-    this.mouse = new LinuxMouse(this);
+    this.keyboard = new WebviewKeyboard(this);
+    this.mouse = new WebviewMouse(this);
   }
 
   /** @returns {string} The page's URL. */
@@ -1180,10 +1182,10 @@ export class LinuxPage {
    * The elements matching a selector.
    * @param {string} selector
    * @param {{ hasText?: string | RegExp, hasNotText?: string | RegExp }} [options]
-   * @returns {LinuxLocator}
+   * @returns {WebviewLocator}
    */
   locator(selector, options) {
-    return new LinuxLocator(
+    return new WebviewLocator(
       this,
       [...selectorSteps(selector), ...optionSteps(options)],
       `locator(${JSON.stringify(selector)})`,
@@ -1195,7 +1197,7 @@ export class LinuxPage {
    * `visible` (the default), `hidden`, `attached` or `detached`.
    * @param {string} selector
    * @param {{ state?: string, timeout?: number }} [options]
-   * @returns {Promise<LinuxLocator>}
+   * @returns {Promise<WebviewLocator>}
    */
   async waitForSelector(selector, options = {}) {
     const first = this.locator(selector).first();
@@ -1283,12 +1285,13 @@ export class LinuxPage {
   }
 
   /**
-   * Resizes the window so the page has the given size.
+   * Resizes the window so the page has the given size, by giving the
+   * window's client area that size plus the offset, in physical pixels.
    * @param {{ width: number, height: number }} size
    */
   async setViewportSize(size) {
-    const offset = await this.#pageOffset();
-    await this.#resizeWindow({ width: size.width + offset.x, height: size.height + offset.y });
+    const client = await this.clientPoint(size.width, size.height);
+    await this.#resizeWindow({ width: client.x, height: client.y });
     await this.waitForFunction(
       (/** @type {number[]} */ [width, height]) =>
         window.innerWidth === width && window.innerHeight === height,
@@ -1301,7 +1304,7 @@ export class LinuxPage {
   }
 
   /**
-   * Registers a handler for a page event. The Linux harness records it
+   * Registers a handler for a page event. The webview harness records it
    * and calls none.
    * @param {string} event
    * @param {Function} handler
@@ -1317,7 +1320,8 @@ export class LinuxPage {
    * @returns {Promise<void>}
    */
   waitForEvent(event) {
-    if (event !== `close`) throw new Error(`the Linux harness supports waitForEvent('close') only`);
+    if (event !== `close`)
+      throw new Error(`the webview harness supports waitForEvent('close') only`);
     return this.#inspector.closed;
   }
 
