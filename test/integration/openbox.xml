@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- The window manager configuration for the Linux test harness's virtual displays: one desktop, new windows focused, no key or mouse bindings, and no window decorations. -->
+<openbox_config xmlns="http://openbox.org/3.4/rc">
+  <focus>
+    <focusNew>yes</focusNew>
+    <followMouse>no</followMouse>
+  </focus>
+  <desktops>
+    <number>1</number>
+  </desktops>
+  <theme>
+    <keepBorder>no</keepBorder>
+  </theme>
+  <keyboard/>
+  <mouse/>
+  <applications>
+    <application class="*">
+      <decor>no</decor>
+    </application>
+  </applications>
+</openbox_config>

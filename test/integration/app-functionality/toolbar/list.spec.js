@@ -29,18 +29,18 @@ import {
 const fixturePath = path.join(projectRoot, `test`, `fixtures`, `list-items.md`);
 const fixtureContent = fs.readFileSync(fixturePath, `utf-8`);
 
-/** @type {import('@playwright/test').ElectronApplication} */
-let electronApp;
+/** @type {import('../../tauri-app.js').TauriApp} */
+let app;
 
 /** @type {import('@playwright/test').Page} */
 let page;
 
 test.beforeAll(async () => {
-  ({ electronApp, page } = await launchApp());
+  ({ app, page } = await launchApp());
 });
 
 test.afterAll(async () => {
-  await closeApp(electronApp);
+  await closeApp(app);
 });
 
 test(`clicking bullet list button converts paragraph to unordered list item`, async () => {
@@ -299,9 +299,7 @@ test(`pasting multi-line markdown with list items creates correct nodes`, async 
 
   // Write the full multi-line content to the clipboard and paste via Ctrl+V.
   const pasteText = `test\n\n1. one\n2. two\n3. three`;
-  await electronApp.evaluate(({ clipboard }, text) => {
-    clipboard.writeText(text);
-  }, pasteText);
+  await app.clipboard.writeText(pasteText);
   await page.keyboard.press(`${MOD}+v`);
   await page.waitForTimeout(300);
 
@@ -322,9 +320,7 @@ test(`pasting multi-line markdown with CRLF line endings parses correctly`, asyn
 
   // Use \r\n (Windows clipboard line endings)
   const pasteText = `test\r\n\r\n1. one\r\n2. two\r\n3. three`;
-  await electronApp.evaluate(({ clipboard }, text) => {
-    clipboard.writeText(text);
-  }, pasteText);
+  await app.clipboard.writeText(pasteText);
   await page.keyboard.press(`${MOD}+v`);
   await page.waitForTimeout(300);
 

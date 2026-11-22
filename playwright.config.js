@@ -11,9 +11,20 @@ const platform = os.platform();
 
 const config = {
   retries: 0,
-  timeout: 5_000,
-  workers: 8,
+  timeout: platform === `darwin` ? 20_000 : 5_000,
+  workers: { win32: 8, linux: 4, darwin: 1 }[platform] ?? 4,
 };
+
+/**
+ * The specs that fail when other specs run beside them. They run one at a
+ * time, in a run of their own after the other specs' run, as
+ * scripts/test-integration.js runs them.
+ */
+const SOLO_SPECS = [
+  `**/app/search.spec.js`,
+  `**/document/view-switching.spec.js`,
+  `**/content/inline-image.spec.js`,
+];
 
 if (CI_RUN) {
   let overrides = {
@@ -38,6 +49,10 @@ if (CI_RUN) {
   Object.assign(config, overrides);
 }
 
+if (platform === `linux` && process.env.TEST_ON_DESKTOP) {
+  Object.assign(config, { timeout: 240_000, workers: 1 });
+}
+
 export default defineConfig({
   ...config,
   testDir: `./test/integration`,
@@ -48,6 +63,13 @@ export default defineConfig({
     {
       name: `firefox`,
       use: { ...devices[`Desktop Firefox`] },
+      testIgnore: SOLO_SPECS,
+    },
+    {
+      name: `firefox-solo`,
+      use: { ...devices[`Desktop Firefox`] },
+      testMatch: SOLO_SPECS,
+      workers: 1,
     },
   ],
   use: {

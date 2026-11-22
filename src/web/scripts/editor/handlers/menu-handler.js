@@ -1,5 +1,6 @@
 /// <reference path="../../../../types.d.ts" />
 
+import { buildHtmlDocument, pageSettingsCss } from '../../utility/export/html-export.js';
 import { PreferencesModal } from '../../utility/preferences/preferences-modal.js';
 import { WordCountModal } from '../../utility/word-count/word-count-modal.js';
 import { MenuHandlerData } from '../types.js';
@@ -22,13 +23,15 @@ export class MenuHandler extends MenuHandlerData {
    * Initializes the menu handler.
    */
   initialize() {
-    if (!window.electronAPI) {
-      console.warn(`electronAPI not available, menu handler will not work`);
+    if (!window.pageToBackendBridge) {
+      console.warn(`pageToBackendBridge not available, menu handler will not work`);
       return;
     }
 
     // Register for menu actions
-    this.cleanupMenuListener = window.electronAPI.onMenuAction(this.handleMenuAction.bind(this));
+    this.cleanupMenuListener = window.pageToBackendBridge.onMenuAction(
+      this.handleMenuAction.bind(this),
+    );
   }
 
   /**
@@ -59,6 +62,9 @@ export class MenuHandler extends MenuHandlerData {
         break;
       case `file:saveAs`:
         this.handleSaveAs();
+        break;
+      case `file:exportHtml`:
+        await this.handleExportHtml();
         break;
       case `file:close`:
         this.handleClose();
@@ -132,10 +138,10 @@ export class MenuHandler extends MenuHandlerData {
    * Handles the Save action.
    */
   async handleSave() {
-    if (!window.electronAPI) return;
+    if (!window.pageToBackendBridge) return;
 
     const content = this.editor.getMarkdown();
-    const result = await window.electronAPI.saveFile(content);
+    const result = await window.pageToBackendBridge.saveFile(content);
 
     if (result.success) {
       this.editor.currentFilePath = result.filePath;
@@ -147,14 +153,36 @@ export class MenuHandler extends MenuHandlerData {
    * Handles the Save As action.
    */
   async handleSaveAs() {
-    if (!window.electronAPI) return;
+    if (!window.pageToBackendBridge) return;
 
     const content = this.editor.getMarkdown();
-    const result = await window.electronAPI.saveFileAs(content);
+    const result = await window.pageToBackendBridge.saveFileAs(content);
 
     if (result.success) {
       this.editor.currentFilePath = result.filePath;
       this.editor.setUnsavedChanges(false);
+    }
+  }
+
+  /**
+   * Handles the Export > HTML action: writes the document as HTML, with
+   * a default.css, next to the current markdown file.
+   */
+  async handleExportHtml() {
+    if (!window.pageToBackendBridge) return;
+
+    const filePath = this.editor.currentFilePath;
+    if (!filePath) {
+      console.warn(`Save the document before exporting`);
+      return;
+    }
+
+    const html = buildHtmlDocument(this.editor, filePath);
+    if (!html) return;
+
+    const result = await window.pageToBackendBridge.exportHtml(html, pageSettingsCss());
+    if (!result.success) {
+      console.warn(result.message);
     }
   }
 

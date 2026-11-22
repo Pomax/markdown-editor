@@ -2,11 +2,24 @@
  * Writing view styles.
  */
 
-.writing-view {
-  &.focused [data-node-id][data-has-focus] {
-    background-color: rgba(13, 110, 253, 0.05);
-  }
+/* The styling of the block the cursor is in, on while "Highlight active
+   element" is ticked in Preferences. */
+body.with-highlight {
+  .writing-view {
+    &.focused [data-node-id][data-has-focus] {
+      background-color: rgba(13, 110, 253, 0.05);
+    }
 
+    .md-list-item[data-has-focus] {
+      margin-left: unset;
+      padding-left: unset;
+      margin-right: unset;
+      padding-right: unset;
+    }
+  }
+}
+
+.writing-view {
   .md-heading1,
   .md-heading2,
   .md-heading3,
@@ -196,13 +209,6 @@
   }
 
   .md-list-item {
-    &[data-has-focus] {
-      margin-left: unset;
-      padding-left: unset;
-      margin-right: unset;
-      padding-right: unset;
-    }
-
     &.md-checklist-item {
       list-style-type: none;
     }

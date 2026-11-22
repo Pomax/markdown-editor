@@ -11,8 +11,8 @@ Rules preceded by a `#` are considered "commented off" and should be treated as 
 These mandatory rules describe actions that MUST BE FOLLOWED AT EVERY STEP BY THE JUDGE
 
 - Allow all work that the user explicitly asks for in chat. THIS RULE OVERRIDES ALL OTHER RULES. IF THE USER ASKS FOR SOMETHING TO BE DONE, THE WORKER MUST DO THAT AND THE JUDGE MUST ALLOW IT.
-- Allow a work plan to be written in docs/plan.md
-- Allow the work plan at docs/plan.md to be updated if the user asks for that.
+- Allow a work plan to be written in plans/plan.md
+- Allow the work plan at plans/plan.md to be updated if the user asks for that.
 - Allow any work that has an explicit demand for that work by the user in the chat log
 - Allow any work that you have been ordered to allow through the chat by the user
 - Read the current rules and work plan (if a plan exists) and test actions against those before making a ruling
@@ -105,6 +105,8 @@ These rules describe writing-related actions that MAY NEVER BE PERFORMED BY THE 
 
 These rules describe general actions that MAY NEVER BE PERFORMED BY THE WORKER
 
+- Going off on something that you were not told to do
+- Investigating something unexpected but unrelated
 - Code changes not required to fulfil the instructions or planned tasks.
 - Working on anything while a question from the user has not been answered yet.
 - Acting on a question as though it were an instruction.

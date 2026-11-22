@@ -1,6 +1,44 @@
 import { UndoManagerData } from '../types.js';
 
 /**
+ * Where the caret goes in `change.before` when the change is undone. When
+ * `before` ends with the text that followed the caret recorded with the
+ * change, the caret goes as far from the end as it was; otherwise it goes
+ * where `before` and `after` start to differ.
+ * @param {Change} change
+ * @returns {number}
+ */
+export function caretAfterUndo(change) {
+  const { before, after, caret } = change;
+  if (caret !== undefined && before.endsWith(after.slice(caret))) {
+    return before.length - (after.length - caret);
+  }
+  let start = 0;
+  while (start < before.length && before[start] === after[start]) start++;
+  return start;
+}
+
+/**
+ * Where the caret goes in `change.after` when the change is redone: where
+ * it was recorded, otherwise where `before` and `after` stop differing.
+ * @param {Change} change
+ * @returns {number}
+ */
+export function caretAfterRedo(change) {
+  const { before, after, caret } = change;
+  if (caret !== undefined) return caret;
+  let end = 0;
+  while (
+    end < before.length &&
+    end < after.length &&
+    before[before.length - 1 - end] === after[after.length - 1 - end]
+  ) {
+    end++;
+  }
+  return after.length - end;
+}
+
+/**
  * Manages undo/redo history with unlimited capacity.
  */
 export class UndoManager extends UndoManagerData {
@@ -21,6 +59,7 @@ export class UndoManager extends UndoManagerData {
     if (timeSinceLastChange < this.batchTimeout && this.undoStack.length > 0) {
       const lastChange = this.undoStack[this.undoStack.length - 1];
       lastChange.after = change.after;
+      lastChange.caret = change.caret;
       lastChange.timestamp = now;
     } else {
       // Otherwise, add as a new change

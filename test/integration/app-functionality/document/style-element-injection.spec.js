@@ -9,6 +9,7 @@
  *      of the preference, and the syntax tree is never altered.
  */
 
+import fs from 'node:fs/promises';
 import { expect, test } from '@playwright/test';
 import {
   closeApp,
@@ -29,18 +30,18 @@ const STYLE_FIXTURE = [
   `Some body text.`,
 ].join(`\n`);
 
-/** @type {import('@playwright/test').ElectronApplication} */
-let electronApp;
+/** @type {import('../../tauri-app.js').TauriApp} */
+let app;
 
 /** @type {import('@playwright/test').Page} */
 let page;
 
 test.beforeAll(async () => {
-  ({ electronApp, page } = await launchApp());
+  ({ app, page } = await launchApp());
 });
 
 test.afterAll(async () => {
-  await closeApp(electronApp);
+  await closeApp(app);
 });
 
 test.describe(`style element injection`, () => {
@@ -49,7 +50,7 @@ test.describe(`style element injection`, () => {
     // database and in the runtime editor state (via the same event the
     // preferences modal dispatches).
     await page.evaluate(() => {
-      window.electronAPI?.setSetting(`enableStyleElements`, false);
+      window.pageToBackendBridge?.setSetting(`enableStyleElements`, false);
       document.dispatchEvent(
         new CustomEvent(`content:settingsChanged`, {
           detail: { detailsClosed: false, enableStyleElements: false },
@@ -81,7 +82,7 @@ test.describe(`style element injection`, () => {
     // Enable the setting and dispatch the event the same way the
     // preferences modal does when the user clicks Save.
     await page.evaluate(() => {
-      window.electronAPI?.setSetting(`enableStyleElements`, true);
+      window.pageToBackendBridge?.setSetting(`enableStyleElements`, true);
       document.dispatchEvent(
         new CustomEvent(`content:settingsChanged`, {
           detail: { detailsClosed: false, enableStyleElements: true },
@@ -107,7 +108,7 @@ test.describe(`style element injection`, () => {
   test(`disabling the preference removes injected style elements`, async () => {
     // First enable…
     await page.evaluate(() => {
-      window.electronAPI?.setSetting(`enableStyleElements`, true);
+      window.pageToBackendBridge?.setSetting(`enableStyleElements`, true);
       document.dispatchEvent(
         new CustomEvent(`content:settingsChanged`, {
           detail: { detailsClosed: false, enableStyleElements: true },
@@ -124,7 +125,7 @@ test.describe(`style element injection`, () => {
 
     // …then disable.
     await page.evaluate(() => {
-      window.electronAPI?.setSetting(`enableStyleElements`, false);
+      window.pageToBackendBridge?.setSetting(`enableStyleElements`, false);
       document.dispatchEvent(
         new CustomEvent(`content:settingsChanged`, {
           detail: { detailsClosed: false, enableStyleElements: false },
@@ -149,7 +150,7 @@ test.describe(`style element injection`, () => {
 
   test(`editing the style block replaces the old rules`, async () => {
     await page.evaluate(() => {
-      window.electronAPI?.setSetting(`enableStyleElements`, true);
+      window.pageToBackendBridge?.setSetting(`enableStyleElements`, true);
       document.dispatchEvent(
         new CustomEvent(`content:settingsChanged`, {
           detail: { detailsClosed: false, enableStyleElements: true },
@@ -180,7 +181,7 @@ test.describe(`style element injection`, () => {
 
   test(`typing a new rule in source view and toggling back replaces the old rule`, async () => {
     await page.evaluate(() => {
-      window.electronAPI?.setSetting(`enableStyleElements`, true);
+      window.pageToBackendBridge?.setSetting(`enableStyleElements`, true);
       document.dispatchEvent(
         new CustomEvent(`content:settingsChanged`, {
           detail: { detailsClosed: false, enableStyleElements: true },
@@ -222,7 +223,7 @@ test.describe(`style element injection`, () => {
     const markdown = [`# Styled Document`, ...blocks, `Some body text.`].join(`\n\n`);
     await loadContent(page, markdown);
     await page.evaluate(() => {
-      window.electronAPI?.setSetting(`enableStyleElements`, true);
+      window.pageToBackendBridge?.setSetting(`enableStyleElements`, true);
       document.dispatchEvent(
         new CustomEvent(`content:settingsChanged`, {
           detail: { detailsClosed: false, enableStyleElements: true },
@@ -257,7 +258,7 @@ test.describe(`style element injection`, () => {
 
     // Enable the preference.
     await page.evaluate(() => {
-      window.electronAPI?.setSetting(`enableStyleElements`, true);
+      window.pageToBackendBridge?.setSetting(`enableStyleElements`, true);
       document.dispatchEvent(
         new CustomEvent(`content:settingsChanged`, {
           detail: { detailsClosed: false, enableStyleElements: true },
@@ -359,7 +360,7 @@ test.describe(`style injection does not wreck the ToC sidebar`, () => {
 
   test.beforeEach(async () => {
     await page.evaluate(() => {
-      window.electronAPI?.setSetting(`enableStyleElements`, false);
+      window.pageToBackendBridge?.setSetting(`enableStyleElements`, false);
       document.dispatchEvent(
         new CustomEvent(`content:settingsChanged`, {
           detail: { detailsClosed: false, enableStyleElements: false },
@@ -389,7 +390,7 @@ test.describe(`style injection does not wreck the ToC sidebar`, () => {
 
     // Enable style injection.
     await page.evaluate(() => {
-      window.electronAPI?.setSetting(`enableStyleElements`, true);
+      window.pageToBackendBridge?.setSetting(`enableStyleElements`, true);
       document.dispatchEvent(
         new CustomEvent(`content:settingsChanged`, {
           detail: { detailsClosed: false, enableStyleElements: true },
@@ -431,10 +432,61 @@ test.describe(`style injection does not wreck the ToC sidebar`, () => {
   });
 });
 
+/**
+ * The colour of the first heading on a page.
+ * @param {import('@playwright/test').Page} on
+ * @returns {Promise<string | undefined>}
+ */
+function headingColor(on) {
+  return on.evaluate(() => {
+    const h = document.querySelector(`#editor .md-heading1`);
+    return h ? getComputedStyle(h).color : undefined;
+  });
+}
+
+test.describe(`the preference as the user sets it`, () => {
+  test(`ticking it in Preferences and saving styles the open document`, async () => {
+    await page.evaluate(() => {
+      window.pageToBackendBridge?.setSetting(`enableStyleElements`, false);
+      document.dispatchEvent(
+        new CustomEvent(`content:settingsChanged`, {
+          detail: { detailsClosed: false, enableStyleElements: false },
+        }),
+      );
+    });
+    await loadContent(page, STYLE_FIXTURE);
+    await setWritingView(page);
+    await defocusEditor(page);
+    expect(await headingColor(page)).not.toBe(`rgb(255, 0, 0)`);
+
+    await app.sendMenuAction(`edit:preferences`);
+    await page.locator(`.preferences-nav-link[data-section="pref-content"]`).click();
+    await page.locator(`#enable-style-elements`).check();
+    await page.locator(`.preferences-btn--save`).click();
+
+    await expect.poll(() => headingColor(page)).toBe(`rgb(255, 0, 0)`);
+  });
+
+  test(`a document opened at startup is styled when the preference is on`, async ({}, testInfo) => {
+    test.setTimeout(30_000);
+    const file = testInfo.outputPath(`styled.md`);
+    await fs.writeFile(file, STYLE_FIXTURE);
+    await page.evaluate(() => window.pageToBackendBridge?.setSetting(`enableStyleElements`, true));
+
+    const opened = await launchApp([file]);
+    try {
+      await opened.page.waitForSelector(`#editor .md-heading1`);
+      await expect.poll(() => headingColor(opened.page)).toBe(`rgb(255, 0, 0)`);
+    } finally {
+      await closeApp(opened.app);
+    }
+  });
+});
+
 test.describe(`document style blocks apply to their own document only, and win`, () => {
   test.beforeEach(async () => {
     await page.evaluate(() => {
-      window.electronAPI?.setSetting(`enableStyleElements`, true);
+      window.pageToBackendBridge?.setSetting(`enableStyleElements`, true);
       document.dispatchEvent(
         new CustomEvent(`content:settingsChanged`, {
           detail: { detailsClosed: false, enableStyleElements: true },
@@ -457,6 +509,40 @@ test.describe(`document style blocks apply to their own document only, and win`,
       return { fontSize: style.fontSize, borderBottomWidth: style.borderBottomWidth };
     });
     expect(heading).toEqual({ fontSize: `10px`, borderBottomWidth: `0px` });
+  });
+
+  test(`a nested rule in a style block applies to the document's elements`, async () => {
+    await loadContent(
+      page,
+      [
+        `# A universal trim solution`,
+        ``,
+        `<style>`,
+        `  img {`,
+        `    &.bordered { `,
+        `      max-height: 250px;`,
+        `      border: 1px solid #444;`,
+        `      padding: 1em;`,
+        `    }`,
+        `  }`,
+        `</style>`,
+        ``,
+        `<img class="bordered" src="image.png">`,
+      ].join(`\n`),
+    );
+    await setWritingView(page);
+    await defocusEditor(page);
+
+    const image = await page.evaluate(() => {
+      const img = /** @type {any} */ (window).__editor.container.querySelector(`img.bordered`);
+      if (!img) return null;
+      const style = getComputedStyle(img);
+      return {
+        maxHeight: style.maxHeight,
+        border: `${style.borderTopWidth} ${style.borderTopStyle}`,
+      };
+    });
+    expect(image).toEqual({ maxHeight: `250px`, border: `1px solid` });
   });
 
   test(`each tab's style blocks apply to that tab and not to the other`, async () => {

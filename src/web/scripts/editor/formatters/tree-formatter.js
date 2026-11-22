@@ -66,4 +66,57 @@ export class TreeFormatter extends TreeFormatterData {
   insertOrUpdateTable(tableData) {
     this.editor.insertOrUpdateTable(tableData);
   }
+
+  /**
+   * Returns the selected span of the current block's raw content, or
+   * the collapsed cursor offset when nothing is selected. Selections
+   * that span more than one block yield undefined.
+   * @returns {{ node: SyntaxNode, start: number, end: number } | undefined}
+   */
+  getSelectedSpan() {
+    const node = this.editor.getCurrentBlockNode();
+    const cursor = this.editor.syntaxTree?.treeCursor;
+    if (!node || !cursor) return undefined;
+
+    const range = this.editor.treeRange;
+    if (!range) return { node, start: cursor.offset, end: cursor.offset };
+    if (range.startNodeId !== node.id || range.endNodeId !== node.id) return undefined;
+
+    return {
+      node,
+      start: Math.min(range.startOffset, range.endOffset),
+      end: Math.max(range.startOffset, range.endOffset),
+    };
+  }
+
+  /**
+   * Returns prefill data for the link modal: the selected text, if any.
+   * @returns {Partial<LinkData>}
+   */
+  getLinkPrefill() {
+    const span = this.getSelectedSpan();
+    if (!span || span.start === span.end) return {};
+    return { text: span.node.content.substring(span.start, span.end) };
+  }
+
+  /**
+   * Replaces the current selection, or inserts at the cursor, with a
+   * markdown link and places the cursor after it.
+   * @param {string} text - The link display text
+   * @param {string} url - The link URL
+   */
+  insertOrUpdateLink(text, url) {
+    const tree = this.editor.syntaxTree;
+    const span = this.getSelectedSpan();
+    if (!tree || !span) return;
+
+    const { node, start, end } = span;
+    const before = tree.toMarkdown();
+    const link = `[${text}](${url})`;
+    node.content = node.content.substring(0, start) + link + node.content.substring(end);
+
+    tree.treeCursor = { nodeId: node.id, offset: start + link.length };
+    this.editor.treeRange = undefined;
+    this.editor.recordAndRender(before, { updated: [node.id] });
+  }
 }

@@ -246,6 +246,17 @@ const INLINE_CONTENT_TYPES = new Set([
 ]);
 
 /**
+ * The text between two top-level blocks in the document's markdown: a
+ * newline between two list items, a blank line between anything else.
+ * @param {SyntaxNode} previous
+ * @param {SyntaxNode} next
+ * @returns {string}
+ */
+export function separatorBetween(previous, next) {
+  return previous.type === `list-item` && next.type === `list-item` ? `\n` : `\n\n`;
+}
+
+/**
  * Represents the root of a syntax tree.
  */
 export class SyntaxTree {
@@ -736,10 +747,7 @@ export class SyntaxTree {
 
     const parts = [lines[0]];
     for (let i = 1; i < lines.length; i++) {
-      const prev = this.children[i - 1];
-      const curr = this.children[i];
-      const sep = prev.type === `list-item` && curr.type === `list-item` ? `\n` : `\n\n`;
-      parts.push(sep + lines[i]);
+      parts.push(separatorBetween(this.children[i - 1], this.children[i]) + lines[i]);
     }
     return parts.join(``);
   }

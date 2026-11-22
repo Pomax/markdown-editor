@@ -49,6 +49,12 @@ const DEFAULT_TOC_POSITION = `left`;
 const DEFAULT_ENSURE_LOCAL_PATHS = true;
 
 /**
+ * Default setting for whether the block the cursor is in is highlighted.
+ * @type {boolean}
+ */
+const DEFAULT_HIGHLIGHT_ACTIVE_ELEMENT = true;
+
+/**
  * Default setting for whether &lt;details&gt; blocks load closed.
  * @type {boolean}
  */
@@ -225,6 +231,13 @@ export class PreferencesModal extends PreferencesModalData {
                         <legend>Content</legend>
                         <div class="content-settings-row">
                             <label class="content-toggle">
+                                <input type="checkbox" id="highlight-active-element">
+                                <span>Highlight active element</span>
+                            </label>
+                            <p class="preferences-hint">When enabled, the block element that the cursor is in gets highlighted as a visual aid. When disabled, no special styling is applied.</p>
+                        </div>
+                        <div class="content-settings-row">
+                            <label class="content-toggle">
                                 <input type="checkbox" id="details-closed">
                                 <span>Load &lt;details&gt; closed</span>
                             </label>
@@ -311,12 +324,6 @@ export class PreferencesModal extends PreferencesModalData {
       if (linkTB.checked) {
         this.syncValue(dialog, `margin-top`, `margin-bottom`);
       }
-      // If both TB and LR are on, turn on All
-      if (linkTB.checked && linkLR.checked) {
-        linkAll.checked = true;
-        this.linkAll = true;
-        this.syncAllToValue(dialog, this.getInput(dialog, `margin-top`).value);
-      }
       if (!linkTB.checked && linkAll.checked) {
         linkAll.checked = false;
         this.linkAll = false;
@@ -328,11 +335,6 @@ export class PreferencesModal extends PreferencesModalData {
       this.linkLeftRight = linkLR.checked;
       if (linkLR.checked) {
         this.syncValue(dialog, `margin-left`, `margin-right`);
-      }
-      if (linkTB.checked && linkLR.checked) {
-        linkAll.checked = true;
-        this.linkAll = true;
-        this.syncAllToValue(dialog, this.getInput(dialog, `margin-top`).value);
       }
       if (!linkLR.checked && linkAll.checked) {
         linkAll.checked = false;
@@ -651,6 +653,11 @@ export class PreferencesModal extends PreferencesModalData {
     ensureLocalPathsCb.checked = ensureLocalPaths;
 
     // Load content settings
+    const highlightCb = /** @type {HTMLInputElement} */ (
+      this.dialog.querySelector(`#highlight-active-element`)
+    );
+    highlightCb.checked = await this.loadHighlightActiveElement();
+
     const detailsClosed = await this.loadDetailsClosed();
     const detailsClosedCb = /** @type {HTMLInputElement} */ (
       this.dialog.querySelector(`#details-closed`)
@@ -680,10 +687,10 @@ export class PreferencesModal extends PreferencesModalData {
    * @returns {Promise<ViewMode>}
    */
   async loadDefaultView() {
-    if (!window.electronAPI) return DEFAULT_VIEW_MODE;
+    if (!window.pageToBackendBridge) return DEFAULT_VIEW_MODE;
 
     try {
-      const result = await window.electronAPI.getSetting(`defaultView`);
+      const result = await window.pageToBackendBridge.getSetting(`defaultView`);
       if (result.success && result.value) {
         if (result.value === `source2`) return result.value;
         return `writing`;
@@ -700,10 +707,10 @@ export class PreferencesModal extends PreferencesModalData {
    * @returns {Promise<{ useFixed: boolean, width: number, unit: 'px' | 'mm' }>}
    */
   async loadPageWidth() {
-    if (!window.electronAPI) return { ...DEFAULT_PAGE_WIDTH };
+    if (!window.pageToBackendBridge) return { ...DEFAULT_PAGE_WIDTH };
 
     try {
-      const result = await window.electronAPI.getSetting(`pageWidth`);
+      const result = await window.pageToBackendBridge.getSetting(`pageWidth`);
       if (result.success && result.value) {
         return {
           useFixed: result.value.useFixed ?? DEFAULT_PAGE_WIDTH.useFixed,
@@ -723,10 +730,10 @@ export class PreferencesModal extends PreferencesModalData {
    * @returns {Promise<{ top: number, right: number, bottom: number, left: number }>}
    */
   async loadMargins() {
-    if (!window.electronAPI) return { ...DEFAULT_MARGINS };
+    if (!window.pageToBackendBridge) return { ...DEFAULT_MARGINS };
 
     try {
-      const result = await window.electronAPI.getSetting(`margins`);
+      const result = await window.pageToBackendBridge.getSetting(`margins`);
       if (result.success && result.value) {
         return {
           top: result.value.top ?? DEFAULT_MARGINS.top,
@@ -747,10 +754,10 @@ export class PreferencesModal extends PreferencesModalData {
    * @returns {Promise<{ pageBg: string, pageText: string }>}
    */
   async loadColors() {
-    if (!window.electronAPI) return { ...DEFAULT_COLORS };
+    if (!window.pageToBackendBridge) return { ...DEFAULT_COLORS };
 
     try {
-      const result = await window.electronAPI.getSetting(`colors`);
+      const result = await window.pageToBackendBridge.getSetting(`colors`);
       if (result.success && result.value) {
         return {
           pageBg: result.value.pageBg ?? DEFAULT_COLORS.pageBg,
@@ -769,10 +776,10 @@ export class PreferencesModal extends PreferencesModalData {
    * @returns {Promise<boolean>}
    */
   async loadTocVisible() {
-    if (!window.electronAPI) return DEFAULT_TOC_VISIBLE;
+    if (!window.pageToBackendBridge) return DEFAULT_TOC_VISIBLE;
 
     try {
-      const result = await window.electronAPI.getSetting(`tocVisible`);
+      const result = await window.pageToBackendBridge.getSetting(`tocVisible`);
       if (result.success && result.value !== undefined) {
         return !!result.value;
       }
@@ -788,10 +795,10 @@ export class PreferencesModal extends PreferencesModalData {
    * @returns {Promise<TocPosition>}
    */
   async loadTocPosition() {
-    if (!window.electronAPI) return DEFAULT_TOC_POSITION;
+    if (!window.pageToBackendBridge) return DEFAULT_TOC_POSITION;
 
     try {
-      const result = await window.electronAPI.getSetting(`tocPosition`);
+      const result = await window.pageToBackendBridge.getSetting(`tocPosition`);
       if (result.success && result.value) {
         return result.value === `right` ? `right` : `left`;
       }
@@ -807,10 +814,10 @@ export class PreferencesModal extends PreferencesModalData {
    * @returns {Promise<boolean>}
    */
   async loadEnsureLocalPaths() {
-    if (!window.electronAPI) return DEFAULT_ENSURE_LOCAL_PATHS;
+    if (!window.pageToBackendBridge) return DEFAULT_ENSURE_LOCAL_PATHS;
 
     try {
-      const result = await window.electronAPI.getSetting(`ensureLocalPaths`);
+      const result = await window.pageToBackendBridge.getSetting(`ensureLocalPaths`);
       if (result.success && result.value !== undefined) {
         return !!result.value;
       }
@@ -822,14 +829,33 @@ export class PreferencesModal extends PreferencesModalData {
   }
 
   /**
+   * Loads the highlight-active-element setting from the settings database.
+   * @returns {Promise<boolean>}
+   */
+  async loadHighlightActiveElement() {
+    if (!window.pageToBackendBridge) return DEFAULT_HIGHLIGHT_ACTIVE_ELEMENT;
+
+    try {
+      const result = await window.pageToBackendBridge.getSetting(`highlightActiveElement`);
+      if (result.success && result.value !== undefined) {
+        return !!result.value;
+      }
+    } catch {
+      // Fall through to default
+    }
+
+    return DEFAULT_HIGHLIGHT_ACTIVE_ELEMENT;
+  }
+
+  /**
    * Loads the details-closed setting from the settings database.
    * @returns {Promise<boolean>}
    */
   async loadDetailsClosed() {
-    if (!window.electronAPI) return DEFAULT_DETAILS_CLOSED;
+    if (!window.pageToBackendBridge) return DEFAULT_DETAILS_CLOSED;
 
     try {
-      const result = await window.electronAPI.getSetting(`detailsClosed`);
+      const result = await window.pageToBackendBridge.getSetting(`detailsClosed`);
       if (result.success && result.value !== undefined) {
         return !!result.value;
       }
@@ -845,10 +871,10 @@ export class PreferencesModal extends PreferencesModalData {
    * @returns {Promise<boolean>}
    */
   async loadEnableStyleElements() {
-    if (!window.electronAPI) return DEFAULT_ENABLE_STYLE_ELEMENTS;
+    if (!window.pageToBackendBridge) return DEFAULT_ENABLE_STYLE_ELEMENTS;
 
     try {
-      const result = await window.electronAPI.getSetting(`enableStyleElements`);
+      const result = await window.pageToBackendBridge.getSetting(`enableStyleElements`);
       if (result.success && result.value !== undefined) {
         return !!result.value;
       }
@@ -915,6 +941,11 @@ export class PreferencesModal extends PreferencesModalData {
     );
     const ensureLocalPaths = ensureLocalPathsCb.checked;
 
+    const highlightCb = /** @type {HTMLInputElement} */ (
+      this.dialog.querySelector(`#highlight-active-element`)
+    );
+    const highlightActiveElement = highlightCb.checked;
+
     const detailsClosedCb = /** @type {HTMLInputElement} */ (
       this.dialog.querySelector(`#details-closed`)
     );
@@ -926,22 +957,24 @@ export class PreferencesModal extends PreferencesModalData {
     const enableStyleElements = enableStyleCb.checked;
 
     // Persist to database
-    if (window.electronAPI) {
-      await window.electronAPI.setSetting(`defaultView`, defaultView);
-      await window.electronAPI.setSetting(`pageWidth`, pageWidth);
-      await window.electronAPI.setSetting(`margins`, margins);
-      await window.electronAPI.setSetting(`colors`, colors);
-      await window.electronAPI.setSetting(`tocVisible`, tocVisible);
-      await window.electronAPI.setSetting(`tocPosition`, tocPosition);
-      await window.electronAPI.setSetting(`ensureLocalPaths`, ensureLocalPaths);
-      await window.electronAPI.setSetting(`detailsClosed`, detailsClosed);
-      await window.electronAPI.setSetting(`enableStyleElements`, enableStyleElements);
+    if (window.pageToBackendBridge) {
+      await window.pageToBackendBridge.setSetting(`defaultView`, defaultView);
+      await window.pageToBackendBridge.setSetting(`pageWidth`, pageWidth);
+      await window.pageToBackendBridge.setSetting(`margins`, margins);
+      await window.pageToBackendBridge.setSetting(`colors`, colors);
+      await window.pageToBackendBridge.setSetting(`tocVisible`, tocVisible);
+      await window.pageToBackendBridge.setSetting(`tocPosition`, tocPosition);
+      await window.pageToBackendBridge.setSetting(`ensureLocalPaths`, ensureLocalPaths);
+      await window.pageToBackendBridge.setSetting(`highlightActiveElement`, highlightActiveElement);
+      await window.pageToBackendBridge.setSetting(`detailsClosed`, detailsClosed);
+      await window.pageToBackendBridge.setSetting(`enableStyleElements`, enableStyleElements);
     }
 
     // Apply to CSS immediately
     applyPageWidth(pageWidth);
     applyMargins(margins);
     applyColors(colors);
+    applyHighlightActiveElement(highlightActiveElement);
 
     // Apply TOC settings via custom event so the App class can handle it
     document.dispatchEvent(
@@ -1002,4 +1035,14 @@ export function applyColors(colors) {
   const root = document.documentElement;
   root.style.setProperty(`--page-bg`, colors.pageBg);
   root.style.setProperty(`--page-text`, colors.pageText);
+}
+
+/**
+ * Applies the highlight-active-element setting: the body's
+ * `with-highlight` class turns on the styling of the block the cursor is
+ * in.
+ * @param {boolean} enabled
+ */
+export function applyHighlightActiveElement(enabled) {
+  document.body.classList.toggle(`with-highlight`, enabled);
 }

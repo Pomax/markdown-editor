@@ -33,7 +33,6 @@
     max-width: var(--page-max-width);
     width: max-content;
     margin: 0 auto;
-    transform-origin: left center;
 
     &.hidden {
         display: none;
@@ -125,6 +124,7 @@
     &[data-button-id="heading1"] { color: var(--icon-blue-dark); }
     &[data-button-id="heading2"] { color: var(--icon-blue); }
     &[data-button-id="heading3"] { color: var(--icon-blue-light); }
+    &[data-button-id="heading4"] { color: var(--icon-blue-lighter); }
     &[data-button-id="paragraph"] { color: var(--icon-grey); }
     &[data-button-id="blockquote"] { color: var(--icon-violet); }
     &[data-button-id="code-block"] { color: var(--icon-emerald); }

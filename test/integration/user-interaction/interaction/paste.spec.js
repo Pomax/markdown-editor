@@ -22,28 +22,26 @@ import {
   setWritingView,
 } from '../../test-utils.js';
 
-/** @type {import('@playwright/test').ElectronApplication} */
-let electronApp;
+/** @type {import('../../tauri-app.js').TauriApp} */
+let app;
 
 /** @type {import('@playwright/test').Page} */
 let page;
 
 test.beforeAll(async () => {
-  ({ electronApp, page } = await launchApp());
+  ({ app, page } = await launchApp());
 });
 
 test.afterAll(async () => {
-  await closeApp(electronApp);
+  await closeApp(app);
 });
 
 /**
- * Write text to the system clipboard via Electron's clipboard API.
+ * Write text to the system clipboard via the app's clipboard API.
  * @param {string} text
  */
 async function writeClipboard(text) {
-  await electronApp.evaluate(({ clipboard }, t) => {
-    clipboard.writeText(t);
-  }, text);
+  await app.clipboard.writeText(text);
 }
 
 /**

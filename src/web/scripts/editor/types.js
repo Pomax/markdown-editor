@@ -105,6 +105,8 @@ export class SourceRendererV2Data {
   mirrorDirty = false;
   /** @type {string} */
   originalMarkdown = ``;
+  /** @type {string} */
+  lastValue = ``;
 }
 
 export class EventHandlerData {
@@ -358,6 +360,8 @@ export class AppData {
   documentStates = new Map();
   /** @type {Map<string, HTMLElement>} */
   tabContainers = new Map();
+  /** @type {Promise<void>} */
+  fileActions = Promise.resolve();
   /** @type {HTMLElement} */
   scrollContainer;
   /** @type {number} */

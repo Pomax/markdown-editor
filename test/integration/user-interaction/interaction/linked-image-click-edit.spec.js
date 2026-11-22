@@ -3,25 +3,33 @@
  *
  * A linked image is `[![alt](src)](href)` — an image wrapped in a link.
  * Clicking it in writing mode should open the image edit modal (not navigate).
+ * The image is a fixture image given as a file URL, so it loads in every
+ * webview.
  */
 
 import { expect, test } from '@playwright/test';
-import { clickInEditor, closeApp, launchApp, loadContent } from '../../test-utils.js';
+import {
+  FIXTURE_IMAGE,
+  clickInEditor,
+  closeApp,
+  launchApp,
+  loadContent,
+} from '../../test-utils.js';
 
-/** @type {import('@playwright/test').ElectronApplication} */
-let electronApp;
+/** @type {import('../../tauri-app.js').TauriApp} */
+let app;
 
 /** @type {import('@playwright/test').Page} */
 let page;
 
-const LINKED_IMAGE_MD = `[![Logo](logo.png)](https://example.com)`;
+const LINKED_IMAGE_MD = `[![Logo](${FIXTURE_IMAGE})](https://example.com)`;
 
 test.beforeAll(async () => {
-  ({ electronApp, page } = await launchApp());
+  ({ app, page } = await launchApp());
 });
 
 test.afterAll(async () => {
-  await closeApp(electronApp);
+  await closeApp(app);
 });
 
 test.describe(`Linked image click-to-edit`, () => {
@@ -42,7 +50,7 @@ test.describe(`Linked image click-to-edit`, () => {
     // Fields should be pre-filled with the image data
     const srcInput = page.locator(`#image-src`);
     const altInput = page.locator(`#image-alt`);
-    await expect(srcInput).toHaveValue(`logo.png`);
+    await expect(srcInput).toHaveValue(FIXTURE_IMAGE);
     await expect(altInput).toHaveValue(`Logo`);
 
     // Cancel

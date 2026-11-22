@@ -1,8 +1,12 @@
 .cache/
 .claude/state
-dist/
+/build/
+/dist/
+/gen/
 node_modules/
-test-results/
+/permissions/
+/target/
+/test-results/
 *.log
 .DS_Store
 Thumbs.db

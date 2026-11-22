@@ -20,18 +20,18 @@ import {
 /** A tiny document that ends with a fenced code block. */
 const markdownEndingInCodeBlock = `# Title\n\n\`\`\`js\nconsole.log("hi");\n\`\`\``;
 
-/** @type {import('@playwright/test').ElectronApplication} */
-let electronApp;
+/** @type {import('../../tauri-app.js').TauriApp} */
+let app;
 
 /** @type {import('@playwright/test').Page} */
 let page;
 
 test.beforeAll(async () => {
-  ({ electronApp, page } = await launchApp());
+  ({ app, page } = await launchApp());
 });
 
 test.afterAll(async () => {
-  await closeApp(electronApp);
+  await closeApp(app);
 });
 
 test(`loading a document that ends in a code block appends a phantom paragraph in the DOM`, async () => {

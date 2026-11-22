@@ -8,6 +8,7 @@
 
 import { expect, test } from '@playwright/test';
 import {
+  FIXTURE_IMAGE,
   HOME,
   closeApp,
   launchApp,
@@ -16,18 +17,18 @@ import {
   setWritingView,
 } from '../../test-utils.js';
 
-/** @type {import('@playwright/test').ElectronApplication} */
-let electronApp;
+/** @type {import('../../tauri-app.js').TauriApp} */
+let app;
 
 /** @type {import('@playwright/test').Page} */
 let page;
 
 test.beforeAll(async () => {
-  ({ electronApp, page } = await launchApp());
+  ({ app, page } = await launchApp());
 });
 
 test.afterAll(async () => {
-  await closeApp(electronApp);
+  await closeApp(app);
 });
 
 test(`typing ![alt](src) in writing view renders an inline image`, async () => {
@@ -40,7 +41,7 @@ test(`typing ![alt](src) in writing view renders an inline image`, async () => {
 
   // Move to end of line and type image syntax
   await page.keyboard.press(`End`);
-  await page.keyboard.type(` ![photo](./test.png)`);
+  await page.keyboard.type(` ![photo](${FIXTURE_IMAGE})`);
 
   // The node should stay a paragraph (not become a block-level image)
   const paragraph = page.locator(`#editor [data-node-id].md-paragraph`);
@@ -61,7 +62,7 @@ test(`typing standalone ![alt](src) suppresses block-level image conversion`, as
   await line.click();
 
   // Type a full image syntax as the only content
-  await page.keyboard.type(`![my image](picture.png)`);
+  await page.keyboard.type(`![my image](${FIXTURE_IMAGE})`);
 
   // Should stay a paragraph, not become a block-level image node
   const paragraph = page.locator(`#editor [data-node-id].md-paragraph`);
@@ -74,7 +75,7 @@ test(`typing standalone ![alt](src) suppresses block-level image conversion`, as
 
 test(`image syntax round-trips through source2 view correctly`, async () => {
   await setWritingView(page);
-  await loadContent(page, `before ![alt](img.png) after`);
+  await loadContent(page, `before ![alt](${FIXTURE_IMAGE}) after`);
 
   // In writing view, the paragraph should contain an inline image
   const paragraph = page.locator(`#editor [data-node-id].md-paragraph`);
@@ -84,7 +85,9 @@ test(`image syntax round-trips through source2 view correctly`, async () => {
 
   // Switch to source view — should show raw markdown
   await setSource2View(page);
-  await expect(page.locator(`#editor textarea`)).toHaveValue(/!\[alt\]\(img\.png\)/);
+  await expect(page.locator(`#editor textarea`)).toHaveValue(
+    /!\[alt\]\(file:\/\/\S+\/image\.png\)/,
+  );
 
   // Switch back to writing view — image should still render
   await setWritingView(page);

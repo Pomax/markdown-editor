@@ -7,24 +7,24 @@
  *
  * Drag tests dispatch real DOM MouseEvents via page.evaluate() rather
  * than using Playwright's mouse abstraction, which does not reliably
- * trigger the handle's event listeners in Electron.
+ * trigger the handle's event listeners.
  */
 
 import { expect, test } from '@playwright/test';
 import { closeApp, launchApp, setSource2View, setWritingView } from '../../test-utils.js';
 
-/** @type {import('@playwright/test').ElectronApplication} */
-let electronApp;
+/** @type {import('../../tauri-app.js').TauriApp} */
+let app;
 
 /** @type {import('@playwright/test').Page} */
 let page;
 
 test.beforeAll(async () => {
-  ({ electronApp, page } = await launchApp());
+  ({ app, page } = await launchApp());
 });
 
 test.afterAll(async () => {
-  await closeApp(electronApp);
+  await closeApp(app);
 });
 
 /**
@@ -132,7 +132,7 @@ test(`page width is persisted to settings after drag`, async () => {
   await simulateDrag(page, `right`, 30);
 
   const setting = await page.evaluate(async () => {
-    const result = await window.electronAPI?.getSetting(`pageWidth`);
+    const result = await window.pageToBackendBridge?.getSetting(`pageWidth`);
     return result?.value;
   });
 

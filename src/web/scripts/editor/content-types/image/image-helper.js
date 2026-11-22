@@ -28,15 +28,15 @@ export class ImageHelper extends ImageHelperData {
    * is not downstream of the document's folder.
    *
    * Handles both raw filesystem paths and `file:///` URLs.
-   * Delegates to the main process which uses Node's `path` module for
-   * filesystem-correct comparison.
+   * Delegates to the backend, which compares the paths the way the
+   * filesystem does.
    *
    * @param {string} imagePath - The absolute image path or file:// URL
    * @returns {Promise<string>} A relative path (using forward slashes) or the original value
    */
   async toRelativeImagePath(imagePath) {
-    if (!this.editor.currentFilePath || !imagePath || !window.electronAPI) return imagePath;
-    return window.electronAPI.toRelativeImagePath(imagePath, this.editor.currentFilePath);
+    if (!this.editor.currentFilePath || !imagePath || !window.pageToBackendBridge) return imagePath;
+    return window.pageToBackendBridge.toRelativeImagePath(imagePath, this.editor.currentFilePath);
   }
 
   /**
@@ -174,10 +174,10 @@ export class ImageHelper extends ImageHelperData {
     let src = result.src;
 
     // Handle file rename if the filename changed
-    if (result.rename && window.electronAPI) {
+    if (result.rename && window.pageToBackendBridge) {
       const originalFilename = this.extractFilename(src);
       if (result.rename !== originalFilename) {
-        const renameResult = await window.electronAPI.renameImage(
+        const renameResult = await window.pageToBackendBridge.renameImage(
           this.resolveImagePath(src),
           result.rename,
         );

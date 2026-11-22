@@ -13,8 +13,8 @@ const isMac = process.platform === `darwin`;
 const Home = isMac ? `Meta+ArrowLeft` : `Home`;
 const End = isMac ? `Meta+ArrowRight` : `End`;
 
-/** @type {import('@playwright/test').ElectronApplication} */
-let electronApp;
+/** @type {import('../../tauri-app.js').TauriApp} */
+let app;
 
 /** @type {import('@playwright/test').Page} */
 let page;
@@ -22,11 +22,11 @@ let page;
 const TABLE_MD = [`| Name | Age |`, `| --- | --- |`, `| Alice | 30 |`, `| Bob | 25 |`].join(`\n`);
 
 test.beforeAll(async () => {
-  ({ electronApp, page } = await launchApp());
+  ({ app, page } = await launchApp());
 });
 
 test.afterAll(async () => {
-  await closeApp(electronApp);
+  await closeApp(app);
 });
 
 test.describe(`Table cell editing`, () => {

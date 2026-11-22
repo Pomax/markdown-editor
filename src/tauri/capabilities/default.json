@@ -1,0 +1,41 @@
+{
+  "$schema": "../../../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "Minimal capability: event listen/unlisten, window set-title, and the app's own commands (added per command). No core:default, no plugin permissions.",
+  "windows": [
+    "main"
+  ],
+  "permissions": [
+    "core:event:allow-listen",
+    "core:event:allow-unlisten",
+    "core:window:allow-set-title",
+    "allow-settings-get",
+    "allow-settings-set",
+    "allow-settings-get-all",
+    "allow-bridge-ready",
+    "allow-document-undo",
+    "allow-document-redo",
+    "allow-view-writing",
+    "allow-view-source2",
+    "allow-element-change-type",
+    "allow-element-format",
+    "allow-file-new",
+    "allow-file-load",
+    "allow-file-save",
+    "allow-file-save-as",
+    "allow-file-export-html",
+    "allow-file-set-unsaved-changes",
+    "allow-file-get-recent-files",
+    "allow-file-load-path",
+    "allow-image-browse",
+    "allow-image-rename",
+    "allow-path-to-relative",
+    "allow-file-confirm-close",
+    "allow-dialog-confirm",
+    "allow-view-open-files-changed",
+    "allow-app-reload",
+    "allow-web-contents-reply",
+    "allow-context-menu",
+    "allow-tab-context-menu"
+  ]
+}

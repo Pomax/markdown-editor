@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https: http:; style-src 'self' 'unsafe-inline'; img-src 'self' file: data: https: http:; frame-src https: http:">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; connect-src 'self' ipc: http://ipc.localhost; script-src 'self' https: http:; style-src 'self' 'unsafe-inline'; img-src 'self' file: data: https: http: media: http://media.localhost; media-src 'self' media: http://media.localhost; frame-src https: http:">
     <title>Markdown Editor</title>
     <style>
         @import url("styles/main.css") layer(app);
@@ -22,7 +22,7 @@
         @import url("styles/code-language.css") layer(app);
     </style>
 </head>
-<body>
+<body class="with-highlight">
     <div id="app">
         <div id="toolbar-container"></div>
         <div id="content-wrapper" class="toc-position-left">

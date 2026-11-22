@@ -12,6 +12,25 @@ import { parser } from '../../../src/parsers/old/dfa-parser.js';
 import { SyntaxTree } from '../../../src/parsers/old/syntax-tree.js';
 
 const README = readFileSync(resolve(`README.md`), `utf-8`);
+const README_LINES = README.split(`\n`);
+const README_NODES = (await parser.parse(README)).children;
+
+const paragraphs = README_NODES.filter((node) => node.type === `paragraph`);
+const heading2 = /** @type {SyntaxNode} */ (README_NODES.find((node) => node.type === `heading2`));
+const heading3 = /** @type {SyntaxNode} */ (README_NODES.find((node) => node.type === `heading3`));
+
+/**
+ * The README's sections that start with a level 3 heading, as the
+ * README's own text: each such heading with the nodes after it, up to
+ * the next heading.
+ * @type {string[]}
+ */
+const sections = README_NODES.flatMap((node, index) => {
+  if (node.type !== `heading3`) return [];
+  const next = README_NODES.slice(index + 1).find((other) => other.type.startsWith(`heading`));
+  if (!next) return [];
+  return [README_LINES.slice(node.startLine, next.startLine).join(`\n`)];
+});
 
 /**
  * Collects the IDs of all top-level children in a tree.
@@ -38,7 +57,7 @@ function replaceFirst(source, target, replacement) {
 }
 
 /**
- * Removes the first occurrence of `target` (and surrounding blank lines)
+ * Removes the first occurrence of `target`, and the blank line after it,
  * from `source`.
  *
  * @param {string} source
@@ -48,9 +67,8 @@ function replaceFirst(source, target, replacement) {
 function removeBlock(source, target) {
   const index = source.indexOf(target);
   if (index === -1) return source;
-  const before = source.slice(0, index);
   const after = source.slice(index + target.length);
-  return before.replace(/\n\n$/, `\n\n`) + after.replace(/^\n\n/, ``);
+  return source.slice(0, index) + after.replace(/^\n\n/, ``);
 }
 
 describe(`SyntaxTree.updateUsing`, () => {
@@ -65,33 +83,23 @@ describe(`SyntaxTree.updateUsing`, () => {
   });
 
   it(`preserves ID of an edited paragraph and updates its content`, async () => {
-    const originalLine = `A GitHub-flavoured markdown editor built using the web stack, running in Electron, featuring a syntactic tree-based document model for fast editing of large documents (e.g. 50k+ work documents like https://pomax.github.io/are-we-flying).`;
-    const editedLine = `A GitHub-flavoured markdown editor built using the web stack, running in Electron, featuring a syntactic tree-based document model for fast editing of **very large** documents.`;
-    const editedReadme = replaceFirst(README, originalLine, editedLine);
+    const [paragraph] = paragraphs;
+    const editedIndex = README_NODES.indexOf(paragraph);
+    const editedContent = paragraph.content.slice(10) + paragraph.content.slice(0, 10);
+    const editedReadme = replaceFirst(README, paragraph.content, editedContent);
 
     const oldTree = await parser.parse(README);
     const newTree = await parser.parse(editedReadme);
-
-    const editedOldIndex = oldTree.children.findIndex((c) => c.content === originalLine);
-    const editedNodeId = oldTree.children[editedOldIndex].id;
     const originalIds = collectIds(oldTree);
 
     oldTree.updateUsing(newTree);
 
-    assert.strictEqual(oldTree.children[editedOldIndex].id, editedNodeId);
-    assert.strictEqual(oldTree.children[editedOldIndex].content, editedLine);
-
-    for (let i = 0; i < oldTree.children.length; i++) {
-      if (i !== editedOldIndex) {
-        assert.strictEqual(oldTree.children[i].id, originalIds[i]);
-      }
-    }
+    assert.deepStrictEqual(collectIds(oldTree), originalIds);
+    assert.strictEqual(oldTree.children[editedIndex].content, editedContent);
   });
 
   it(`assigns a fresh ID to an inserted node while preserving others`, async () => {
-    const versionMatch = README.match(/^## Current version: .+$/m);
-    assert.ok(versionMatch, `README must contain a "## Current version:" heading`);
-    const insertionPoint = versionMatch[0];
+    const insertionPoint = heading2.toMarkdown();
     const insertedSection = `## What's New\n\nThis section was just added with **bold** emphasis and a [link](https://example.com).`;
     const editedReadme = replaceFirst(
       README,
@@ -118,13 +126,12 @@ describe(`SyntaxTree.updateUsing`, () => {
   });
 
   it(`removes a node and preserves surviving IDs`, async () => {
-    const lineToRemove = `See the [release log](./RELEASE_LOG.md) for what's new in this version.`;
-    const editedReadme = removeBlock(README, lineToRemove);
+    const [paragraph] = paragraphs;
+    const removedIndex = README_NODES.indexOf(paragraph);
+    const editedReadme = removeBlock(README, paragraph.content);
 
     const oldTree = await parser.parse(README);
     const newTree = await parser.parse(editedReadme);
-
-    const removedIndex = oldTree.children.findIndex((c) => c.content === lineToRemove);
     const survivingIds = collectIds(oldTree).filter((_, i) => i !== removedIndex);
 
     oldTree.updateUsing(newTree);
@@ -137,12 +144,11 @@ describe(`SyntaxTree.updateUsing`, () => {
   });
 
   it(`preserves IDs when sections are reordered`, async () => {
-    const electronSection = `## Eww, Electron?\n\nSorry, did you not have 8+GB if RAM and 1TB+ of disk space? Stop pretending you care about Electron, you care about whether the tools are useful or not. Yes, it's dumb that 2 MB of resources needs 100MB of UI runner, but on the other hand, it's literally a browser, and have you looked at what browsers need to support these days? Can you even _count_ the number of web APIs? =P`;
-    const vibeSection = `## So this is a vibe coded project?\n\nNot really, no. This is literally an experiment into how _not_ to vibe code, and instead use these tools in a way that actually makes the same amount of sense as any other IDE automation. Because there is _so much_ these tools can't do, without telling you, and if you just let them "do their thing" instead of making them perform very specific targetted tasks based on you tracking the task list and acceptance criteria, that's on you.`;
-
-    const editedReadme = README.replace(electronSection, `PLACEHOLDER_VIBE`)
-      .replace(vibeSection, electronSection)
-      .replace(`PLACEHOLDER_VIBE`, vibeSection);
+    const section1 = sections[0];
+    const section2 = sections[1];
+    const editedReadme = README.replace(section1, `PLACEHOLDER`)
+      .replace(section2, section1)
+      .replace(`PLACEHOLDER`, section2);
 
     const oldTree = await parser.parse(README);
     const newTree = await parser.parse(editedReadme);
@@ -158,25 +164,20 @@ describe(`SyntaxTree.updateUsing`, () => {
   });
 
   it(`assigns a fresh ID when a node's type changes`, async () => {
-    const headingContent = `Eww, Electron?`;
+    const headingIndex = README_NODES.indexOf(heading2);
     const oldTree = await parser.parse(README);
-    const headingNode = oldTree.children.find(
-      (c) => c.type === `heading2` && c.content === headingContent,
-    );
-    assert.ok(headingNode, `expected to find heading2 node with content "${headingContent}"`);
-    const headingId = headingNode.id;
     const originalIds = collectIds(oldTree);
+    const headingId = originalIds[headingIndex];
 
-    const editedReadme = replaceFirst(README, `## ${headingContent}`, headingContent);
+    const editedReadme = replaceFirst(README, heading2.toMarkdown(), heading2.content);
     const newTree = await parser.parse(editedReadme);
 
     oldTree.updateUsing(newTree);
 
-    const paragraphNode = oldTree.children.find(
-      (c) => c.type === `paragraph` && c.content === headingContent,
-    );
-    assert.ok(paragraphNode, `expected a paragraph node with the former heading content`);
-    assert.notStrictEqual(paragraphNode.id, headingId);
+    const changedNode = oldTree.children[headingIndex];
+    assert.strictEqual(changedNode.type, `paragraph`);
+    assert.strictEqual(changedNode.content, heading2.content);
+    assert.notStrictEqual(changedNode.id, headingId);
 
     const unchangedOriginals = originalIds.filter((id) => id !== headingId);
     const updatedIds = collectIds(oldTree);
@@ -186,15 +187,14 @@ describe(`SyntaxTree.updateUsing`, () => {
   });
 
   it(`handles simultaneous edit, insert, and delete`, async () => {
-    const originalLine = `A GitHub-flavoured markdown editor built using the web stack, running in Electron, featuring a syntactic tree-based document model for fast editing of large documents (e.g. 50k+ work documents like https://pomax.github.io/are-we-flying).`;
-    const editedLine = `A markdown editor built with Electron featuring a **tree-based** document model.`;
-    const lineToRemove = `Previous versions can be found over on the [Releases](https://github.com/Pomax/Pomax-s-Markdown-Editor/releases/latest) page.`;
-    const insertionPoint = `# Testing`;
+    const [edited, removed] = paragraphs;
+    const editedContent = edited.content.slice(10) + edited.content.slice(0, 10);
+    const insertionPoint = heading3.toMarkdown();
     const fence = `\`\`\``;
     const insertedBlock = `${fence}sh\nnpm run check\n${fence}`;
 
-    let editedReadme = replaceFirst(README, originalLine, editedLine);
-    editedReadme = removeBlock(editedReadme, lineToRemove);
+    let editedReadme = replaceFirst(README, edited.content, editedContent);
+    editedReadme = removeBlock(editedReadme, removed.content);
     editedReadme = replaceFirst(
       editedReadme,
       insertionPoint,

@@ -18,18 +18,18 @@ const __dirname = path.dirname(__filename);
 const FIXTURES_DIR = path.join(__dirname, `..`, `..`, `..`, `fixtures`);
 const MANY_SECTIONS = path.join(FIXTURES_DIR, `many-sections.md`);
 
-/** @type {import('@playwright/test').ElectronApplication} */
-let electronApp;
+/** @type {import('../../tauri-app.js').TauriApp} */
+let app;
 
 /** @type {import('@playwright/test').Page} */
 let page;
 
 test.beforeAll(async () => {
-  ({ electronApp, page } = await launchApp());
+  ({ app, page } = await launchApp());
 });
 
 test.afterAll(async () => {
-  await closeApp(electronApp);
+  await closeApp(app);
 });
 
 test(`flushing open files saves the current cursorPath`, async () => {
@@ -210,16 +210,12 @@ test(`reopening the app restores cursor position and ToC heading`, async ({}, te
 
   // Flush renderer state to the main process, then persist to SQLite
   await page1.evaluate(() => /** @type {any} */ (window).__flushOpenFiles?.());
-  await app1.electronApp.evaluate(() => {
-    /** @type {any} */ (global).__saveOpenFiles();
-  });
+  await app1.app.saveOpenFiles();
 
   // Read back what was persisted
-  const persisted = await app1.electronApp.evaluate(() => {
-    return /** @type {any} */ (global).__settingsManager.get(`openFiles`, undefined);
-  });
+  const persisted = await app1.app.settings.get(`openFiles`);
 
-  await closeApp(app1.electronApp);
+  await closeApp(app1.app);
 
   expect(persisted).toBeDefined();
   expect(persisted.length).toBe(1);
@@ -234,14 +230,10 @@ test(`reopening the app restores cursor position and ToC heading`, async ({}, te
 
   // Manually trigger restore from the persisted data (TESTING=1 skips
   // automatic restore so we drive it explicitly).
-  await app2.electronApp.evaluate(({ BrowserWindow }) => {
-    const sm = /** @type {any} */ (global).__settingsManager;
-    const openFiles = sm.get(`openFiles`, undefined);
-    if (!openFiles || openFiles.length === 0) return;
-    const win = BrowserWindow.getAllWindows()[0];
-    if (!win) return;
-    return /** @type {any} */ (global).__restoreOpenFiles(win, openFiles);
-  });
+  const openFiles = await app2.app.settings.get(`openFiles`);
+  if (openFiles && openFiles.length > 0) {
+    await app2.app.restoreOpenFiles(openFiles);
+  }
 
   // Wait for the restored content to appear
   await page2.waitForFunction(
@@ -279,5 +271,5 @@ test(`reopening the app restores cursor position and ToC heading`, async ({}, te
   const tocAfter = await page2.locator(`#toc-sidebar .toc-link.toc-active`).textContent();
   expect(tocAfter).toBe(savedHeadingText);
 
-  await closeApp(app2.electronApp);
+  await closeApp(app2.app);
 });
