@@ -179,7 +179,7 @@ class DFAParser {
 
     // Blockquote: GT at start
     if (tok.type === `GT`) {
-      return this.parseBlockquote(ctx);
+      return await this.parseBlockquote(ctx);
     }
 
     // Unordered list: DASH/STAR/PLUS followed by SPACE, or indented
@@ -377,10 +377,16 @@ class DFAParser {
   // Blockquote
 
   /**
+   * Parses a run of lines that start with `>` into a blockquote container.
+   * One `>` and the optional space after it are removed from each line,
+   * and the remaining text is parsed as markdown, so a quote can hold any
+   * block content, including further quotes.  A quote with no content
+   * holds a single empty paragraph.
+   *
    * @param {{tokens: DFAToken[], pos: number, line: number}} ctx
-   * @returns {SyntaxNode}
+   * @returns {Promise<SyntaxNode>}
    */
-  parseBlockquote(ctx) {
+  async parseBlockquote(ctx) {
     const startLine = ctx.line;
     const contentLines = [];
 
@@ -395,9 +401,23 @@ class DFAParser {
       contentLines.push(this.consumeToEndOfLine(ctx));
     }
 
-    const node = new SyntaxNode(`blockquote`, contentLines.join(`\n`));
+    const node = new SyntaxNode(`blockquote`, ``);
     node.startLine = startLine;
-    node.endLine = ctx.line > startLine ? ctx.line - 1 : startLine;
+    node.endLine = startLine + contentLines.length - 1;
+
+    const body = await parser.parse(contentLines.join(`\n`));
+    for (const child of body.children) {
+      this.adjustLineNumbers(child, startLine);
+      node.appendChild(child);
+    }
+
+    if (node.children.length === 0) {
+      const empty = new SyntaxNode(`paragraph`, ``);
+      empty.startLine = startLine;
+      empty.endLine = startLine;
+      node.appendChild(empty);
+    }
+
     return node;
   }
 

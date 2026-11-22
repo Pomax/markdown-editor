@@ -28,7 +28,7 @@ export function handleEnterKey(ops) {
   if (!node || !ops.editor.syntaxTree || !ops.editor.syntaxTree.treeCursor) return;
 
   // html-block tag lines and containers are not splittable.
-  if (node.type === `html-block` && node.children.length > 0) {
+  if (node.isContainer()) {
     return;
   }
 
@@ -149,6 +149,14 @@ export function handleEnterKey(ops) {
     };
     if (rangeRemovedIds.length > 0) listHints.removed = rangeRemovedIds;
     ops.editor.recordAndRender(before, listHints);
+    return;
+  }
+
+  // An empty paragraph in a quote moves out of the quote.
+  if (node.type === `paragraph` && node.content === `` && node.parent?.type === `blockquote`) {
+    ops.editor.liftOutOfQuote(node);
+    ops.editor.syntaxTree.treeCursor = { nodeId: node.id, offset: 0 };
+    ops.editor.recordAndRender(before);
     return;
   }
 

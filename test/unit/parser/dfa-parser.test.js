@@ -153,15 +153,99 @@ describe(`DFAParser`, () => {
       const tree = await parser.parse(`> This is a quote`);
       assert.strictEqual(tree.children.length, 1);
       assert.strictEqual(tree.children[0].type, `blockquote`);
-      assert.strictEqual(tree.children[0].content, `This is a quote`);
+      assert.strictEqual(tree.children[0].children.length, 1);
+      assert.strictEqual(tree.children[0].children[0].type, `paragraph`);
+      assert.strictEqual(tree.children[0].children[0].content, `This is a quote`);
     });
 
     it(`should parse multi-line blockquotes`, async () => {
       const tree = await parser.parse(`> Line 1\n> Line 2`);
       assert.strictEqual(tree.children.length, 1);
       assert.strictEqual(tree.children[0].type, `blockquote`);
-      assert.ok(tree.children[0].content.includes(`Line 1`));
-      assert.ok(tree.children[0].content.includes(`Line 2`));
+      assert.strictEqual(tree.children[0].children.length, 1);
+      assert.strictEqual(tree.children[0].children[0].type, `paragraph`);
+      assert.strictEqual(tree.children[0].children[0].content, `Line 1\nLine 2`);
+    });
+
+    it(`should parse a quote inside a quote`, async () => {
+      const tree = await parser.parse(`> > text`);
+      assert.strictEqual(tree.children.length, 1);
+      const outer = tree.children[0];
+      assert.strictEqual(outer.type, `blockquote`);
+      assert.strictEqual(outer.children.length, 1);
+      const inner = outer.children[0];
+      assert.strictEqual(inner.type, `blockquote`);
+      assert.strictEqual(inner.children.length, 1);
+      assert.strictEqual(inner.children[0].type, `paragraph`);
+      assert.strictEqual(inner.children[0].content, `text`);
+    });
+
+    it(`should nest one quote level per > marker`, async () => {
+      const tree = await parser.parse(`> > > > text`);
+      assert.strictEqual(tree.children.length, 1);
+      let node = tree.children[0];
+      for (let level = 0; level < 4; level++) {
+        assert.strictEqual(node.type, `blockquote`);
+        assert.strictEqual(node.children.length, 1);
+        node = node.children[0];
+      }
+      assert.strictEqual(node.type, `paragraph`);
+      assert.strictEqual(node.content, `text`);
+    });
+
+    it(`should parse a nested quote that follows text in the same quote`, async () => {
+      const tree = await parser.parse(`> outer\n> > inner`);
+      assert.strictEqual(tree.children.length, 1);
+      const outer = tree.children[0];
+      assert.deepStrictEqual(
+        outer.children.map((child) => child.type),
+        [`paragraph`, `blockquote`],
+      );
+      assert.strictEqual(outer.children[0].content, `outer`);
+      assert.strictEqual(outer.children[1].children[0].type, `paragraph`);
+      assert.strictEqual(outer.children[1].children[0].content, `inner`);
+    });
+
+    it(`should parse any markdown as quote content`, async () => {
+      const md = [
+        `> # Title`,
+        `>`,
+        `> - one`,
+        `> - two`,
+        `>`,
+        `> \`\`\`js`,
+        `> code`,
+        `> \`\`\``,
+        `>`,
+        `> **bold** text`,
+      ].join(`\n`);
+      const tree = await parser.parse(md);
+      assert.strictEqual(tree.children.length, 1);
+      const quote = tree.children[0];
+      assert.deepStrictEqual(
+        quote.children.map((child) => child.type),
+        [`heading1`, `list-item`, `list-item`, `code-block`, `paragraph`],
+      );
+      assert.strictEqual(quote.children[0].content, `Title`);
+      assert.strictEqual(quote.children[1].content, `one`);
+      assert.strictEqual(quote.children[2].content, `two`);
+      assert.strictEqual(quote.children[3].content, `code`);
+      assert.strictEqual(quote.children[3].attributes.language, `js`);
+      assert.strictEqual(quote.children[4].content, `**bold** text`);
+    });
+
+    it(`should give quote content its document line numbers`, async () => {
+      const tree = await parser.parse(`intro\n\n> outer\n> > inner`);
+      assert.strictEqual(tree.children.length, 2);
+      const outer = tree.children[1];
+      assert.strictEqual(outer.startLine, 2);
+      assert.strictEqual(outer.endLine, 3);
+      assert.strictEqual(outer.children[0].startLine, 2);
+      assert.strictEqual(outer.children[0].endLine, 2);
+      assert.strictEqual(outer.children[1].startLine, 3);
+      assert.strictEqual(outer.children[1].endLine, 3);
+      assert.strictEqual(outer.children[1].children[0].startLine, 3);
+      assert.strictEqual(outer.children[1].children[0].endLine, 3);
     });
   });
 
@@ -962,6 +1046,35 @@ code
 
     it(`should round-trip a blockquote`, async () => {
       const md = `> Quoted text`;
+      const tree = await parser.parse(md);
+      assert.strictEqual(tree.toMarkdown(), md);
+    });
+
+    it(`should round-trip a quote inside a quote`, async () => {
+      const md = `> > text`;
+      const tree = await parser.parse(md);
+      assert.strictEqual(tree.toMarkdown(), md);
+    });
+
+    it(`should round-trip a quote holding text and a nested quote`, async () => {
+      const md = `> outer\n>\n> > inner`;
+      const tree = await parser.parse(md);
+      assert.strictEqual(tree.toMarkdown(), md);
+    });
+
+    it(`should round-trip a quote holding arbitrary markdown`, async () => {
+      const md = [
+        `> # Title`,
+        `>`,
+        `> - one`,
+        `> - two`,
+        `>`,
+        `> \`\`\`js`,
+        `> code`,
+        `> \`\`\``,
+        `>`,
+        `> **bold** text`,
+      ].join(`\n`);
       const tree = await parser.parse(md);
       assert.strictEqual(tree.toMarkdown(), md);
     });

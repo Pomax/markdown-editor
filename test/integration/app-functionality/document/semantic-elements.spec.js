@@ -58,7 +58,21 @@ test(`blockquote renders as blockquote containing a p`, async () => {
 
   const quote = page.locator(`#editor > blockquote.md-blockquote[data-node-id]`);
   await expect(quote).toHaveCount(1);
-  await expect(quote.locator(`> p.md-content`)).toHaveText(`Quoted text`);
+  await expect(quote.locator(`> p.md-paragraph[data-node-id]`)).toHaveText(`Quoted text`);
+});
+
+test(`a quote renders its content as blocks, with each nested quote a blockquote inside it`, async () => {
+  await loadContent(page, `> outer\n>\n> > inner\n>\n> # Title\n>\n> - item\n\nafter\n`);
+  await setWritingView(page);
+
+  const outer = page.locator(`#editor > blockquote.md-blockquote[data-node-id]`);
+  await expect(outer).toHaveCount(1);
+  await expect(outer.locator(`> p.md-paragraph[data-node-id]`)).toHaveText(`outer`);
+  await expect(
+    outer.locator(`> blockquote.md-blockquote[data-node-id] > p.md-paragraph[data-node-id]`),
+  ).toHaveText(`inner`);
+  await expect(outer.locator(`> h1.md-heading1[data-node-id]`)).toHaveText(`Title`);
+  await expect(outer.locator(`> ul > li.md-list-item[data-node-id]`)).toHaveText(`item`);
 });
 
 test(`image renders as p containing img`, async () => {

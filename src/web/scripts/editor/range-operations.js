@@ -183,8 +183,8 @@ export class RangeOperations extends RangeOperationsData {
   hasContentParent(node) {
     // List items belong to a contiguous list run
     if (node.type === `list-item`) return true;
-    // Nodes inside an html-block container (e.g., children of <details>)
-    if (node.parent && node.parent.type === `html-block`) return true;
+    // Nodes inside a container (a quote, or an html-block such as <details>)
+    if (node.parent?.isContainer()) return true;
     return false;
   }
 
@@ -250,7 +250,7 @@ export class RangeOperations extends RangeOperationsData {
   /**
    * Selects the content-parent group of a node (level 2).
    * - List items: selects the entire contiguous list run.
-   * - html-block children: selects all children of the html-block parent.
+   * - Container children: selects all children of the container parent.
    * @param {SyntaxNode} node
    */
   selectContentParent(node) {
@@ -263,7 +263,7 @@ export class RangeOperations extends RangeOperationsData {
       }
     }
 
-    if (node.parent && node.parent.type === `html-block`) {
+    if (node.parent?.isContainer()) {
       const children = node.parent.children;
       if (children.length > 0) {
         this.selectNodeRange(children[0], children[children.length - 1]);
@@ -280,39 +280,9 @@ export class RangeOperations extends RangeOperationsData {
     if (!children || children.length === 0) return;
 
     // Find the first and last leaf nodes that have DOM elements
-    const first = this.firstLeaf(children[0]);
-    const last = this.lastLeaf(children[children.length - 1]);
+    const first = children[0].firstLeaf();
+    const last = children[children.length - 1].lastLeaf();
     this.selectNodeRange(first, last);
-  }
-
-  /**
-   * Returns the first leaf (deepest first-child) of a node.
-   * For nodes with children (html-blocks), descends into children.
-   * @param {SyntaxNode} node
-   * @returns {SyntaxNode}
-   */
-  firstLeaf(node) {
-    let current = node;
-    // Only descend into block-level children (html-block containers).
-    // Inline children (text, bold, etc.) are not rendered as separate
-    // DOM elements with data-node-id, so we must stop at block nodes.
-    while (current.type === `html-block` && current.children.length > 0) {
-      current = current.children[0];
-    }
-    return current;
-  }
-
-  /**
-   * Returns the last leaf (deepest last-child) of a node.
-   * @param {SyntaxNode} node
-   * @returns {SyntaxNode}
-   */
-  lastLeaf(node) {
-    let current = node;
-    while (current.type === `html-block` && current.children.length > 0) {
-      current = current.children[current.children.length - 1];
-    }
-    return current;
   }
 
   /**

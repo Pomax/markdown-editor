@@ -279,6 +279,79 @@ export class Editor extends EditorData {
   }
 
   /**
+   * Puts blocks in the place of a block among its siblings.
+   * @param {SyntaxNode} node
+   * @param {SyntaxNode[]} blocks
+   */
+  replaceBlock(node, blocks) {
+    const siblings = this.getSiblings(node);
+    siblings.splice(siblings.indexOf(node), 1, ...blocks);
+    for (const block of blocks) {
+      block.parent = node.parent;
+    }
+    node.parent = undefined;
+  }
+
+  /**
+   * Puts a block in a new quote, in the block's place among its siblings.
+   * @param {SyntaxNode} node
+   */
+  wrapInQuote(node) {
+    const quote = new SyntaxNode(`blockquote`, ``);
+    this.replaceBlock(node, [quote]);
+    quote.appendChild(node);
+  }
+
+  /**
+   * Takes a block out of the quote it is in.  The blocks before it stay
+   * in that quote, the blocks after it move into a new quote after it,
+   * and a quote left with no blocks is removed.
+   * @param {SyntaxNode} node - A block whose parent is a blockquote.
+   */
+  liftOutOfQuote(node) {
+    const quote = /** @type {SyntaxNode} */ (node.parent);
+    const following = quote.children.splice(quote.children.indexOf(node));
+    following.shift();
+    const siblings = this.getSiblings(quote);
+    const place = siblings.indexOf(quote) + 1;
+    node.parent = quote.parent;
+    siblings.splice(place, 0, node);
+    if (following.length > 0) {
+      const rest = new SyntaxNode(`blockquote`, ``);
+      for (const child of following) {
+        rest.appendChild(child);
+      }
+      rest.parent = quote.parent;
+      siblings.splice(place + 1, 0, rest);
+    }
+    this.removeEmptyQuotes(quote);
+  }
+
+  /**
+   * Removes a quote that has no blocks left, and each quote around it
+   * that removing it leaves with no blocks.
+   * @param {SyntaxNode | undefined} quote
+   * @returns {{ removed: string[], siblings: SyntaxNode[], index: number } | undefined}
+   *     The ids of the removed quotes and where the outermost one was,
+   *     or undefined when no quote was removed.
+   */
+  removeEmptyQuotes(quote) {
+    /** @type {{ removed: string[], siblings: SyntaxNode[], index: number } | undefined} */
+    let result;
+    let current = quote;
+    while (current && current.type === `blockquote` && current.children.length === 0) {
+      const siblings = this.getSiblings(current);
+      const index = siblings.indexOf(current);
+      siblings.splice(index, 1);
+      const parent = current.parent;
+      current.parent = undefined;
+      result = { removed: [...(result?.removed ?? []), current.id], siblings, index };
+      current = parent;
+    }
+    return result;
+  }
+
+  /**
    * Syncs the tree cursor/range from the current DOM selection.
    * @param {{ preserveRange?: boolean }} [options]
    */
@@ -434,8 +507,6 @@ export class Editor extends EditorData {
         return `##### ${content}`;
       case `heading6`:
         return `###### ${content}`;
-      case `blockquote`:
-        return new SyntaxNode(type, content).toMarkdown();
       case `list-item`: {
         const indent = `  `.repeat(attributes?.indent || 0);
         const marker = attributes?.ordered ? `${attributes?.number || 1}. ` : `- `;
@@ -478,8 +549,6 @@ export class Editor extends EditorData {
         return 6;
       case `heading6`:
         return 7;
-      case `blockquote`:
-        return 2;
       case `list-item`: {
         const indent = `  `.repeat(attributes?.indent || 0);
         const marker = attributes?.ordered ? `${attributes?.number || 1}. ` : `- `;
@@ -829,8 +898,22 @@ export class Editor extends EditorData {
     const currentNode = this.getCurrentBlockNode();
     if (!currentNode || !this.syntaxTree) return;
 
-    // html-block containers are structural nodes, not type-changeable.
-    if (currentNode.type === `html-block` && currentNode.children.length > 0) return;
+    // Containers are structural nodes, not type-changeable.
+    if (currentNode.isContainer()) return;
+
+    // The Quote action takes the block out of its quote, or puts it in one.
+    if (elementType === `blockquote`) {
+      const before = this.getMarkdown();
+      if (currentNode.parent?.type === `blockquote`) {
+        this.liftOutOfQuote(currentNode);
+      } else {
+        this.wrapInQuote(currentNode);
+      }
+      this.undoManager.recordChange({ type: `changeType`, before, after: this.getMarkdown() });
+      this.fullRenderAndPlaceCursor();
+      this.setUnsavedChanges(true);
+      return;
+    }
 
     const wasListItem = currentNode.type === `list-item`;
     const siblings = this.getSiblings(currentNode);
@@ -875,8 +958,8 @@ export class Editor extends EditorData {
     const currentNode = this.getCurrentBlockNode();
     if (!currentNode || !this.syntaxTree) return;
 
-    // html-block containers are structural nodes, not convertible.
-    if (currentNode.type === `html-block` && currentNode.children.length > 0) return;
+    // Containers are structural nodes, not convertible.
+    if (currentNode.isContainer()) return;
 
     const before = this.getMarkdown();
 
@@ -964,7 +1047,7 @@ export class Editor extends EditorData {
       const updatedIds = [];
       let num = 1;
       for (const n of nodes) {
-        if (n.type === `html-block` && n.children.length > 0) continue;
+        if (n.isContainer()) continue;
         if (n.type === `table` || n.type === `image` || n.type === `linked-image`) continue;
         applyKind(n, kind, num);
         if (kind === `ordered`) num++;
@@ -1111,8 +1194,8 @@ export class Editor extends EditorData {
     if (!this.syntaxTree) return [];
 
     /**
-     * Walks children (recursing into html-block containers) and
-     * collects all leaf block nodes between startId and endId.
+     * Walks children (recursing into containers) and collects all leaf
+     * block nodes between startId and endId.
      * @param {SyntaxNode[]} children
      * @param {{collecting: boolean, done: boolean}} state
      * @param {SyntaxNode[]} result
@@ -1120,8 +1203,7 @@ export class Editor extends EditorData {
     const walk = (children, state, result) => {
       for (const child of children) {
         if (state.done) break;
-        // Recurse into html-block containers
-        if (child.type === `html-block` && child.children.length > 0) {
+        if (child.isContainer()) {
           walk(child.children, state, result);
           continue;
         }

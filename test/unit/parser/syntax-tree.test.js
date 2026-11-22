@@ -94,7 +94,8 @@ describe(`SyntaxNode`, () => {
     });
 
     it(`should convert blockquote to markdown`, () => {
-      const node = new SyntaxNode(`blockquote`, `Quote text`);
+      const node = new SyntaxNode(`blockquote`, ``);
+      node.appendChild(new SyntaxNode(`paragraph`, `Quote text`));
       assert.strictEqual(node.toMarkdown(), `> Quote text`);
     });
 
@@ -336,7 +337,8 @@ describe(`SyntaxNode.toBareText`, () => {
   });
 
   it(`strips blockquote prefix`, () => {
-    const node = new SyntaxNode(`blockquote`, `quoted text`);
+    const node = new SyntaxNode(`blockquote`, ``);
+    node.appendChild(new SyntaxNode(`paragraph`, `quoted text`));
     assert.strictEqual(node.toBareText(), `quoted text`);
   });
 

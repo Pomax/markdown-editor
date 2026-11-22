@@ -375,7 +375,7 @@ export class WritingRenderer extends WritingRendererData {
         }
       }
 
-      if (node.parent && node.parent.type === `html-block`) {
+      if (node.parent?.isContainer()) {
         const parentFocused = node.parent.id === currentNodeId;
         this.replaceNodeElement(container, tree, node.parent.id, parentFocused);
       } else {
@@ -449,7 +449,7 @@ export class WritingRenderer extends WritingRendererData {
         if (prevEl) blockParent = this.blockParentOf(prevEl);
       }
       if (!blockParent) {
-        if (parent && parent.type === `html-block`) {
+        if (parent?.isContainer()) {
           this.replaceNodeElement(container, tree, parent.id, parent.id === currentNodeId);
           continue;
         }
@@ -639,17 +639,17 @@ export class WritingRenderer extends WritingRendererData {
   }
 
   /**
-   * Renders a blockquote node.
+   * Renders a blockquote node, with its child blocks rendered inside it.
    * @param {SyntaxNode} node
    * @param {HTMLElement} element
    * @param {boolean} isFocused
    * @returns {HTMLElement}
    */
   renderBlockquote(node, element, isFocused) {
-    const paragraph = document.createElement(`p`);
-    paragraph.className = `md-content`;
-    this.renderInlineContent(node, paragraph);
-    element.appendChild(paragraph);
+    const currentNodeId = this.editor.getFocusedNodeId();
+    for (const childElement of this.renderBlockSequence(node.children, currentNodeId)) {
+      element.appendChild(childElement);
+    }
 
     // Apply blockquote styling
     element.style.borderLeft = `3px solid #ccc`;

@@ -329,10 +329,11 @@ export class SearchBar extends SearchBarData {
     const walk = (nodes, isFirst) => {
       let first = isFirst;
       for (const node of nodes) {
-        // html-block containers are virtual — their text is produced
-        // by their children.  In source2 mode the opening/closing tag
-        // lines are part of toMarkdown(), so we handle them as a unit.
-        if (node.type === `html-block` && node.children.length > 0) {
+        // Containers (quotes, and html-blocks with children) are
+        // virtual: their text is produced by their children.  In source2
+        // mode their markdown, with its quote markers or tag lines, is
+        // handled as a unit.
+        if (node.isContainer()) {
           if (isSource) {
             // Source2 mode: the whole block is one markdown chunk.
             const text = node.toMarkdown();

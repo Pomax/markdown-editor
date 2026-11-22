@@ -78,12 +78,18 @@ export class EditOperations extends EditOperationsData {
     const siblings = this.editor.getSiblings(node);
     const idx = siblings.indexOf(node);
     const wasListItem = node.type === `list-item`;
+    const parent = node.parent;
 
     // Remove the empty node from the tree.
     siblings.splice(idx, 1);
     node.parent = undefined;
-    if (!result.hints.removed) result.hints.removed = [];
-    result.hints.removed.push(node.id);
+    const removedIds = result.hints.removed ?? [];
+    result.hints.removed = removedIds;
+    removedIds.push(node.id);
+
+    // A quote left with no blocks is removed too.
+    const emptied = this.editor.removeEmptyQuotes(parent);
+    if (emptied) removedIds.push(...emptied.removed);
 
     // Remove from updated hints — it no longer exists.
     if (result.hints.updated) {
@@ -113,14 +119,35 @@ export class EditOperations extends EditOperationsData {
     }
 
     // Move cursor to the adjacent node.
-    const newIdx = Math.min(idx, siblings.length - 1);
-    if (newIdx >= 0 && newIdx < siblings.length) {
-      const target = siblings[newIdx];
+    const around = emptied ?? { siblings, index: idx };
+    const newIdx = Math.min(around.index, around.siblings.length - 1);
+    if (newIdx >= 0 && newIdx < around.siblings.length) {
+      const target = around.siblings[newIdx].firstLeaf();
       this.editor.syntaxTree.treeCursor = {
         nodeId: target.id,
         offset: 0,
       };
     }
+  }
+
+  /**
+   * Replaces a block whose markdown line starts with `> ` by the blocks
+   * that line parses to, a quote first, with the caret in the quote's
+   * first block at the same place in the text.
+   * @param {SyntaxNode} node
+   * @param {string} line - The block's markdown line.
+   * @param {number} caret - The caret's offset into the line.
+   */
+  async replaceWithQuote(node, line, caret) {
+    if (!this.editor.syntaxTree) return;
+    const blocks = await this.editor.parseMultiLine(line);
+    this.editor.replaceBlock(node, blocks);
+    const leaf = blocks[0].firstLeaf();
+    const textAfterCaret = Math.max(0, line.split(`\n`)[0].length - caret);
+    this.editor.syntaxTree.treeCursor = {
+      nodeId: leaf.id,
+      offset: Math.max(0, leaf.content.split(`\n`)[0].length - textAfterCaret),
+    };
   }
 
   /**
