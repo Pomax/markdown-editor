@@ -35,6 +35,8 @@ The rules in this section describe what the worker must, may, or must not do.
 
 These mandatory rules describe actions that MUST BE FOLLOWED AT EVERY STEP BY THE WORKER
 
+- All commands must run in the foreground, in a terminal the user can see.
+- All commands must run in the same terminal, you may not create new terminals unless you have no working terminal
 - Say what you're going to do before doing it
 - Cite the exact rule the judge rejects work over, if it rejects work
 - Call the judge "the judge"
