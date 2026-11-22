@@ -33,8 +33,8 @@ export async function insertTextAtCursor(ops, text) {
   const node = ops.editor.getCurrentBlockNode();
   if (!node || !ops.editor.syntaxTree || !ops.editor.syntaxTree.treeCursor) return;
 
-  // html-block containers are structural (writing view).
-  if (node.type === `html-block` && node.children.length > 0) return;
+  // Containers are structural (writing view).
+  if (node.isContainer()) return;
 
   const before = rangeDeleteBefore ?? ops.editor.syntaxTree.toMarkdown();
 
@@ -105,8 +105,18 @@ export async function insertTextAtCursor(ops, text) {
       return;
     }
 
-    // Update the current node in-place with the first parsed result.
+    // A quote cannot take the current node's place in-place, so the
+    // parsed nodes replace it.
     const first = parsedNodes[0];
+    if (first.type === `blockquote`) {
+      ops.editor.replaceBlock(node, parsedNodes);
+      const last = parsedNodes[parsedNodes.length - 1].lastLeaf();
+      ops.editor.syntaxTree.treeCursor = { nodeId: last.id, offset: last.content.length };
+      ops.editor.recordAndRender(before);
+      return;
+    }
+
+    // Update the current node in-place with the first parsed result.
     node.type = first.type;
     node.content = first.content;
     node.attributes = first.attributes;
@@ -144,6 +154,13 @@ export async function insertTextAtCursor(ops, text) {
   const fullLine = ops.editor.buildMarkdownLine(node.type, newContent, node.attributes);
   const parsed = await ops.editor.reparseLine(fullLine);
 
+  // A line that starts with `> ` becomes a quote around what follows.
+  if (parsed?.type === `blockquote` && fullLine.startsWith(`> `)) {
+    await ops.replaceWithQuote(node, fullLine, oldPrefixLen + left.length + text.length);
+    ops.editor.recordAndRender(before);
+    return;
+  }
+
   if (parsed) {
     // Suppress code-block fence conversion during typing — the
     // fence pattern (```) is converted on Enter instead.
@@ -156,6 +173,9 @@ export async function insertTextAtCursor(ops, text) {
       oldType !== `image` &&
       oldType !== `linked-image`
     ) {
+      node.content = newContent;
+    } else if (parsed.type === `blockquote`) {
+      // A `>` with no space after it stays text until the space is typed.
       node.content = newContent;
     } else {
       node.type = parsed.type;

@@ -153,8 +153,9 @@ export function matchChildren(oldChildren, newChildren) {
 /**
  * Copies state from `newNode` to `oldNode` while preserving `oldNode.id`.
  * For inline-containing types, the content setter triggers
- * `buildInlineChildren()`. For `html-block` nodes with block-level
- * children, recursively matches and updates children.
+ * `buildInlineChildren()`. For container nodes (`blockquote`, and
+ * `html-block` with block-level children), recursively matches and
+ * updates children.
  *
  * @param {SyntaxNode} oldNode
  * @param {SyntaxNode} newNode
@@ -179,7 +180,7 @@ export function updateMatchedNode(oldNode, newNode) {
     oldNode.endLine = newNode.endLine;
   }
 
-  if (oldNode.type === `html-block`) {
+  if (oldNode.type === `html-block` || oldNode.type === `blockquote`) {
     if (newNode.children.length > 0) {
       const childMatches = matchChildren(oldNode.children, newNode.children);
       const result = [];
@@ -241,20 +242,8 @@ const INLINE_CONTENT_TYPES = new Set([
   `heading4`,
   `heading5`,
   `heading6`,
-  `blockquote`,
   `list-item`,
 ]);
-
-/**
- * The text between two top-level blocks in the document's markdown: a
- * newline between two list items, a blank line between anything else.
- * @param {SyntaxNode} previous
- * @param {SyntaxNode} next
- * @returns {string}
- */
-export function separatorBetween(previous, next) {
-  return previous.type === `list-item` && next.type === `list-item` ? `\n` : `\n\n`;
-}
 
 /**
  * Represents the root of a syntax tree.
@@ -737,19 +726,7 @@ export class SyntaxTree {
    * @returns {string}
    */
   toMarkdown() {
-    const lines = [];
-
-    for (const child of this.children) {
-      lines.push(child.toMarkdown());
-    }
-
-    if (lines.length === 0) return ``;
-
-    const parts = [lines[0]];
-    for (let i = 1; i < lines.length; i++) {
-      parts.push(separatorBetween(this.children[i - 1], this.children[i]) + lines[i]);
-    }
-    return parts.join(``);
+    return SyntaxNode.blocksToMarkdown(this.children);
   }
 
   /**
@@ -760,14 +737,7 @@ export class SyntaxTree {
    * @returns {string}
    */
   toBareText() {
-    const parts = [];
-
-    for (const child of this.children) {
-      const text = child.toBareText();
-      if (text !== ``) parts.push(text);
-    }
-
-    return parts.join(`\n\n`);
+    return SyntaxNode.blocksToBareText(this.children);
   }
 
   /**

@@ -35,8 +35,6 @@ The rules in this section describe what the worker must, may, or must not do.
 
 These mandatory rules describe actions that MUST BE FOLLOWED AT EVERY STEP BY THE WORKER
 
-- All commands must run in the foreground, in a terminal the user can see.
-- All commands must run in the same terminal, you may not create new terminals unless you have no working terminal
 - Say what you're going to do before doing it
 - Cite the exact rule the judge rejects work over, if it rejects work
 - Call the judge "the judge"
@@ -50,7 +48,9 @@ These mandatory rules describe actions that MUST BE FOLLOWED AT EVERY STEP BY TH
 - State a caveat as a fact.
 - The test runner must be `scripts\test.bat` on Windows
 - The test runner must be `scripts/test.sh` on all other operating systems
-- `cmd //c <command>` through the Bash tool, on Windows.
+- All commands must run in the foreground, in a terminal the user can see.
+- All commands must run in the same terminal, you may not create new terminals unless you have no working terminal
+- On windows, powershell may not be used except to run commands via `cmd` invocations.
 - Ask questions one by one until each has been fully answered.
 - If work touched code that could lead to a different build, run a build after completing the work.
 - Snapshoot files in your sandbox before edits so they can always be rolled back without recreating code from nothing. each snapshot is a new file, snapshots may not override each other.
@@ -81,6 +81,8 @@ These disallowed rules describe actions that MAY NEVER BE PERFORMED BY THE WORKE
 
 These rules describe writing-related actions that MAY NEVER BE PERFORMED BY THE WORKER
 
+- Apologizing
+- Saying you "understand"
 - Use a choice pickers for questions
 - Use Em dashes. Anywhere: chat, code, comments, documents, scripts.
 - Summarise finished work. Lists of what changed. Accounts of how it was done.
@@ -107,6 +109,8 @@ These rules describe writing-related actions that MAY NEVER BE PERFORMED BY THE 
 
 These rules describe general actions that MAY NEVER BE PERFORMED BY THE WORKER
 
+- Apologizing
+- Saying you "understand"
 - Going off on something that you were not told to do
 - Investigating something unexpected but unrelated
 - Code changes not required to fulfil the instructions or planned tasks.
@@ -127,7 +131,7 @@ These rules describe general actions that MAY NEVER BE PERFORMED BY THE WORKER
 
 These rules describe file and shell related actions that MAY NEVER BE PERFORMED BY THE WORKER
 
-- Use PowerShell.
+- Use PowerShell *except* to first run "cmd"
 - Use python, sed, perl, awk or heredoc.
 - Overwrite a file that exists.
 - Copy then delete, in place of a move.

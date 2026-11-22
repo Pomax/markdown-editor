@@ -15,6 +15,7 @@ import path from 'node:path';
 import { expect, test } from '@playwright/test';
 import {
   clickInEditor,
+  clickWritingViewBetween,
   closeApp,
   launchApp,
   loadContent,
@@ -86,6 +87,17 @@ async function getFormatButtonStates(pg) {
   }
   return result;
 }
+
+test(`quote button is active when the cursor is in a quote, and not when it is outside one`, async () => {
+  await loadContent(page, `> quoted\n\nplain`);
+  await setWritingView(page);
+
+  await clickWritingViewBetween(page, `quo`, `ted`);
+  await expect.poll(() => isButtonActive(page, `blockquote`)).toBe(true);
+
+  await clickWritingViewBetween(page, `pla`, `in`);
+  await expect.poll(() => isButtonActive(page, `blockquote`)).toBe(false);
+});
 
 test(`bold button is active when cursor is inside bold text`, async () => {
   await loadContent(page, fixtureContent);

@@ -21,8 +21,8 @@ export async function handleDelete(ops) {
   const node = ops.editor.getCurrentBlockNode();
   if (!node || !ops.editor.syntaxTree || !ops.editor.syntaxTree.treeCursor) return;
 
-  // html-block containers are structural (writing view).
-  if (node.type === `html-block` && node.children.length > 0) return;
+  // Containers are structural (writing view).
+  if (node.isContainer()) return;
 
   // Table cell delete
   if (
@@ -79,7 +79,14 @@ export async function handleDelete(ops) {
     const fullLine = ops.editor.buildMarkdownLine(node.type, newContent, node.attributes);
     const parsed = await ops.editor.reparseLine(fullLine);
 
-    if (parsed) {
+    // A line that starts with `> ` becomes a quote around what follows.
+    if (parsed?.type === `blockquote` && fullLine.startsWith(`> `)) {
+      await ops.replaceWithQuote(node, fullLine, oldPrefixLen + left.length);
+      ops.editor.recordAndRender(before);
+      return;
+    }
+
+    if (parsed && parsed.type !== `blockquote`) {
       node.type = parsed.type;
       node.content = parsed.content;
       node.attributes = parsed.attributes;
@@ -107,27 +114,29 @@ export async function handleDelete(ops) {
     if (idx < siblings.length - 1) {
       const next = siblings[idx + 1];
 
-      if (next.type === `html-block` && next.children.length > 0) {
-        // In writing view, merge the first child of the
-        // html-block container into this node.
-        const firstChild = next.children[0];
+      if (next.isContainer()) {
+        // In writing view, merge the first block inside the
+        // container into this node.
+        const firstChild = next.firstLeaf();
+        const holder = /** @type {SyntaxNode} */ (firstChild.parent);
         const curLen = node.content.length;
         node.content += firstChild.content;
-        next.children.splice(0, 1);
+        holder.children.splice(holder.children.indexOf(firstChild), 1);
         firstChild.parent = undefined;
+        const removed = [firstChild.id];
+        // A quote left with no blocks is removed too.
+        removed.push(...(ops.editor.removeEmptyQuotes(holder)?.removed ?? []));
         // If the html-block is now empty, remove it too.
-        if (next.children.length === 0) {
+        if (next.type === `html-block` && next.children.length === 0) {
           siblings.splice(idx + 1, 1);
           next.parent = undefined;
+          removed.push(next.id);
         }
         ops.editor.syntaxTree.treeCursor = {
           nodeId: node.id,
           offset: curLen,
         };
-        renderHints =
-          next.children.length === 0
-            ? { updated: [node.id], removed: [next.id] }
-            : { updated: [node.id, next.id] };
+        renderHints = { updated: [node.id], removed };
       } else {
         const curLen = node.content.length;
         node.content += next.content;

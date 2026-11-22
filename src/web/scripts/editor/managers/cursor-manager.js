@@ -326,7 +326,6 @@ export class CursorManager extends CursorManagerData {
       case `heading4`:
       case `heading5`:
       case `heading6`:
-      case `blockquote`:
       case `list-item`:
         return true;
       default:
@@ -370,7 +369,7 @@ export class CursorManager extends CursorManagerData {
     // In writing mode the DOM shows rendered text (no markdown syntax),
     // so we must convert the raw tree offset to a rendered offset.
     // Only applies to node types that render inline formatting (paragraph,
-    // heading, blockquote, list-item).  Other types (table, code-block,
+    // heading, list-item).  Other types (table, code-block,
     // image, horizontal-rule) don't use inline markup rendering.
     let cursorOffset = this.editor.syntaxTree.treeCursor.offset;
     if (this.editor.viewMode === `writing`) {

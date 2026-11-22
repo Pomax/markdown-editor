@@ -32,8 +32,29 @@ const tree = await parser.parse(
   ),
 );
 
-/** The markdown text the source view shows for the document. */
-const source = tree.toMarkdown();
+const quotesTree = await parser.parse(
+  [
+    `Before the quotes.`,
+    ``,
+    `> One level`,
+    `> over two lines`,
+    `>`,
+    `> > Two levels`,
+    `> >`,
+    `> > > Three levels with **bold**`,
+    `>`,
+    `> # A heading in a quote`,
+    `>`,
+    `> - first item`,
+    `> - second item`,
+    `>`,
+    `> \`\`\`js`,
+    `> const quoted = true;`,
+    `> \`\`\``,
+    ``,
+    `After the quotes.`,
+  ].join(`\n`),
+);
 
 /** The block types whose content the caret moves through. */
 const TEXT_BLOCK_TYPES = new Set([
@@ -45,20 +66,21 @@ const TEXT_BLOCK_TYPES = new Set([
   `heading5`,
   `heading6`,
   `list-item`,
-  `blockquote`,
   `code-block`,
   `table`,
 ]);
 
 /**
  * The text blocks among the nodes, in document order, including those
- * inside html blocks.
+ * inside quotes and html blocks.
  * @param {SyntaxNode[]} nodes
  * @returns {SyntaxNode[]}
  */
 function textBlocks(nodes) {
   return nodes.flatMap((node) => {
-    if (node.type === `html-block` && node.children.length > 0) return textBlocks(node.children);
+    if (node.type === `blockquote` || (node.type === `html-block` && node.children.length > 0)) {
+      return textBlocks(node.children);
+    }
     return TEXT_BLOCK_TYPES.has(node.type) ? [node] : [];
   });
 }
@@ -69,9 +91,11 @@ function textBlocks(nodes) {
  * each cell of a table, up in the text, in document order.  A caret in a
  * table is in a cell, at an offset into that cell's text, as the writing
  * view puts it.
+ * @param {SyntaxTree} tree
+ * @param {string} source - The markdown text the source view shows for the tree.
  * @returns {Map<SyntaxNode, { cursor: TreeCursor, place: number }[]>}
  */
-function caretsInSource() {
+function caretsInSource(tree, source) {
   const carets = new Map();
   let from = 0;
   for (const node of textBlocks(tree.children)) {
@@ -112,10 +136,11 @@ function caretsInSource() {
 
 /**
  * The markdown text around a place in it, with `|` at the place.
+ * @param {string} source
  * @param {number} place
  * @returns {string}
  */
-function around(place) {
+function around(source, place) {
   return `${source.slice(Math.max(0, place - 16), place)}|${source.slice(place, place + 16)}`;
 }
 
@@ -128,38 +153,51 @@ function blockName(node) {
   return `${node.type} "${node.content.split(`\n`)[0].slice(0, 32)}"`;
 }
 
-describe(`a caret in a normal markdown document`, () => {
-  for (const [node, carets] of caretsInSource()) {
-    it(`${blockName(node)}: each caret's tree cursor gives the caret's place in the markdown text`, () => {
-      const wrong = carets
-        .map(({ cursor, place }) => ({
-          cursor,
-          expected: place,
-          given: cursorToAbsoluteOffset(tree, cursor, buildMarkdownLine, getPrefixLength),
-        }))
-        .find(({ expected, given }) => given !== expected);
-      assert.equal(
-        wrong && {
-          cursor: wrong.cursor,
-          given: around(wrong.given),
-          expected: around(wrong.expected),
-        },
-        undefined,
-      );
-    });
+/**
+ * Checks that each caret's tree cursor in each text block of a document
+ * gives the caret's place in the document's markdown text, and that the
+ * place gives the tree cursor back.
+ * @param {string} title
+ * @param {SyntaxTree} tree
+ */
+function describeCaretsIn(title, tree) {
+  const source = tree.toMarkdown();
+  describe(title, () => {
+    for (const [node, carets] of caretsInSource(tree, source)) {
+      it(`${blockName(node)}: each caret's tree cursor gives the caret's place in the markdown text`, () => {
+        const wrong = carets
+          .map(({ cursor, place }) => ({
+            cursor,
+            expected: place,
+            given: cursorToAbsoluteOffset(tree, cursor, buildMarkdownLine, getPrefixLength),
+          }))
+          .find(({ expected, given }) => given !== expected);
+        assert.equal(
+          wrong && {
+            cursor: wrong.cursor,
+            given: around(source, wrong.given),
+            expected: around(source, wrong.expected),
+          },
+          undefined,
+        );
+      });
 
-    it(`${blockName(node)}: each caret's place in the markdown text gives its tree cursor`, () => {
-      const wrong = carets
-        .map(({ cursor, place }) => ({
-          place: around(place),
-          expected: cursor,
-          given: absoluteOffsetToCursor(tree, place, getPrefixLength),
-        }))
-        .find(({ expected, given }) => !isDeepStrictEqual(given, expected));
-      assert.equal(wrong, undefined);
-    });
-  }
-});
+      it(`${blockName(node)}: each caret's place in the markdown text gives its tree cursor`, () => {
+        const wrong = carets
+          .map(({ cursor, place }) => ({
+            place: around(source, place),
+            expected: cursor,
+            given: absoluteOffsetToCursor(tree, place, getPrefixLength),
+          }))
+          .find(({ expected, given }) => !isDeepStrictEqual(given, expected));
+        assert.equal(wrong, undefined);
+      });
+    }
+  });
+}
+
+describeCaretsIn(`a caret in a normal markdown document`, tree);
+describeCaretsIn(`a caret in quotes nested three deep`, quotesTree);
 
 function makeTree(...nodes) {
   const tree = new SyntaxTree();

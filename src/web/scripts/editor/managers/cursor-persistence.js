@@ -8,7 +8,8 @@
  * persisted to restore the cursor on next launch.
  */
 
-import { separatorBetween } from '../../../../parsers/old/syntax-tree.js';
+import { SyntaxNode, separatorBetween } from '../../../../parsers/old/syntax-node.js';
+import { SyntaxTree } from '../../../../parsers/old/syntax-tree.js';
 import { TableModal } from '../content-types/table/table-modal.js';
 
 /**
@@ -58,53 +59,85 @@ function separatorInsideHtmlBlock() {
 }
 
 /**
- * The length of the syntax in front of each line after the first of a
- * block's markdown: a blockquote has its `> ` on every line, other
- * blocks only have syntax in front of their first line.
- * @param {SyntaxNode} node
- * @param {number} prefix - The length of the syntax in front of the first line.
- * @returns {number}
+ * A tree whose top-level blocks are the given nodes, which stay where
+ * they are in their own tree.
+ * @param {SyntaxNode[]} nodes
+ * @returns {SyntaxTree}
  */
-function linePrefixLength(node, prefix) {
-  return node.type === `blockquote` ? prefix : 0;
+function treeOf(nodes) {
+  const tree = new SyntaxTree();
+  tree.children = nodes;
+  return tree;
 }
 
 /**
- * The offset into a block's markdown of an offset into its content.
- * @param {SyntaxNode} node
- * @param {number} offset - Offset into the node's content.
- * @param {number} prefix - The length of the syntax in front of the first line.
- * @returns {number}
+ * The lines of the markdown inside a blockquote: its children's markdown
+ * without the `>` syntax in front of each line.
+ * @param {SyntaxNode} quote
+ * @returns {string[]}
  */
-function contentToMarkdownOffset(node, offset, prefix) {
-  const lineBreaks = node.content.slice(0, offset).split(`\n`).length - 1;
-  return prefix + offset + lineBreaks * linePrefixLength(node, prefix);
+function quoteBodyLines(quote) {
+  return SyntaxNode.blocksToMarkdown(quote.children).split(`\n`);
 }
 
 /**
- * The offset into a block's content of an offset into its markdown at or
- * after the end of the syntax in front of the first line.  An offset in
- * the syntax in front of a later line gives the start of that line, and
- * one past the content gives its end.
- * @param {SyntaxNode} node
- * @param {number} markdownOffset - Offset into the node's markdown.
- * @param {number} prefix - The length of the syntax in front of the first line.
+ * The length of the `>` syntax in front of a line of a blockquote's
+ * markdown: `> ` in front of a line with text, `>` in front of an empty one.
+ * @param {string} bodyLine - The line without that syntax.
  * @returns {number}
  */
-function markdownToContentOffset(node, markdownOffset, prefix) {
-  const lines = node.content.split(`\n`);
-  const linePrefix = linePrefixLength(node, prefix);
-  let lineStart = prefix;
-  let contentStart = 0;
+function quoteMarkerLength(bodyLine) {
+  return bodyLine === `` ? 1 : 2;
+}
+
+/**
+ * The offset into a blockquote's markdown of an offset into the markdown
+ * inside it.
+ * @param {SyntaxNode} quote
+ * @param {number} bodyOffset
+ * @returns {number}
+ */
+function quoteBodyToMarkdownOffset(quote, bodyOffset) {
+  const lines = quoteBodyLines(quote);
+  let bodyStart = 0;
+  let markdownStart = 0;
   for (let i = 0; i < lines.length; i++) {
-    const lineEnd = lineStart + lines[i].length;
-    if (markdownOffset <= lineEnd || i === lines.length - 1) {
-      return contentStart + Math.max(0, Math.min(markdownOffset - lineStart, lines[i].length));
+    const marker = quoteMarkerLength(lines[i]);
+    if (bodyOffset <= bodyStart + lines[i].length || i === lines.length - 1) {
+      return markdownStart + marker + Math.min(bodyOffset - bodyStart, lines[i].length);
     }
-    lineStart = lineEnd + 1 + linePrefix;
-    contentStart += lines[i].length + 1;
+    bodyStart += lines[i].length + 1;
+    markdownStart += marker + lines[i].length + 1;
   }
-  return node.content.length;
+  return markdownStart;
+}
+
+/**
+ * The offset into the markdown inside a blockquote of an offset into the
+ * blockquote's markdown.  An offset in the `>` syntax in front of a line
+ * gives the start of that line.
+ * @param {SyntaxNode} quote
+ * @param {number} markdownOffset
+ * @returns {number}
+ */
+function markdownToQuoteBodyOffset(quote, markdownOffset) {
+  const lines = quoteBodyLines(quote);
+  let bodyStart = 0;
+  let markdownStart = 0;
+  for (let i = 0; i < lines.length; i++) {
+    const marker = quoteMarkerLength(lines[i]);
+    const lineEnd = markdownStart + marker + lines[i].length;
+    if (markdownOffset <= lineEnd || i === lines.length - 1) {
+      const column = Math.max(
+        0,
+        Math.min(markdownOffset - markdownStart - marker, lines[i].length),
+      );
+      return bodyStart + column;
+    }
+    bodyStart += lines[i].length + 1;
+    markdownStart = lineEnd + 1;
+  }
+  return bodyStart;
 }
 
 /**
@@ -159,12 +192,21 @@ export function cursorToAbsoluteOffset(tree, cursor, buildMarkdownLine, getPrefi
           return pos + cursor.prefixOffset;
         } else {
           const prefix = getPrefixLength(node.type, node.attributes);
-          return pos + contentToMarkdownOffset(node, contentOffsetOf(node, cursor), prefix);
+          return pos + prefix + contentOffsetOf(node, cursor);
         }
       }
 
-      // For html-block containers, walk children to find the cursor.
-      if (node.type === `html-block` && node.children.length > 0) {
+      if (node.type === `blockquote`) {
+        const bodyOffset = cursorToAbsoluteOffset(
+          treeOf(node.children),
+          cursor,
+          buildMarkdownLine,
+          getPrefixLength,
+        );
+        if (bodyOffset !== -1) return pos + quoteBodyToMarkdownOffset(node, bodyOffset);
+        pos += node.toMarkdown().length;
+      } else if (node.type === `html-block` && node.children.length > 0) {
+        // For html-block containers, walk children to find the cursor.
         const openingTag = node.attributes.openingTag ?? ``;
 
         // Check if this is a single bare-text child (collapsed form).
@@ -240,6 +282,11 @@ export function absoluteOffsetToCursor(tree, absoluteOffset, getPrefixLength) {
       if (absoluteOffset <= nodeEnd) {
         // Target is within this node (or at its end boundary).
 
+        if (node.type === `blockquote`) {
+          const bodyOffset = markdownToQuoteBodyOffset(node, absoluteOffset - pos);
+          return absoluteOffsetToCursor(treeOf(node.children), bodyOffset, getPrefixLength);
+        }
+
         // For html-block containers with children, recurse.
         if (node.type === `html-block` && node.children.length > 0) {
           // Single bare-text child (collapsed):  <tag>content</tag>
@@ -300,7 +347,10 @@ export function absoluteOffsetToCursor(tree, absoluteOffset, getPrefixLength) {
             prefixOffset: absoluteOffset - pos,
           };
         }
-        const contentOffset = markdownToContentOffset(node, absoluteOffset - pos, prefix);
+        const contentOffset = Math.max(
+          0,
+          Math.min(absoluteOffset - pos - prefix, node.content.length),
+        );
         if (node.type === `table`) return tableCellCursor(node, contentOffset);
         return { nodeId: node.id, offset: contentOffset };
       }

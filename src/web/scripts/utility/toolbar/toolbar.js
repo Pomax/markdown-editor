@@ -698,7 +698,12 @@ export class Toolbar extends ToolbarData {
       // Block-type active state.
       if (config.action.startsWith(`changeType:`)) {
         const targetType = config.action.split(`:`)[1];
-        button.setActive(targetType === blockType);
+        // The Quote button is active for a block whose parent is a quote.
+        button.setActive(
+          targetType === `blockquote`
+            ? blockNode?.parent?.type === `blockquote`
+            : targetType === blockType,
+        );
       } else if (config.action === `list:unordered`) {
         button.setActive(
           blockType === `list-item` &&

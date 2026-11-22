@@ -13,9 +13,19 @@ const INLINE_CONTENT_TYPES = new Set([
   `heading4`,
   `heading5`,
   `heading6`,
-  `blockquote`,
   `list-item`,
 ]);
+
+/**
+ * The text between two sibling blocks in markdown: a newline between
+ * two list items, a blank line between anything else.
+ * @param {SyntaxNode} previous
+ * @param {SyntaxNode} next
+ * @returns {string}
+ */
+export function separatorBetween(previous, next) {
+  return previous.type === `list-item` && next.type === `list-item` ? `\n` : `\n\n`;
+}
 
 /**
  * Counter for generating unique node IDs.
@@ -60,9 +70,9 @@ export class SyntaxNode {
 
     /**
      * Child nodes.  For inline-containing block types (paragraph,
-     * heading, blockquote, list-item), children are inline nodes
-     * (text, bold, italic, link, etc.).  For container blocks
-     * (html-block), children are other block-level nodes.
+     * heading, list-item), children are inline nodes (text, bold,
+     * italic, link, etc.).  For container blocks (blockquote,
+     * html-block), children are other block-level nodes.
      * @type {SyntaxNode[]}
      */
     this.children = [];
@@ -113,7 +123,7 @@ export class SyntaxNode {
   /**
    * (Re)builds inline child nodes from this node's raw content.
    * Only meaningful for inline-containing types (paragraph, heading,
-   * blockquote, list-item).
+   * list-item).
    */
   buildInlineChildren() {
     this.children = [];
@@ -168,15 +178,15 @@ export class SyntaxNode {
   }
 
   /**
-   * Returns the nearest block-level ancestor (an INLINE_CONTENT_TYPES node),
-   * or `this` if this node is itself a block-level node.
+   * Returns the nearest block-level ancestor (an INLINE_CONTENT_TYPES node
+   * or a blockquote), or `this` if this node is itself a block-level node.
    * @returns {SyntaxNode}
    */
   getBlockParent() {
     /** @type {SyntaxNode} */
     let node = this;
     while (node.parent) {
-      if (INLINE_CONTENT_TYPES.has(node.type)) return node;
+      if (INLINE_CONTENT_TYPES.has(node.type) || node.type === `blockquote`) return node;
       node = node.parent;
     }
     return node;
@@ -189,6 +199,43 @@ export class SyntaxNode {
    */
   isInlineNode() {
     return this.getBlockParent() !== this;
+  }
+
+  /**
+   * Returns true if this node holds block-level children: a blockquote,
+   * or an html-block with children.
+   * @returns {boolean}
+   */
+  isContainer() {
+    return this.type === `blockquote` || (this.type === `html-block` && this.children.length > 0);
+  }
+
+  /**
+   * Returns the first block inside this node that is not a container,
+   * or this node when it is not a container.
+   * @returns {SyntaxNode}
+   */
+  firstLeaf() {
+    /** @type {SyntaxNode} */
+    let node = this;
+    while (node.isContainer() && node.children.length > 0) {
+      node = node.children[0];
+    }
+    return node;
+  }
+
+  /**
+   * Returns the last block inside this node that is not a container,
+   * or this node when it is not a container.
+   * @returns {SyntaxNode}
+   */
+  lastLeaf() {
+    /** @type {SyntaxNode} */
+    let node = this;
+    while (node.isContainer() && node.children.length > 0) {
+      node = node.children[node.children.length - 1];
+    }
+    return node;
   }
 
   /**
@@ -243,10 +290,7 @@ export class SyntaxNode {
       case `paragraph`:
         return this.content;
       case `blockquote`:
-        return this.content
-          .split(`\n`)
-          .map((line) => `> ${line}`)
-          .join(`\n`);
+        return SyntaxNode.quoteMarkdown(SyntaxNode.blocksToMarkdown(this.children));
       case `code-block`: {
         const lang = this.attributes.language || ``;
         const fence = `\``.repeat(this.attributes.fenceCount || 3);
@@ -345,9 +389,11 @@ export class SyntaxNode {
       case `heading5`:
       case `heading6`:
       case `paragraph`:
-      case `blockquote`:
       case `list-item`:
         return SyntaxNode.inlineChildrenToText(this.children);
+
+      case `blockquote`:
+        return SyntaxNode.blocksToBareText(this.children);
 
       case `code-block`:
         return this.content;
@@ -386,17 +432,60 @@ export class SyntaxNode {
           return SyntaxNode.inlineChildrenToText(this.children[0].children);
         }
 
-        const parts = [];
-        for (const child of this.children) {
-          const text = child.toBareText();
-          if (text) parts.push(text);
-        }
-        return parts.join(`\n\n`);
+        return SyntaxNode.blocksToBareText(this.children);
       }
 
       default:
         return SyntaxNode.extractInlineText(this.content);
     }
+  }
+
+  /**
+   * Puts markdown inside the given number of nested quotes.  Each quote
+   * puts `> ` in front of each line with text, and `>` in front of each
+   * empty line.
+   * @param {string} markdown
+   * @param {number} [depth]
+   * @returns {string}
+   */
+  static quoteMarkdown(markdown, depth = 1) {
+    let quoted = markdown;
+    for (let i = 0; i < depth; i++) {
+      quoted = quoted
+        .split(`\n`)
+        .map((line) => (line === `` ? `>` : `> ${line}`))
+        .join(`\n`);
+    }
+    return quoted;
+  }
+
+  /**
+   * Joins a sequence of sibling block nodes into markdown.
+   * @param {SyntaxNode[]} blocks
+   * @returns {string}
+   */
+  static blocksToMarkdown(blocks) {
+    if (blocks.length === 0) return ``;
+    const parts = [blocks[0].toMarkdown()];
+    for (let i = 1; i < blocks.length; i++) {
+      parts.push(separatorBetween(blocks[i - 1], blocks[i]) + blocks[i].toMarkdown());
+    }
+    return parts.join(``);
+  }
+
+  /**
+   * Joins the visible text of a sequence of sibling block nodes with
+   * blank lines, skipping blocks that have no visible text.
+   * @param {SyntaxNode[]} blocks
+   * @returns {string}
+   */
+  static blocksToBareText(blocks) {
+    const parts = [];
+    for (const block of blocks) {
+      const text = block.toBareText();
+      if (text !== ``) parts.push(text);
+    }
+    return parts.join(`\n\n`);
   }
 
   /**

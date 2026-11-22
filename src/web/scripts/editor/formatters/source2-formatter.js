@@ -7,6 +7,8 @@
 
 /// <reference path="../../../../types.d.ts" />
 
+import { SyntaxNode } from '../../../../parsers/old/syntax-node.js';
+
 /**
  * Maps inline format names to their markdown delimiter pairs.
  * @type {Record<string, {open: string, close: string}>}
@@ -51,7 +53,6 @@ const BLOCK_PREFIXES = {
   heading4: `#### `,
   heading5: `##### `,
   heading6: `###### `,
-  blockquote: `> `,
   paragraph: ``,
 };
 
@@ -103,22 +104,34 @@ function hasListPrefix(lineText) {
 }
 
 /**
- * Returns the current line prefix (heading, blockquote, list marker)
- * matched from a known set.
+ * Splits a line into its quote markers (each `>` with the space after
+ * it, if any), the block prefix after them (heading or list marker)
+ * matched from a known set, and the rest of the line.
  * @param {string} lineText
- * @returns {{ prefix: string, rest: string }}
+ * @returns {{ quote: string, prefix: string, rest: string }}
  */
 function parseLinePrefix(lineText) {
-  const headingMatch = lineText.match(/^(#{1,6} )/);
-  if (headingMatch)
-    return { prefix: headingMatch[1], rest: lineText.slice(headingMatch[1].length) };
+  const quote = lineText.match(/^(?:> ?)*/)?.[0] ?? ``;
+  const text = lineText.slice(quote.length);
 
-  if (lineText.startsWith(`> `)) return { prefix: `> `, rest: lineText.slice(2) };
+  const headingMatch = text.match(/^(#{1,6} )/);
+  if (headingMatch) {
+    return { quote, prefix: headingMatch[1], rest: text.slice(headingMatch[1].length) };
+  }
 
-  const listMatch = lineText.match(/^(\d+\. |- \[[ xX]\] |- )/);
-  if (listMatch) return { prefix: listMatch[1], rest: lineText.slice(listMatch[1].length) };
+  const listMatch = text.match(/^(\d+\. |- \[[ xX]\] |- )/);
+  if (listMatch) return { quote, prefix: listMatch[1], rest: text.slice(listMatch[1].length) };
 
-  return { prefix: ``, rest: lineText };
+  return { quote, prefix: ``, rest: text };
+}
+
+/**
+ * The number of quotes that a line's quote markers open.
+ * @param {string} quote
+ * @returns {number}
+ */
+function quoteDepth(quote) {
+  return quote.split(`>`).length - 1;
 }
 
 /**
@@ -545,26 +558,42 @@ export class Source2Formatter extends Source2FormatterData {
       const { rangeStart, rangeEnd } = getFullLineRange(value, selectionStart, selectionEnd);
       const regionText = value.substring(rangeStart, rangeEnd);
       const lines = regionText.split(`\n`);
+      const parsedLines = lines.map(parseLinePrefix);
+      const cursorInRegion = selectionStart - rangeStart;
 
       // Track how much the cursor position shifts due to prefix removal.
       let charsBefore = 0;
       let prefixRemoved = 0;
-      const newLines = [];
-      for (const line of lines) {
-        const { prefix, rest } = parseLinePrefix(line);
-        newLines.push(rest);
-        const lineEnd = charsBefore + line.length;
-        const cursorInRegion = selectionStart - rangeStart;
+      for (let i = 0; i < lines.length; i++) {
+        const { quote, prefix } = parsedLines[i];
+        const lineEnd = charsBefore + lines[i].length;
         if (lineEnd < cursorInRegion) {
           prefixRemoved += prefix.length;
         } else if (charsBefore <= cursorInRegion) {
           const cursorCol = cursorInRegion - charsBefore;
-          prefixRemoved += Math.min(prefix.length, cursorCol);
+          prefixRemoved += Math.min(prefix.length, Math.max(0, cursorCol - quote.length));
         }
-        charsBefore += line.length + 1;
+        charsBefore += lines[i].length + 1;
       }
 
-      let result = newLines.join(`\n\n`);
+      // Each line becomes a paragraph.  The blank line between two of
+      // them is inside the quotes that both lines are in.
+      let result = ``;
+      let extraNewlines = 0;
+      let pos = 0;
+      for (let i = 0; i < lines.length; i++) {
+        if (i > 0) {
+          const depth = Math.min(
+            quoteDepth(parsedLines[i - 1].quote),
+            quoteDepth(parsedLines[i].quote),
+          );
+          const separator = `\n${SyntaxNode.quoteMarkdown(``, depth)}\n`;
+          result += separator;
+          pos += lines[i - 1].length + 1;
+          if (pos <= cursorInRegion) extraNewlines += separator.length - 1;
+        }
+        result += parsedLines[i].quote + parsedLines[i].rest;
+      }
 
       const before = value.substring(0, rangeStart);
       const after = value.substring(rangeEnd);
@@ -584,33 +613,32 @@ export class Source2Formatter extends Source2FormatterData {
         result = result + `\n`;
       }
 
-      // Account for extra blank lines inserted between former list items.
-      // Each original \n becomes \n\n, adding (lines.length - 1) extra chars
-      // for lines before the cursor.
-      let extraNewlines = 0;
-      let pos = 0;
-      const cursorInRegion = selectionStart - rangeStart;
-      for (let i = 0; i < lines.length - 1; i++) {
-        pos += lines[i].length + 1;
-        if (pos <= cursorInRegion) extraNewlines++;
-      }
-
       const newCursorPos =
         rangeStart + leadingExtra + (selectionStart - rangeStart) - prefixRemoved + extraNewlines;
       applyTextareaEdit(textarea, rangeStart, rangeEnd, result, newCursorPos, newCursorPos);
       return;
     }
 
-    // For non-paragraph block types (headings, blockquote), apply to first line only.
+    // For non-paragraph block types (headings, quotes), apply to first line only.
     const { lineStart, lineEnd } = getLineRange(value, selectionStart);
     const lineText = value.substring(lineStart, lineEnd);
-    const { prefix: oldPrefix, rest } = parseLinePrefix(lineText);
-    const newPrefix = BLOCK_PREFIXES[elementType] ?? ``;
-    const newLine = newPrefix + rest;
+    const { quote, prefix: oldPrefix, rest } = parseLinePrefix(lineText);
+
+    // The Quote action takes the innermost quote off a quoted line, or
+    // puts an unquoted line in a quote.  Other types keep the quotes.
+    const newQuote =
+      elementType === `blockquote` ? (quote === `` ? `> ` : quote.replace(/> ?$/, ``)) : quote;
+    const newPrefix =
+      elementType === `blockquote` ? oldPrefix : (BLOCK_PREFIXES[elementType] ?? ``);
+    const newLine = newQuote + newPrefix + rest;
 
     const cursorOffset = selectionStart - lineStart;
     const newCursorPos =
-      lineStart + Math.max(0, cursorOffset - oldPrefix.length + newPrefix.length);
+      lineStart +
+      Math.max(
+        0,
+        cursorOffset - quote.length - oldPrefix.length + newQuote.length + newPrefix.length,
+      );
 
     applyTextareaEdit(textarea, lineStart, lineEnd, newLine, newCursorPos, newCursorPos);
   }
@@ -686,13 +714,9 @@ export class Source2Formatter extends Source2FormatterData {
 
     const newLines = [];
     for (let i = 0; i < lines.length; i++) {
-      if (allMatch) {
-        if (lines[i].trim() === ``) continue;
-        newLines.push(parseLinePrefix(lines[i]).rest);
-      } else {
-        if (lines[i].trim() === ``) continue;
-        newLines.push(targetPrefix + parseLinePrefix(lines[i]).rest);
-      }
+      if (lines[i].trim() === ``) continue;
+      const { quote, rest } = parseLinePrefix(lines[i]);
+      newLines.push(allMatch ? quote + rest : quote + targetPrefix + rest);
     }
 
     let result = newLines.join(`\n`);

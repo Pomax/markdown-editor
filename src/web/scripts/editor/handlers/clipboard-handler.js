@@ -19,7 +19,38 @@ const HTML_OPEN_RE = /<([a-z][a-z0-9]*)\b[^>]*>/gi;
  */
 const HTML_CLOSE_RE = /<\/([a-z][a-z0-9]*)\s*>/gi;
 
+import { SyntaxNode } from '../../../../parsers/old/syntax-node.js';
 import { ClipboardHandlerData } from '../types.js';
+
+/**
+ * The blockquotes a node is inside, outermost first.
+ * @param {SyntaxNode} node
+ * @returns {SyntaxNode[]}
+ */
+function enclosingQuotes(node) {
+  /** @type {SyntaxNode[]} */
+  const quotes = [];
+  for (let parent = node.parent; parent; parent = parent.parent) {
+    if (parent.type === `blockquote`) quotes.unshift(parent);
+  }
+  return quotes;
+}
+
+/**
+ * The number of blockquotes that two nodes are both inside.
+ * @param {SyntaxNode} a
+ * @param {SyntaxNode} b
+ * @returns {number}
+ */
+function sharedQuoteDepth(a, b) {
+  const quotesA = enclosingQuotes(a);
+  const quotesB = enclosingQuotes(b);
+  let depth = 0;
+  while (depth < quotesA.length && depth < quotesB.length && quotesA[depth] === quotesB[depth]) {
+    depth++;
+  }
+  return depth;
+}
 
 /**
  * Handles clipboard operations (cut, copy) for the editor.
@@ -71,7 +102,8 @@ export class ClipboardHandler extends ClipboardHandlerData {
     if (startNodeId === endNodeId) {
       const slice = startNode.content.substring(startOffset, endOffset);
       const fixed = ClipboardHandler.fixHtmlTags(slice);
-      return ClipboardHandler.nodeToPartialMarkdown(startNode, fixed);
+      const markdown = ClipboardHandler.nodeToPartialMarkdown(startNode, fixed);
+      return SyntaxNode.quoteMarkdown(markdown, enclosingQuotes(startNode).length);
     }
 
     // Cross-node: walk all block nodes in document order.
@@ -81,24 +113,32 @@ export class ClipboardHandler extends ClipboardHandlerData {
     const parts = [];
     for (let i = 0; i < nodes.length; i++) {
       const node = nodes[i];
+      let markdown;
       if (node.id === startNodeId) {
         // First node: take from startOffset to end of content.
         const slice = node.content.substring(startOffset);
-        parts.push(
-          ClipboardHandler.nodeToPartialMarkdown(node, ClipboardHandler.fixHtmlTags(slice)),
+        markdown = ClipboardHandler.nodeToPartialMarkdown(
+          node,
+          ClipboardHandler.fixHtmlTags(slice),
         );
       } else if (node.id === endNodeId) {
         // Last node: take from start of content to endOffset.
         const slice = node.content.substring(0, endOffset);
-        parts.push(
-          ClipboardHandler.nodeToPartialMarkdown(node, ClipboardHandler.fixHtmlTags(slice)),
+        markdown = ClipboardHandler.nodeToPartialMarkdown(
+          node,
+          ClipboardHandler.fixHtmlTags(slice),
         );
       } else {
         // Intermediate node: full markdown.
-        parts.push(node.toMarkdown());
+        markdown = node.toMarkdown();
       }
+      // The blank line between two blocks is inside the quotes they share.
+      if (i > 0) {
+        parts.push(`\n${SyntaxNode.quoteMarkdown(``, sharedQuoteDepth(nodes[i - 1], node))}\n`);
+      }
+      parts.push(SyntaxNode.quoteMarkdown(markdown, enclosingQuotes(node).length));
     }
-    return parts.join(`\n\n`);
+    return parts.join(``);
   }
 
   /**

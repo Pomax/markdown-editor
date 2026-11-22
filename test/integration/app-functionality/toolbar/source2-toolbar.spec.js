@@ -235,6 +235,45 @@ test.describe(`Source2 toolbar — block formatting via button click`, () => {
     expect(value).toBe(`> a quote`);
   });
 
+  test(`blockquote button on a quoted line takes one quote level off`, async () => {
+    await loadContent(page, `> > a quote`);
+    await setSource2View(page);
+
+    const textarea = page.locator(`#editor.source-view-v2 textarea`);
+    await textarea.focus();
+    await textarea.evaluate((/** @type {HTMLTextAreaElement} */ el) => el.setSelectionRange(6, 6));
+
+    await clickToolbarButton(page, `blockquote`);
+
+    expect(await getTextareaValue(page)).toBe(`> a quote`);
+  });
+
+  test(`heading button on a quoted line keeps the quote marker`, async () => {
+    await loadContent(page, `> a heading`);
+    await setSource2View(page);
+
+    const textarea = page.locator(`#editor.source-view-v2 textarea`);
+    await textarea.focus();
+    await textarea.evaluate((/** @type {HTMLTextAreaElement} */ el) => el.setSelectionRange(4, 4));
+
+    await clickToolbarButton(page, `heading1`);
+
+    expect(await getTextareaValue(page)).toBe(`> # a heading`);
+  });
+
+  test(`paragraph button on a quoted heading keeps the quote marker`, async () => {
+    await loadContent(page, `> # a heading`);
+    await setSource2View(page);
+
+    const textarea = page.locator(`#editor.source-view-v2 textarea`);
+    await textarea.focus();
+    await textarea.evaluate((/** @type {HTMLTextAreaElement} */ el) => el.setSelectionRange(6, 6));
+
+    await clickToolbarButton(page, `paragraph`);
+
+    expect(await getTextareaValue(page)).toBe(`> a heading`);
+  });
+
   test(`unordered-list button adds - prefix to the current line`, async () => {
     await loadContent(page, `a list item`);
     await setSource2View(page);

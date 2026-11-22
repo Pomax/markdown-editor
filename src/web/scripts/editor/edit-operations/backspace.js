@@ -21,8 +21,8 @@ export async function handleBackspace(ops) {
   const node = ops.editor.getCurrentBlockNode();
   if (!node || !ops.editor.syntaxTree || !ops.editor.syntaxTree.treeCursor) return;
 
-  // html-block containers are structural (writing view).
-  if (node.type === `html-block` && node.children.length > 0) return;
+  // Containers are structural (writing view).
+  if (node.isContainer()) return;
 
   // Table cell backspace
   if (
@@ -50,7 +50,7 @@ export async function handleBackspace(ops) {
   }
 
   const before = ops.editor.syntaxTree.toMarkdown();
-  /** @type {{ updated?: string[], added?: string[], removed?: string[] }} */
+  /** @type {{ updated?: string[], added?: string[], removed?: string[] } | undefined} */
   let renderHints = { updated: [node.id] };
 
   if (ops.editor.syntaxTree.treeCursor.offset > 0) {
@@ -77,7 +77,14 @@ export async function handleBackspace(ops) {
     const fullLine = ops.editor.buildMarkdownLine(node.type, newContent, node.attributes);
     const parsed = await ops.editor.reparseLine(fullLine);
 
-    if (parsed) {
+    // A line that starts with `> ` becomes a quote around what follows.
+    if (parsed?.type === `blockquote` && fullLine.startsWith(`> `)) {
+      await ops.replaceWithQuote(node, fullLine, oldPrefixLen + left.length);
+      ops.editor.recordAndRender(before);
+      return;
+    }
+
+    if (parsed && parsed.type !== `blockquote`) {
       node.type = parsed.type;
       node.content = parsed.content;
       node.attributes = parsed.attributes;
@@ -151,15 +158,18 @@ export async function handleBackspace(ops) {
       // Merge with the previous node (if any)
       const siblings = ops.editor.getSiblings(node);
       const idx = siblings.indexOf(node);
-      if (idx > 0) {
+      if (idx === 0 && node.parent?.type === `blockquote`) {
+        // The first block of a quote moves out of the quote.
+        ops.editor.liftOutOfQuote(node);
+        ops.editor.syntaxTree.treeCursor = { nodeId: node.id, offset: 0 };
+        renderHints = undefined;
+      } else if (idx > 0) {
         const prev = siblings[idx - 1];
 
-        if (prev.type === `html-block` && prev.children.length > 0) {
-          // Previous sibling is a container html-block.
-
-          // In writing view, merge into the last child
-          // of the html-block container.
-          const lastChild = prev.children[prev.children.length - 1];
+        if (prev.isContainer()) {
+          // Previous sibling is a container: in writing view, merge
+          // into the last block inside it.
+          const lastChild = prev.lastLeaf();
           const lastChildLen = lastChild.content.length;
           lastChild.content += node.content;
           siblings.splice(idx, 1);
