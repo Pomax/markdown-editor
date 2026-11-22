@@ -41,7 +41,7 @@ jobs:
       - run: |
           brew install displayplacer
           displayplacer list
-          displayplacer "id:$(displayplacer list | grep -m1 'Persistent screen id' | cut -d' ' -f4) res:1920x1280"
+          displayplacer "id:$(displayplacer list | grep -m1 'Persistent screen id' | cut -d' ' -f4) res:1600x1200"
           displayplacer list | grep -m1 'Resolution:'
           npm ci --ignore-scripts && npm run setup && npm test
 
