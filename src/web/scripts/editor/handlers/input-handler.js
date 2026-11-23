@@ -8,6 +8,7 @@
 
 /// <reference path="../../../../types.d.ts" />
 
+import { applyTextareaEdit } from '../formatters/source2-formatter.js';
 import { InputHandlerData } from '../types.js';
 
 /**
@@ -84,7 +85,22 @@ export class InputHandler extends InputHandlerData {
    * @param {KeyboardEvent} event
    */
   async handleKeyDown(event) {
+    // Tab by key or by key code: WebKitGTK names Shift+Tab `Unidentified`.
+    const isTab = event.key === `Tab` || event.code === `Tab`;
+    const isPlainTab = isTab && !event.ctrlKey && !event.metaKey && !event.altKey;
+
     if (this.editor.viewMode === `source2`) {
+      // In the source view Tab types a tab character, and Shift+Tab does nothing.
+      if (isPlainTab) {
+        event.preventDefault();
+        const textarea = this.editor.sourceRendererV2.textarea;
+        if (!event.shiftKey && textarea) {
+          const { selectionStart, selectionEnd } = textarea;
+          const caret = selectionStart + 1;
+          applyTextareaEdit(textarea, selectionStart, selectionEnd, `\t`, caret, caret);
+        }
+        return;
+      }
       await this.handleHistoryKey(event);
       return;
     }
@@ -161,14 +177,20 @@ export class InputHandler extends InputHandlerData {
       return;
     }
 
-    // Tab by key or by key code: WebKitGTK names Shift+Tab `Unidentified`.
-    const isTab = event.key === `Tab` || event.code === `Tab`;
     if (isTab && this.editor.viewMode === `writing`) {
       this.editor.syncCursorFromDOM();
       const node = this.editor.getCurrentBlockNode();
-      if (node?.type === `table` && this.editor.syntaxTree?.treeCursor?.cellRow !== undefined) {
+      if (node?.type === `table`) {
+        if (this.editor.syntaxTree?.treeCursor?.cellRow !== undefined) {
+          event.preventDefault();
+          this.editor.tableManager.handleTableTab(event.shiftKey);
+        }
+        return;
+      }
+      // Tab never moves the focus out of the document.
+      if (isPlainTab) {
         event.preventDefault();
-        this.editor.tableManager.handleTableTab(event.shiftKey);
+        await this.editor.editOperations.handleTab(event.shiftKey);
         return;
       }
     }

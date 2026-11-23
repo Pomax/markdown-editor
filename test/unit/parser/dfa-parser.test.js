@@ -234,6 +234,27 @@ describe(`DFAParser`, () => {
       assert.strictEqual(quote.children[4].content, `**bold** text`);
     });
 
+    it(`should treat quotes that follow one another as one quote`, async () => {
+      const tree = await parser.parse(`> first\n\n> second`);
+      assert.strictEqual(tree.children.length, 1);
+      assert.deepStrictEqual(
+        tree.children[0].children.map((child) => child.content),
+        [`first`, `second`],
+      );
+      assert.strictEqual(tree.toMarkdown(), `> first\n>\n> second`);
+    });
+
+    it(`should treat nested quotes that follow one another as one nested quote`, async () => {
+      const tree = await parser.parse(`> > first\n>\n> > second`);
+      assert.strictEqual(tree.children.length, 1);
+      const outer = tree.children[0];
+      assert.strictEqual(outer.children.length, 1);
+      assert.deepStrictEqual(
+        outer.children[0].children.map((child) => child.content),
+        [`first`, `second`],
+      );
+    });
+
     it(`should give quote content its document line numbers`, async () => {
       const tree = await parser.parse(`intro\n\n> outer\n> > inner`);
       assert.strictEqual(tree.children.length, 2);

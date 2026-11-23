@@ -16,6 +16,7 @@ import { insertTextAtCursor } from './insert.js';
 import { handleBackspace } from './backspace.js';
 import { handleDelete } from './delete.js';
 import { handleEnterKey } from './enter.js';
+import { handleTab } from './tab.js';
 import { EditOperationsData } from '../types.js';
 
 /**
@@ -178,5 +179,13 @@ export class EditOperations extends EditOperationsData {
    */
   handleEnterKey() {
     handleEnterKey(this);
+  }
+
+  /**
+   * Handles Tab and Shift+Tab in the writing view.
+   * @param {boolean} shift - Whether Shift was held.
+   */
+  async handleTab(shift) {
+    await handleTab(this, shift);
   }
 }
