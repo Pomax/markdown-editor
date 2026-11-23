@@ -142,6 +142,7 @@ class DFAParser {
       }
     }
 
+    SyntaxNode.mergeAdjacentQuotes(tree.children);
     return tree;
   }
 

@@ -160,7 +160,7 @@ function commonIndent(text) {
  * @param {number} cursorStart - New selectionStart
  * @param {number} cursorEnd - New selectionEnd
  */
-function applyTextareaEdit(
+export function applyTextareaEdit(
   textarea,
   replaceStart,
   replaceEnd,

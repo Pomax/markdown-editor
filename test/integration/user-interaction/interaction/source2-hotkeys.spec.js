@@ -151,6 +151,34 @@ test.describe(`Source2 hotkey formatting`, () => {
     expect(value).toBe(`> a quote`);
   });
 
+  test(`Tab types a tab character at the caret`, async () => {
+    await loadContent(page, `a quote`);
+    await setSource2View(page);
+
+    const textarea = page.locator(`#editor.source-view-v2 textarea`);
+    await textarea.focus();
+    await textarea.evaluate((/** @type {HTMLTextAreaElement} */ el) => el.setSelectionRange(2, 2));
+    await page.keyboard.press(`Tab`);
+    await page.waitForTimeout(200);
+
+    expect(await getTextareaValue()).toBe(`a \tquote`);
+    await expect(textarea).toBeFocused();
+  });
+
+  test(`Shift+Tab changes nothing and keeps the focus in the textarea`, async () => {
+    await loadContent(page, `a quote`);
+    await setSource2View(page);
+
+    const textarea = page.locator(`#editor.source-view-v2 textarea`);
+    await textarea.focus();
+    await textarea.evaluate((/** @type {HTMLTextAreaElement} */ el) => el.setSelectionRange(2, 2));
+    await page.keyboard.press(`Shift+Tab`);
+    await page.waitForTimeout(200);
+
+    expect(await getTextareaValue()).toBe(`a quote`);
+    await expect(textarea).toBeFocused();
+  });
+
   test(`Ctrl+Shift+- wraps selected text with ~~ delimiters`, async () => {
     await loadContent(page, `strike this out`);
     await setSource2View(page);

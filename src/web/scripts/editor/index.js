@@ -577,6 +577,9 @@ export class Editor extends EditorData {
   recordAndRender(before, hints) {
     if (!this.syntaxTree) return;
 
+    // Quotes that follow one another are one quote.
+    if (SyntaxNode.mergeAdjacentQuotes(this.syntaxTree.children)) hints = undefined;
+
     const addedPara = this.ensureTrailingParagraph();
     if (addedPara && hints) {
       if (!hints.added) hints.added = [];
@@ -909,6 +912,7 @@ export class Editor extends EditorData {
       } else {
         this.wrapInQuote(currentNode);
       }
+      SyntaxNode.mergeAdjacentQuotes(this.syntaxTree.children);
       this.undoManager.recordChange({ type: `changeType`, before, after: this.getMarkdown() });
       this.fullRenderAndPlaceCursor();
       this.setUnsavedChanges(true);

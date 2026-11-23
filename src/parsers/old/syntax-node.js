@@ -178,15 +178,16 @@ export class SyntaxNode {
   }
 
   /**
-   * Returns the nearest block-level ancestor (an INLINE_CONTENT_TYPES node
-   * or a blockquote), or `this` if this node is itself a block-level node.
+   * Returns the nearest block-level ancestor (an INLINE_CONTENT_TYPES node,
+   * or any node inside a container), or `this` if this node is itself a
+   * block-level node.
    * @returns {SyntaxNode}
    */
   getBlockParent() {
     /** @type {SyntaxNode} */
     let node = this;
     while (node.parent) {
-      if (INLINE_CONTENT_TYPES.has(node.type) || node.type === `blockquote`) return node;
+      if (INLINE_CONTENT_TYPES.has(node.type) || node.parent.isContainer()) return node;
       node = node.parent;
     }
     return node;
@@ -457,6 +458,35 @@ export class SyntaxNode {
         .join(`\n`);
     }
     return quoted;
+  }
+
+  /**
+   * Merges each run of blockquotes that follow one another among sibling
+   * blocks into the first quote of the run, and does the same among the
+   * blocks inside every container, since quotes that follow one another
+   * are one quote.
+   * @param {SyntaxNode[]} blocks
+   * @returns {boolean} Whether any quotes were merged.
+   */
+  static mergeAdjacentQuotes(blocks) {
+    let merged = false;
+    for (let i = blocks.length - 1; i > 0; i--) {
+      const previous = blocks[i - 1];
+      const next = blocks[i];
+      if (previous.type !== `blockquote` || next.type !== `blockquote`) continue;
+      for (const child of next.children) {
+        previous.appendChild(child);
+      }
+      next.children = [];
+      previous.endLine = next.endLine;
+      blocks.splice(i, 1);
+      next.parent = undefined;
+      merged = true;
+    }
+    for (const block of blocks) {
+      if (block.isContainer() && SyntaxNode.mergeAdjacentQuotes(block.children)) merged = true;
+    }
+    return merged;
   }
 
   /**

@@ -64,6 +64,16 @@ test(`typing "> " at the start of a quoted paragraph puts it in a quote one leve
   expect((await writingViewTextAroundCaret(page, 0, 4))?.after).toBe(`Some`);
 });
 
+test(`typing in a code block in a quote types into the code block`, async () => {
+  await loadContent(page, `> \`\`\`\n> code\n> \`\`\`\n\nafter`);
+  await clickWritingViewBetween(page, `co`, `de`);
+  await page.keyboard.type(`x`);
+
+  await expect
+    .poll(() => page.evaluate(() => window.editorAPI?.getContent()))
+    .toBe(`> \`\`\`\n> coxde\n> \`\`\`\n\nafter`);
+});
+
 test(`Enter on an empty last paragraph of a quote moves that paragraph out of the quote`, async () => {
   await loadContent(page, `> quoted\n\nafter`);
   await clickWritingViewBetween(page, `quoted`, `after`);
