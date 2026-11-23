@@ -123,9 +123,35 @@ export async function handleBackspace(ops) {
       }
     }
 
-    // If this is a heading (or blockquote, list-item, etc.) with an
-    // empty content, convert it back to an empty paragraph.
-    if (node.type !== `paragraph` && node.content === ``) {
+    // At the start of a paragraph, heading or list item with a block above
+    // it, an empty paragraph or list item above is empty space, which is
+    // removed, keeping this block.  Any other block above gets the text of
+    // a heading, or of a list item with content, joined to it, as a
+    // paragraph's is.
+    const blockSiblings = ops.editor.getSiblings(node);
+    const above = blockSiblings[blockSiblings.indexOf(node) - 1];
+    const isTextBlock =
+      node.type === `paragraph` || node.type.startsWith(`heading`) || node.type === `list-item`;
+    const aboveIsEmpty =
+      above !== undefined &&
+      (above.type === `paragraph` || above.type === `list-item`) &&
+      above.content === ``;
+    const joinsUp =
+      above !== undefined &&
+      (node.type.startsWith(`heading`) || (node.type === `list-item` && node.content !== ``));
+
+    if (isTextBlock && aboveIsEmpty) {
+      blockSiblings.splice(blockSiblings.indexOf(above), 1);
+      above.parent = undefined;
+      ops.editor.syntaxTree.treeCursor = { nodeId: node.id, offset: 0 };
+      const renumbered = ops.editor.renumberAdjacentList(
+        blockSiblings,
+        blockSiblings.indexOf(node),
+      );
+      renderHints = { updated: [node.id, ...renumbered], removed: [above.id] };
+    } else if (!joinsUp && node.type !== `paragraph` && node.content === ``) {
+      // If this is a heading (or blockquote, list-item, etc.) with an
+      // empty content, convert it back to an empty paragraph.
       const wasListItem = node.type === `list-item`;
       node.type = `paragraph`;
       node.content = ``;
@@ -139,7 +165,7 @@ export async function handleBackspace(ops) {
           renderHints = { updated: [node.id, ...renumbered] };
         }
       }
-    } else if (node.type !== `paragraph`) {
+    } else if (!joinsUp && node.type !== `paragraph`) {
       // Non-paragraph with content and cursor at start: demote to paragraph,
       // keeping the content.
       const wasListItem = node.type === `list-item`;
@@ -188,7 +214,9 @@ export async function handleBackspace(ops) {
             nodeId: prev.id,
             offset: prevLen,
           };
-          renderHints = { updated: [prev.id], removed: [node.id] };
+          const renumbered =
+            node.type === `list-item` ? ops.editor.renumberAdjacentList(siblings, idx - 1) : [];
+          renderHints = { updated: [prev.id, ...renumbered], removed: [node.id] };
         }
       }
       // If idx === 0 there is nothing to merge into — do nothing.
