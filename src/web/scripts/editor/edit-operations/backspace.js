@@ -126,34 +126,16 @@ export async function handleBackspace(ops) {
     // If this is a heading (or blockquote, list-item, etc.) with an
     // empty content, convert it back to an empty paragraph.
     if (node.type !== `paragraph` && node.content === ``) {
-      const wasListItem = node.type === `list-item`;
       node.type = `paragraph`;
       node.content = ``;
       node.attributes = {};
       ops.editor.syntaxTree.treeCursor = { nodeId: node.id, offset: 0 };
-      if (wasListItem) {
-        const siblings = ops.editor.getSiblings(node);
-        const idx = siblings.indexOf(node);
-        const renumbered = ops.editor.renumberAdjacentList(siblings, idx);
-        if (renumbered.length) {
-          renderHints = { updated: [node.id, ...renumbered] };
-        }
-      }
     } else if (node.type !== `paragraph`) {
       // Non-paragraph with content and cursor at start: demote to paragraph,
       // keeping the content.
-      const wasListItem = node.type === `list-item`;
       node.type = `paragraph`;
       node.attributes = {};
       ops.editor.syntaxTree.treeCursor = { nodeId: node.id, offset: 0 };
-      if (wasListItem) {
-        const siblings = ops.editor.getSiblings(node);
-        const idx = siblings.indexOf(node);
-        const renumbered = ops.editor.renumberAdjacentList(siblings, idx);
-        if (renumbered.length) {
-          renderHints = { updated: [node.id, ...renumbered] };
-        }
-      }
     } else {
       // Merge with the previous node (if any)
       const siblings = ops.editor.getSiblings(node);

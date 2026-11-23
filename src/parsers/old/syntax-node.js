@@ -299,7 +299,7 @@ export class SyntaxNode {
       }
       case `list-item`: {
         const indent = `  `.repeat(this.attributes.indent || 0);
-        const marker = this.attributes.ordered ? `${this.attributes.number || 1}. ` : `- `;
+        const marker = this.attributes.ordered ? `1. ` : `- `;
         const checkbox =
           typeof this.attributes.checked === `boolean`
             ? this.attributes.checked
