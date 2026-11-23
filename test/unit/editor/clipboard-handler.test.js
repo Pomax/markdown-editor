@@ -148,10 +148,10 @@ describe(`ClipboardHandler.nodeToPartialMarkdown`, () => {
     assert.equal(ClipboardHandler.nodeToPartialMarkdown(node, `item`), `- item`);
   });
 
-  it(`wraps ordered list-item with number marker`, () => {
+  it(`wraps ordered list-item with a 1. marker`, () => {
     const node = new SyntaxNode(`list-item`, `item text`);
-    node.attributes = { ordered: true, indent: 0, number: 3 };
-    assert.equal(ClipboardHandler.nodeToPartialMarkdown(node, `text`), `3. text`);
+    node.attributes = { ordered: true, indent: 0 };
+    assert.equal(ClipboardHandler.nodeToPartialMarkdown(node, `text`), `1. text`);
   });
 
   it(`wraps checklist item with checkbox prefix`, () => {

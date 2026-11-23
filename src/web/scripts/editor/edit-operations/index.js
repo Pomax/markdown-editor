@@ -78,7 +78,6 @@ export class EditOperations extends EditOperationsData {
 
     const siblings = this.editor.getSiblings(node);
     const idx = siblings.indexOf(node);
-    const wasListItem = node.type === `list-item`;
     const parent = node.parent;
 
     // Remove the empty node from the tree.
@@ -95,18 +94,6 @@ export class EditOperations extends EditOperationsData {
     // Remove from updated hints — it no longer exists.
     if (result.hints.updated) {
       result.hints.updated = result.hints.updated.filter((id) => id !== node.id);
-    }
-
-    // Renumber adjacent ordered list items after removing a list item.
-    if (wasListItem && siblings.length > 0) {
-      const renumberIdx = Math.min(idx, siblings.length - 1);
-      const renumbered = this.editor.renumberAdjacentList(siblings, renumberIdx);
-      for (const id of renumbered) {
-        if (!result.hints.updated) result.hints.updated = [];
-        if (!result.hints.updated.includes(id)) {
-          result.hints.updated.push(id);
-        }
-      }
     }
 
     // If document is now empty, insert a fresh paragraph.

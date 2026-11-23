@@ -219,8 +219,6 @@ interface NodeAttributes {
     indent?: number;
     /** Whether a list is ordered. */
     ordered?: boolean;
-    /** Number for ordered list items. */
-    number?: number;
     /** URL for links and images. */
     url?: string;
     /** Title for links and images. */

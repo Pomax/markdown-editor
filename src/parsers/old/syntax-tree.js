@@ -387,7 +387,6 @@ export class SyntaxTree {
         node.attributes = {
           ordered: !!node.attributes.ordered,
           indent: node.attributes.indent || 0,
-          ...(node.attributes.ordered ? { number: node.attributes.number || 1 } : {}),
           ...(typeof node.attributes.checked === `boolean`
             ? { checked: node.attributes.checked }
             : {}),

@@ -103,15 +103,12 @@ export function handleEnterKey(ops) {
   if (node.type === `list-item`) {
     if (contentBefore === `` && contentAfter === ``) {
       // Empty list item → exit list: convert to empty paragraph
-      const siblings = ops.editor.getSiblings(node);
-      const idx = siblings.indexOf(node);
       node.type = `paragraph`;
       node.content = ``;
       node.attributes = {};
       ops.editor.syntaxTree.treeCursor = { nodeId: node.id, offset: 0 };
-      const renumbered = ops.editor.renumberAdjacentList(siblings, idx);
       /** @type {{ updated: string[], removed?: string[] }} */
-      const listHints = { updated: [node.id, ...renumbered] };
+      const listHints = { updated: [node.id] };
       if (rangeRemovedIds.length > 0) listHints.removed = rangeRemovedIds;
       ops.editor.recordAndRender(before, listHints);
       return;
@@ -127,9 +124,6 @@ export function handleEnterKey(ops) {
       ordered: node.attributes.ordered,
       indent: node.attributes.indent || 0,
     };
-    if (node.attributes.ordered) {
-      newAttrs.number = (node.attributes.number || 1) + 1;
-    }
     if (typeof node.attributes.checked === `boolean`) {
       newAttrs.checked = false;
     }
@@ -140,13 +134,10 @@ export function handleEnterKey(ops) {
     siblings.splice(atStart ? idx : idx + 1, 0, newItem);
     if (node.parent) newItem.parent = node.parent;
 
-    // Renumber subsequent ordered items in the same run
-    const renumbered = ops.editor.renumberAdjacentList(siblings, idx);
-
     ops.editor.syntaxTree.treeCursor = { nodeId: atStart ? node.id : newItem.id, offset: 0 };
     /** @type {{ updated: string[], added: string[], removed?: string[] }} */
     const listHints = {
-      updated: [node.id, ...renumbered],
+      updated: [node.id],
       added: [newItem.id],
     };
     if (rangeRemovedIds.length > 0) listHints.removed = rangeRemovedIds;

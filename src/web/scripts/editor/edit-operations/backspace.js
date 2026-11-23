@@ -144,42 +144,20 @@ export async function handleBackspace(ops) {
       blockSiblings.splice(blockSiblings.indexOf(above), 1);
       above.parent = undefined;
       ops.editor.syntaxTree.treeCursor = { nodeId: node.id, offset: 0 };
-      const renumbered = ops.editor.renumberAdjacentList(
-        blockSiblings,
-        blockSiblings.indexOf(node),
-      );
-      renderHints = { updated: [node.id, ...renumbered], removed: [above.id] };
+      renderHints = { updated: [node.id], removed: [above.id] };
     } else if (!joinsUp && node.type !== `paragraph` && node.content === ``) {
       // If this is a heading (or blockquote, list-item, etc.) with an
       // empty content, convert it back to an empty paragraph.
-      const wasListItem = node.type === `list-item`;
       node.type = `paragraph`;
       node.content = ``;
       node.attributes = {};
       ops.editor.syntaxTree.treeCursor = { nodeId: node.id, offset: 0 };
-      if (wasListItem) {
-        const siblings = ops.editor.getSiblings(node);
-        const idx = siblings.indexOf(node);
-        const renumbered = ops.editor.renumberAdjacentList(siblings, idx);
-        if (renumbered.length) {
-          renderHints = { updated: [node.id, ...renumbered] };
-        }
-      }
     } else if (!joinsUp && node.type !== `paragraph`) {
       // Non-paragraph with content and cursor at start: demote to paragraph,
       // keeping the content.
-      const wasListItem = node.type === `list-item`;
       node.type = `paragraph`;
       node.attributes = {};
       ops.editor.syntaxTree.treeCursor = { nodeId: node.id, offset: 0 };
-      if (wasListItem) {
-        const siblings = ops.editor.getSiblings(node);
-        const idx = siblings.indexOf(node);
-        const renumbered = ops.editor.renumberAdjacentList(siblings, idx);
-        if (renumbered.length) {
-          renderHints = { updated: [node.id, ...renumbered] };
-        }
-      }
     } else {
       // Merge with the previous node (if any)
       const siblings = ops.editor.getSiblings(node);
@@ -214,9 +192,7 @@ export async function handleBackspace(ops) {
             nodeId: prev.id,
             offset: prevLen,
           };
-          const renumbered =
-            node.type === `list-item` ? ops.editor.renumberAdjacentList(siblings, idx - 1) : [];
-          renderHints = { updated: [prev.id, ...renumbered], removed: [node.id] };
+          renderHints = { updated: [prev.id], removed: [node.id] };
         }
       }
       // If idx === 0 there is nothing to merge into — do nothing.
