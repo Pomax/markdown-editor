@@ -128,7 +128,7 @@ describe(`SyntaxNode`, () => {
 
     it(`should convert ordered list-item to markdown`, () => {
       const node = new SyntaxNode(`list-item`, `Item`);
-      node.attributes = { ordered: true, number: 1, indent: 0 };
+      node.attributes = { ordered: true, indent: 0 };
       assert.strictEqual(node.toMarkdown(), `1. Item`);
     });
 

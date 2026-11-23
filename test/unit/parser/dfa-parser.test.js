@@ -418,12 +418,12 @@ describe(`DFAParser`, () => {
       assert.strictEqual(tree.children.length, 1);
       assert.strictEqual(tree.children[0].type, `list-item`);
       assert.strictEqual(tree.children[0].attributes.ordered, true);
-      assert.strictEqual(tree.children[0].attributes.number, 1);
+      assert.strictEqual(tree.children[0].content, `Item 1`);
     });
 
-    it(`should parse ordered list items with different numbers`, async () => {
-      const tree = await parser.parse(`3. Third item`);
-      assert.strictEqual(tree.children[0].attributes.number, 3);
+    it(`should write every numbered list item as 1.`, async () => {
+      const tree = await parser.parse(`3. Third item\n7. Seventh item\n  12. Nested item`);
+      assert.strictEqual(tree.toMarkdown(), `1. Third item\n1. Seventh item\n  1. Nested item`);
     });
 
     it(`should parse indented list items`, async () => {

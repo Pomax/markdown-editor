@@ -539,13 +539,10 @@ class DFAParser {
     }
     const indent = Math.floor(spaces / 2);
 
-    // Collect digit chars for the number
-    let numStr = ``;
+    // Skip the number: every ordered list item is written as `1.`
     while (ctx.pos < ctx.tokens.length && ctx.tokens[ctx.pos].type === `DIGIT`) {
-      numStr += ctx.tokens[ctx.pos].value;
       ctx.pos++;
     }
-    const number = Number.parseInt(numStr, 10);
 
     // Skip DOT
     ctx.pos++;
@@ -557,7 +554,7 @@ class DFAParser {
     const content = this.consumeToEndOfLine(ctx);
 
     const node = new SyntaxNode(`list-item`, content);
-    node.attributes = { ordered: true, number, indent };
+    node.attributes = { ordered: true, indent };
     node.startLine = startLine;
     node.endLine = startLine;
     return node;

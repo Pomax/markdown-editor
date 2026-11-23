@@ -178,7 +178,7 @@ export class ClipboardHandler extends ClipboardHandlerData {
       }
       case `list-item`: {
         const indent = `  `.repeat(node.attributes.indent || 0);
-        const marker = node.attributes.ordered ? `${node.attributes.number || 1}. ` : `- `;
+        const marker = node.attributes.ordered ? `1. ` : `- `;
         const checkbox =
           typeof node.attributes.checked === `boolean`
             ? node.attributes.checked

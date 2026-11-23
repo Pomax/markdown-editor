@@ -189,7 +189,7 @@ test(`heading button on list item converts to heading`, async () => {
   expect(third).toMatch(/^- Item after/);
 });
 
-test(`Enter in ordered list creates item with incremented number`, async () => {
+test(`Enter in ordered list creates an item, and every item is written as 1.`, async () => {
   await loadContent(page, `1. First\n2. Second\n`);
   await setWritingView(page);
 
@@ -213,8 +213,8 @@ test(`Enter in ordered list creates item with incremented number`, async () => {
   const third = await getSourceLineText(page, 2);
 
   expect(first).toMatch(/^1\. First/);
-  expect(second).toMatch(/^2\. Inserted/);
-  expect(third).toMatch(/^3\. Second/);
+  expect(second).toMatch(/^1\. Inserted/);
+  expect(third).toMatch(/^1\. Second/);
 });
 
 test(`toggling off a list item converts the entire contiguous list to paragraphs`, async () => {
@@ -259,11 +259,11 @@ test(`switching list type converts the entire contiguous list`, async () => {
   const second = await getSourceLineText(page, 1);
   const third = await getSourceLineText(page, 2);
   expect(first).toMatch(/^1\. Alpha/);
-  expect(second).toMatch(/^2\. Beta/);
-  expect(third).toMatch(/^3\. Gamma/);
+  expect(second).toMatch(/^1\. Beta/);
+  expect(third).toMatch(/^1\. Gamma/);
 });
 
-test(`Enter on empty middle ordered item renumbers remaining items`, async () => {
+test(`removing a middle ordered item leaves the remaining items written as 1.`, async () => {
   await loadContent(page, `1. Alpha\n2. Beta\n3. Gamma\n`);
   await setWritingView(page);
 
@@ -272,8 +272,7 @@ test(`Enter on empty middle ordered item renumbers remaining items`, async () =>
   await line.click();
   await page.waitForTimeout(200);
 
-  // Select all text in Beta and delete it — the empty item is removed
-  // automatically and remaining items are renumbered.
+  // Select all text in Beta and delete it: the empty item is removed.
   await page.keyboard.press(`${MOD}+a`);
   await page.keyboard.press(`Backspace`);
   await page.waitForTimeout(200);
@@ -282,9 +281,8 @@ test(`Enter on empty middle ordered item renumbers remaining items`, async () =>
 
   const first = await getSourceLineText(page, 0);
   const second = await getSourceLineText(page, 1);
-  // Alpha keeps its number, Gamma renumbered to 2 (Beta was removed)
   expect(first).toMatch(/^1\. Alpha/);
-  expect(second).toMatch(/^2\. Gamma/);
+  expect(second).toMatch(/^1\. Gamma/);
 });
 
 test(`pasting multi-line markdown with list items creates correct nodes`, async () => {
