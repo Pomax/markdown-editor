@@ -17,6 +17,7 @@ import { expect, test } from '@playwright/test';
 import {
   HOME,
   MOD,
+  clickWritingViewBetween,
   closeApp,
   getSourceLineText,
   launchApp,
@@ -283,6 +284,44 @@ test(`removing a middle ordered item leaves the remaining items written as 1.`, 
   const second = await getSourceLineText(page, 1);
   expect(first).toMatch(/^1\. Alpha/);
   expect(second).toMatch(/^1\. Gamma/);
+});
+
+test(`Enter at the start of a list item with content puts an empty item above it and keeps the item`, async () => {
+  await loadContent(page, `- [x] done\n- [ ] next`);
+  await setWritingView(page);
+  await clickWritingViewBetween(page, `d`, `one`);
+  await page.keyboard.press(HOME);
+  await page.keyboard.press(`Enter`);
+  await page.keyboard.type(`x`);
+
+  await expect
+    .poll(() => page.evaluate(() => window.editorAPI?.getContent()))
+    .toBe(`- [ ] \n- [x] xdone\n- [ ] next`);
+});
+
+test(`Backspace at the start of a list item with an empty item above it removes that item and keeps the item`, async () => {
+  await loadContent(page, `- one\n- two`);
+  await setWritingView(page);
+  await clickWritingViewBetween(page, `tw`, `o`);
+  await page.keyboard.press(HOME);
+  await page.keyboard.press(`Enter`);
+  await page.keyboard.press(`Backspace`);
+  await page.keyboard.type(`x`);
+
+  await expect
+    .poll(() => page.evaluate(() => window.editorAPI?.getContent()))
+    .toBe(`- one\n- xtwo`);
+});
+
+test(`Backspace at the start of a list item with text above it joins its text to that text`, async () => {
+  await loadContent(page, `- one\n- two`);
+  await setWritingView(page);
+  await clickWritingViewBetween(page, `tw`, `o`);
+  await page.keyboard.press(HOME);
+  await page.keyboard.press(`Backspace`);
+  await page.keyboard.type(`x`);
+
+  await expect.poll(() => page.evaluate(() => window.editorAPI?.getContent())).toBe(`- onextwo`);
 });
 
 test(`pasting multi-line markdown with list items creates correct nodes`, async () => {

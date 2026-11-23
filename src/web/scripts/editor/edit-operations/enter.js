@@ -114,9 +114,11 @@ export function handleEnterKey(ops) {
       return;
     }
 
-    // Split: current item keeps text before cursor,
-    // new item gets text after cursor.
-    node.content = contentBefore;
+    // Split: current item keeps text before cursor, new item gets text
+    // after cursor.  At the start of the item, the new item goes above it,
+    // empty, moving the item down.
+    const atStart = contentBefore === ``;
+    if (!atStart) node.content = contentBefore;
     /** @type {NodeAttributes} */
     const newAttrs = {
       ordered: node.attributes.ordered,
@@ -125,14 +127,14 @@ export function handleEnterKey(ops) {
     if (typeof node.attributes.checked === `boolean`) {
       newAttrs.checked = false;
     }
-    const newItem = new SyntaxNode(`list-item`, contentAfter);
+    const newItem = new SyntaxNode(`list-item`, atStart ? `` : contentAfter);
     newItem.attributes = newAttrs;
     const siblings = ops.editor.getSiblings(node);
     const idx = siblings.indexOf(node);
-    siblings.splice(idx + 1, 0, newItem);
+    siblings.splice(atStart ? idx : idx + 1, 0, newItem);
     if (node.parent) newItem.parent = node.parent;
 
-    ops.editor.syntaxTree.treeCursor = { nodeId: newItem.id, offset: 0 };
+    ops.editor.syntaxTree.treeCursor = { nodeId: atStart ? node.id : newItem.id, offset: 0 };
     /** @type {{ updated: string[], added: string[], removed?: string[] }} */
     const listHints = {
       updated: [node.id],
@@ -140,6 +142,24 @@ export function handleEnterKey(ops) {
     };
     if (rangeRemovedIds.length > 0) listHints.removed = rangeRemovedIds;
     ops.editor.recordAndRender(before, listHints);
+    return;
+  }
+
+  // Enter at the start of a heading, or of a paragraph with content, puts
+  // an empty paragraph above it, moving the block down.
+  if (
+    contentBefore === `` &&
+    (node.type.startsWith(`heading`) || (node.type === `paragraph` && node.content !== ``))
+  ) {
+    const paragraph = new SyntaxNode(`paragraph`, ``);
+    const siblings = ops.editor.getSiblings(node);
+    siblings.splice(siblings.indexOf(node), 0, paragraph);
+    if (node.parent) paragraph.parent = node.parent;
+    ops.editor.syntaxTree.treeCursor = { nodeId: node.id, offset: 0 };
+    /** @type {{ updated: string[], added: string[], removed?: string[] }} */
+    const headingHints = { updated: [node.id], added: [paragraph.id] };
+    if (rangeRemovedIds.length > 0) headingHints.removed = rangeRemovedIds;
+    ops.editor.recordAndRender(before, headingHints);
     return;
   }
 
