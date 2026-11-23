@@ -1,5 +1,9 @@
 # Release Log
 
+## v3.1.0
+
+Several bug fixes related to markdown parsing and input handling
+
 ## v3.0.0
 
 This is a port from Electron (Node.js) to Tauri (Rust + native webview) which turns the app from an idiotic 300MB into something around five. Not five hundred, just five.
