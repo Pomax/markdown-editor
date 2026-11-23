@@ -256,7 +256,7 @@ pub fn start(app: AppHandle) {
             let id = request.get("id").cloned().unwrap_or(Value::Null);
             let method = request.get("method").and_then(Value::as_str).unwrap_or("");
             let params = request.get("params").cloned().unwrap_or(Value::Null);
-            if matches!(method, "page.evaluate" | "input") {
+            if matches!(method, "page.evaluate" | "input" | "windowState") {
                 let app = app.clone();
                 let method = method.to_string();
                 std::thread::spawn(move || match waiting_hook(&app, &method, &params) {
@@ -276,6 +276,9 @@ pub fn start(app: AppHandle) {
 fn waiting_hook(app: &AppHandle, method: &str, params: &Value) -> Result<Value, String> {
     if method == "input" {
         return run_input(app, params);
+    }
+    if method == "windowState" {
+        return window_state_on_main_thread(app);
     }
     let window = app
         .get_webview_window("main")
@@ -305,10 +308,6 @@ fn run_input(_app: &AppHandle, _params: &Value) -> Result<Value, String> {
 fn dispatch(app: &AppHandle, method: &str, params: &Value) -> Value {
     match method {
         "windowCount" => json!(app.webview_windows().len()),
-        "windowState" => match app.get_webview_window("main") {
-            Some(window) => window_state(app, &window),
-            None => Value::Null,
-        },
         "setWindowBounds" => {
             if let Some(window) = app.get_webview_window("main") {
                 set_window_bounds(&window, params.get("bounds").unwrap_or(&Value::Null));
@@ -486,6 +485,23 @@ fn dispatch(app: &AppHandle, method: &str, params: &Value) -> Value {
 /// but fully transparent, so it never can.
 fn is_seen(window: &tauri::WebviewWindow) -> bool {
     !cfg!(target_os = "macos") && window.is_visible().unwrap_or(false)
+}
+
+/// The main window's state, or null with no window, read on the main
+/// thread, where `outer_rect` asks GTK for the window's frame as it is now.
+fn window_state_on_main_thread(app: &AppHandle) -> Result<Value, String> {
+    let handle = app.clone();
+    let (sender, receiver) = std::sync::mpsc::channel();
+    app.run_on_main_thread(move || {
+        let state = handle
+            .get_webview_window("main")
+            .map_or(Value::Null, |window| window_state(&handle, &window));
+        let _ = sender.send(state);
+    })
+    .map_err(|error| error.to_string())?;
+    receiver
+        .recv()
+        .map_err(|_| "the main thread did not answer".to_string())
 }
 
 /// The window's state: whether it is visible, maximized (the tracked
