@@ -234,7 +234,9 @@ export class CursorManager extends CursorManagerData {
     while (node) {
       if (node === cursorNode) {
         const renderedOff = offset + cursorOffset;
-        const afterFmt = this.isOutsideFormatting(cursorNode, contentEl);
+        const afterFmt =
+          this.isOutsideFormatting(cursorNode, contentEl) ||
+          this.isAtEndOfLink(cursorNode, cursorOffset, contentEl);
         return this.toRawOffset(nodeElement, renderedOff, afterFmt);
       }
       offset += node.textContent?.length ?? 0;
@@ -531,5 +533,27 @@ export class CursorManager extends CursorManagerData {
       el = el.parentNode;
     }
     return el === contentEl;
+  }
+
+  /**
+   * Returns true when the caret at {@link offset} in {@link node} sits at
+   * the end of the text of a link inside {@link contentEl}.
+   *
+   * @param {Node} node
+   * @param {number} offset
+   * @param {Node} contentEl
+   * @returns {boolean}
+   */
+  isAtEndOfLink(node, offset, contentEl) {
+    /** @type {Node|null} */
+    let el = node.parentNode;
+    while (el && el !== contentEl && /** @type {Element} */ (el).tagName !== `A`) {
+      el = el.parentNode;
+    }
+    if (!el || el === contentEl) return false;
+    const range = document.createRange();
+    range.setStart(node, offset);
+    range.setEnd(el, el.childNodes.length);
+    return range.toString() === ``;
   }
 }
