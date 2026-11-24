@@ -64,8 +64,9 @@ export class RangeOperations extends RangeOperationsData {
    * After deletion the cursor is placed at the join point and
    * `editor.treeRange` is cleared.
    *
-   * @returns {{ before: string, hints: { updated?: string[], added?: string[], removed?: string[] } } | undefined}
-   *     The markdown snapshot before the edit and render hints, or undefined
+   * @returns {{ before: string, hints: { updated?: string[], added?: string[], removed?: string[] }, keep?: boolean } | undefined}
+   *     The markdown snapshot before the edit and render hints, and `keep`
+   *     when the emptied block stays as an empty paragraph, or undefined
    *     if there was no range to delete.
    */
   deleteSelectedRange() {
@@ -77,6 +78,17 @@ export class RangeOperations extends RangeOperationsData {
     if (!startNode || !endNode) return undefined;
 
     const before = this.editor.syntaxTree.toMarkdown();
+
+    // A selection on the line of an image selects the image, which becomes
+    // an empty paragraph.
+    if (startNodeId === endNodeId && startNode.type === `image`) {
+      startNode.type = `paragraph`;
+      startNode.content = ``;
+      startNode.attributes = {};
+      this.editor.syntaxTree.treeCursor = { nodeId: startNode.id, offset: 0 };
+      this.editor.treeRange = undefined;
+      return { before, hints: { updated: [startNode.id] }, keep: true };
+    }
 
     if (startNodeId === endNodeId) {
       const left = startNode.content.substring(0, startOffset);
