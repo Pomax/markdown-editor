@@ -71,7 +71,7 @@ function syncVersion() {
   const { version } = JSON.parse(readFileSync(join(root, `package.json`), `utf-8`));
   const releaseLog = readFileSync(join(root, `RELEASE_LOG.md`), `utf-8`);
   if (!releaseLogHasVersion(releaseLog, version)) {
-    console.error(`RELEASE_LOG.md has no "## v${version}" section.`);
+    console.error(`RELEASE_LOG.md has no "## v${version}" section yet.\n`);
     process.exit(1);
   }
   const manifest = join(root, `Cargo.toml`);
