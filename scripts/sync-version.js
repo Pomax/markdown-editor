@@ -1,9 +1,12 @@
 /**
- * @fileoverview The `npm version` hook. When RELEASE_LOG.md has no section
- * for the new version in package.json, it writes nothing and exits with an
- * error, which fails `npm version` before it commits or tags. Otherwise it
- * writes that version into Cargo.toml and Cargo.lock, and into README.md's
- * "Current version" heading and download links.
+ * @fileoverview The `npm version` preversion hook, which runs before npm
+ * writes the new version into package.json and package-lock.json, and
+ * takes that version from npm_new_version. When RELEASE_LOG.md has no
+ * section for it, it writes nothing and exits with an error, which stops
+ * `npm version` with package.json and package-lock.json unchanged.
+ * Otherwise it writes the version into Cargo.toml and Cargo.lock, and into
+ * README.md's "Current version" heading and download links, for the
+ * version hook to stage for npm's version commit.
  * Run with: npm version <version>
  */
 
@@ -64,11 +67,11 @@ export function releaseLogHasVersion(log, version) {
 }
 
 /**
- * Writes package.json's version into Cargo.toml, Cargo.lock and README.md,
- * or exits with an error when RELEASE_LOG.md has no section for it.
+ * Writes npm_new_version into Cargo.toml, Cargo.lock and README.md, or
+ * exits with an error when RELEASE_LOG.md has no section for it.
  */
 function syncVersion() {
-  const { version } = JSON.parse(readFileSync(join(root, `package.json`), `utf-8`));
+  const version = process.env.npm_new_version ?? ``;
   const releaseLog = readFileSync(join(root, `RELEASE_LOG.md`), `utf-8`);
   if (!releaseLogHasVersion(releaseLog, version)) {
     console.error(`RELEASE_LOG.md has no "## v${version}" section yet.\n`);
