@@ -114,7 +114,18 @@ export async function handleDelete(ops) {
     if (idx < siblings.length - 1) {
       const next = siblings[idx + 1];
 
-      if (next.isContainer()) {
+      if ((node.type === `paragraph` || node.type === `list-item`) && node.content === ``) {
+        // An empty paragraph or list item is empty space, which is
+        // removed, keeping the block after it.
+        siblings.splice(idx, 1);
+        node.parent = undefined;
+        const first = next.firstLeaf();
+        ops.editor.syntaxTree.treeCursor =
+          first.type === `table`
+            ? { nodeId: first.id, offset: 0, cellRow: 0, cellCol: 0 }
+            : { nodeId: first.id, offset: 0 };
+        renderHints = { updated: [next.id], removed: [node.id] };
+      } else if (next.isContainer()) {
         // In writing view, merge the first block inside the
         // container into this node.
         const firstChild = next.firstLeaf();

@@ -123,28 +123,32 @@ export async function handleBackspace(ops) {
       }
     }
 
-    // At the start of a paragraph, heading or list item with a block above
-    // it, an empty paragraph or list item above is empty space, which is
-    // removed, keeping this block.  Any other block above gets the text of
-    // a heading, or of a list item with content, joined to it, as a
-    // paragraph's is.
+    // At the start of a block, an empty paragraph or list item above it,
+    // or above the quote or html block it is the first block of, is empty
+    // space, which is removed, keeping this block.  Any other block above
+    // gets the text of a heading, or of a list item with content, joined
+    // to it, as a paragraph's is.
     const blockSiblings = ops.editor.getSiblings(node);
     const above = blockSiblings[blockSiblings.indexOf(node) - 1];
-    const isTextBlock =
-      node.type === `paragraph` || node.type.startsWith(`heading`) || node.type === `list-item`;
-    const aboveIsEmpty =
-      above !== undefined &&
-      (above.type === `paragraph` || above.type === `list-item`) &&
-      above.content === ``;
+    let outer = node;
+    while (outer.parent && ops.editor.getSiblings(outer)[0] === outer) {
+      outer = outer.parent;
+    }
+    const outerSiblings = ops.editor.getSiblings(outer);
+    const empty = outerSiblings[outerSiblings.indexOf(outer) - 1];
+    const emptyAbove =
+      empty !== undefined &&
+      (empty.type === `paragraph` || empty.type === `list-item`) &&
+      empty.content === ``;
     const joinsUp =
       above !== undefined &&
       (node.type.startsWith(`heading`) || (node.type === `list-item` && node.content !== ``));
 
-    if (isTextBlock && aboveIsEmpty) {
-      blockSiblings.splice(blockSiblings.indexOf(above), 1);
-      above.parent = undefined;
+    if (emptyAbove) {
+      outerSiblings.splice(outerSiblings.indexOf(empty), 1);
+      empty.parent = undefined;
       ops.editor.syntaxTree.treeCursor = { nodeId: node.id, offset: 0 };
-      renderHints = { updated: [node.id], removed: [above.id] };
+      renderHints = { updated: [node.id], removed: [empty.id] };
     } else if (!joinsUp && node.type !== `paragraph` && node.content === ``) {
       // If this is a heading (or blockquote, list-item, etc.) with an
       // empty content, convert it back to an empty paragraph.

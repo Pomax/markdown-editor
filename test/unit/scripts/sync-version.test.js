@@ -26,7 +26,10 @@ const pkg = JSON.parse(readFileSync(new URL(`../../../package.json`, import.meta
 describe(`sync-version`, () => {
   it(`syncs before npm version writes package.json, and stages what it synced for the version commit`, () => {
     assert.strictEqual(pkg.scripts.preversion, `node scripts/sync-version.js`);
-    assert.strictEqual(pkg.scripts.version, `git add Cargo.toml Cargo.lock README.md RELEASE_LOG.md`);
+    assert.strictEqual(
+      pkg.scripts.version,
+      `git add Cargo.toml Cargo.lock README.md RELEASE_LOG.md`,
+    );
   });
 
   it(`fails for a new version that the release log has no section for`, () => {
