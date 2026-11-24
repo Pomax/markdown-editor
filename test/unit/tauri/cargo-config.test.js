@@ -37,8 +37,11 @@ describe(`Cargo configuration`, () => {
     );
   });
 
-  it(`follows package.json when npm version changes it`, () => {
-    assert.strictEqual(pkg.scripts.version, `node scripts/sync-cargo-version.js`);
+  it(`follows package.json when npm version changes it, in the tagged commit`, () => {
+    assert.strictEqual(
+      pkg.scripts.version,
+      `node scripts/sync-version.js && git add Cargo.toml Cargo.lock README.md`,
+    );
   });
 
   it(`takes the binaries and the build script from src/tauri`, () => {

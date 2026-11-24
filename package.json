@@ -25,7 +25,7 @@
     "build:test-app": "node scripts/build-test-app.js",
     "test:integration": "node scripts/build-test-app.js && node scripts/test-integration.js",
     "test:real-input": "node scripts/build-test-app.js && node scripts/build-win-runner.js && playwright test --config playwright.real-input.config.js",
-    "version": "node scripts/sync-cargo-version.js"
+    "version": "node scripts/sync-version.js && git add Cargo.toml Cargo.lock README.md RELEASE_LOG.md"
   },
   "keywords": [
     "markdown",
