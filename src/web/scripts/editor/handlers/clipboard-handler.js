@@ -19,7 +19,7 @@ const HTML_OPEN_RE = /<([a-z][a-z0-9]*)\b[^>]*>/gi;
  */
 const HTML_CLOSE_RE = /<\/([a-z][a-z0-9]*)\s*>/gi;
 
-import { SyntaxNode } from '../../../../parsers/old/syntax-node.js';
+import { SyntaxNode, separatorBetween } from '../../../../parsers/old/syntax-node.js';
 import { ClipboardHandlerData } from '../types.js';
 
 /**
@@ -102,7 +102,10 @@ export class ClipboardHandler extends ClipboardHandlerData {
     if (startNodeId === endNodeId) {
       const slice = startNode.content.substring(startOffset, endOffset);
       const fixed = ClipboardHandler.fixHtmlTags(slice);
-      const markdown = ClipboardHandler.nodeToPartialMarkdown(startNode, fixed);
+      const markdown =
+        startNode.type === `list-item`
+          ? fixed
+          : ClipboardHandler.nodeToPartialMarkdown(startNode, fixed);
       return SyntaxNode.quoteMarkdown(markdown, enclosingQuotes(startNode).length);
     }
 
@@ -134,7 +137,12 @@ export class ClipboardHandler extends ClipboardHandlerData {
       }
       // The blank line between two blocks is inside the quotes they share.
       if (i > 0) {
-        parts.push(`\n${SyntaxNode.quoteMarkdown(``, sharedQuoteDepth(nodes[i - 1], node))}\n`);
+        const previous = nodes[i - 1];
+        parts.push(
+          separatorBetween(previous, node) === `\n`
+            ? `\n`
+            : `\n${SyntaxNode.quoteMarkdown(``, sharedQuoteDepth(previous, node))}\n`,
+        );
       }
       parts.push(SyntaxNode.quoteMarkdown(markdown, enclosingQuotes(node).length));
     }

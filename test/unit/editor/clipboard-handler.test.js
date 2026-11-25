@@ -75,6 +75,56 @@ describe(`ClipboardHandler.getSelectedMarkdownWriting`, () => {
     });
     assert.equal(handler.getSelectedMarkdownWriting(), `ore\n\n> first\n>\n> > sec`);
   });
+
+  it(`copies text inside a single list item without its list marker`, async () => {
+    const tree = await parser.parse(`- first item\n- second item`);
+    const item = tree.children[0];
+    const handler = handlerFor(tree, {
+      startNodeId: item.id,
+      startOffset: 0,
+      endNodeId: item.id,
+      endOffset: 5,
+    });
+    assert.equal(handler.getSelectedMarkdownWriting(), `first`);
+  });
+
+  it(`copies text inside a single nested list item without its indent or marker`, async () => {
+    const tree = await parser.parse(`1. top\n  1. nested item`);
+    const item = tree.children[1];
+    const handler = handlerFor(tree, {
+      startNodeId: item.id,
+      startOffset: 0,
+      endNodeId: item.id,
+      endOffset: item.content.length,
+    });
+    assert.equal(handler.getSelectedMarkdownWriting(), `nested item`);
+  });
+
+  it(`copies text inside a single checklist item without its marker or checkbox`, async () => {
+    const tree = await parser.parse(`- [x] done item`);
+    const item = tree.children[0];
+    const handler = handlerFor(tree, {
+      startNodeId: item.id,
+      startOffset: 0,
+      endNodeId: item.id,
+      endOffset: 4,
+    });
+    assert.equal(handler.getSelectedMarkdownWriting(), `done`);
+  });
+
+  it(`copies several list items with one newline between them`, async () => {
+    const markdown = `1. **first** - one\n1. **second** - two\n1. **third** - three`;
+    const tree = await parser.parse(markdown);
+    const first = tree.children[0];
+    const last = tree.children[2];
+    const handler = handlerFor(tree, {
+      startNodeId: first.id,
+      startOffset: 0,
+      endNodeId: last.id,
+      endOffset: last.content.length,
+    });
+    assert.equal(handler.getSelectedMarkdownWriting(), markdown);
+  });
 });
 
 describe(`ClipboardHandler.fixHtmlTags`, () => {

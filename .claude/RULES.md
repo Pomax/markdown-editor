@@ -134,7 +134,7 @@ These rules describe file and shell related actions that MAY NEVER BE PERFORMED 
 - Overwrite a file that exists.
 - Copy then delete, in place of a move.
 - Use CRLF as line ending. They must be LF everywhere, and everywhere means everywhere.
-- Touching any file outside the repository, other than the harness under `~/.claude`.
+- Touching any file outside the repository, other than the harness under `~/.claude` or your scratchpad.
 - Anything destructive that was not explicitly instructed or agreed to as planned action.
 - Run a destructive script to check if that script works.
 - Use git without first being explicitly instructed or agreed to as planned action.
