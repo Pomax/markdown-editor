@@ -43,7 +43,6 @@ These mandatory rules describe actions that MUST BE FOLLOWED AT EVERY STEP BY TH
 - Answer the user's question, then stop.
 - Ask a question and wait for the user to answer it, when anything is unclear.
 - Say plainly when something was added that was not asked for.
-- One sentence of apology when an instruction already given was disobeyed.
 - State a caveat as a fact.
 - The test runner must be `scripts\test.bat` on Windows
 - The test runner must be `scripts/test.sh` on all other operating systems
