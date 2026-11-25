@@ -70,11 +70,19 @@ function around(markdown) {
  * Loads the given block between `before` and `after`, and puts an empty
  * paragraph above the block with Enter at the end of `before`, leaving
  * the caret in that empty paragraph.
+ *
+ * It clicks in `after` before clicking in `before`. On Linux the clicks
+ * are real X11 clicks, and WebKitGTK counts a click at the same point as
+ * the click just before it as a double or triple click. Without the
+ * click in `after`, the click in `before` in one test after another would
+ * select the word or the whole paragraph instead of putting the caret
+ * there.
  * @param {string} markdown
  */
 async function loadWithEmptyParagraphAbove(markdown) {
   await loadContent(page, around(markdown));
   expect(await content()).toBe(around(markdown));
+  await clickWritingViewBetween(page, `aft`, `er`);
   await clickWritingViewBetween(page, `befor`, `e`);
   await page.keyboard.press(END);
   await page.keyboard.press(`Enter`);

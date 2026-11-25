@@ -59,10 +59,11 @@ export class EditOperations extends EditOperationsData {
    * If removing the node would leave the document empty, a fresh empty
    * paragraph is inserted instead.
    *
-   * @param {{ before: string, hints: { updated?: string[], added?: string[], removed?: string[] } }} result
+   * @param {{ before: string, hints: { updated?: string[], added?: string[], removed?: string[] }, keep?: boolean }} result
    *     The result object from `deleteSelectedRange()`, mutated in place.
    */
   cleanupEmptyNodeAfterDelete(result) {
+    if (result.keep) return;
     const node = this.editor.getCurrentBlockNode();
     if (!node || !this.editor.syntaxTree) return;
 
