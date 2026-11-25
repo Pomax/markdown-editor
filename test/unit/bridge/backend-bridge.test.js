@@ -61,6 +61,7 @@ const EXPECTED_MEMBERS = [
   `getPathForFile`,
   `renameImage`,
   `toRelativeImagePath`,
+  `renderMath`,
   `changeElementType`,
   `applyFormat`,
   `onMenuAction`,

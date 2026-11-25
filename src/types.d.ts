@@ -184,6 +184,7 @@ interface PageToBackendBridge {
     browseForImage(): Promise<{ success: boolean; filePath?: string }>;
     renameImage(oldPath: string, newName: string): Promise<{ success: boolean; newPath?: string; message?: string }>;
     toRelativeImagePath(imagePath: string, documentPath: string): Promise<string>;
+    renderMath(tex: string, color: string): Promise<{ success: boolean; svg?: string; message?: string }>;
     getPathForFile(file: File): string;
     executeAPICommand(command: string, params: object): Promise<any>;
     setWritingView(): Promise<{ success: boolean }>;

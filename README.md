@@ -16,6 +16,8 @@ This editor is released as a single executable. The current download links are:
 - MacOS: [Markdown-Editor.dmg](https://github.com/Pomax/Pomax-s-Markdown-Editor/releases/download/v3.1.0/Markdown-Editor.dmg)
 - Linux: [Markdown-Editor.deb](https://github.com/Pomax/Pomax-s-Markdown-Editor/releases/download/v3.1.0/Markdown-Editor.deb)
 
+Math is drawn with the system's math font. Windows and MacOS come with one, but on Linux you need to install the [STIX Two](https://github.com/stipub/stixfonts) fonts for the "STIX Two Math" font.
+
 Previous versions can be found over on the [Releases](https://github.com/Pomax/Pomax-s-Markdown-Editor/releases/latest) page.
 
 Alternatively, of course, you can just clone the repo, install all the dependencies, and then run the start script from the `scripts` directory.

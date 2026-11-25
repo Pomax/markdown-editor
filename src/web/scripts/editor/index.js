@@ -563,6 +563,9 @@ export class Editor extends EditorData {
         // Opening fence line: ```lang\n
         return ticks.length + lang.length + 1;
       }
+      case `math-block`:
+        // Opening line: \[\n
+        return 3;
       default:
         return 0;
     }

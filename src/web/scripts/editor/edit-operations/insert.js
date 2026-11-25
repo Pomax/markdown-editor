@@ -68,7 +68,7 @@ export async function insertTextAtCursor(ops, text) {
 
   // Code-block content is raw code, not markdown — skip re-parsing
   // to avoid misidentifying code lines as headings, lists, etc.
-  if (node.type === `code-block`) {
+  if (node.isRawBlock()) {
     node.content = newContent;
     ops.editor.syntaxTree.treeCursor = {
       nodeId: node.id,

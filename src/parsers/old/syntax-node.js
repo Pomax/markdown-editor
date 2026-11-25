@@ -212,6 +212,15 @@ export class SyntaxNode {
   }
 
   /**
+   * Returns true if this node's content is raw text that is edited as
+   * typed and never parsed as markdown: a code block or a math block.
+   * @returns {boolean}
+   */
+  isRawBlock() {
+    return this.type === `code-block` || this.type === `math-block`;
+  }
+
+  /**
    * Returns the first block inside this node that is not a container,
    * or this node when it is not a container.
    * @returns {SyntaxNode}
@@ -297,6 +306,8 @@ export class SyntaxNode {
         const fence = `\``.repeat(this.attributes.fenceCount || 3);
         return `${fence}${lang}\n${this.content}\n${fence}`;
       }
+      case `math-block`:
+        return `\\[\n${this.content}\n\\]`;
       case `list-item`: {
         const indent = `  `.repeat(this.attributes.indent || 0);
         const marker = this.attributes.ordered ? `1. ` : `- `;

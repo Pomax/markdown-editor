@@ -11,6 +11,12 @@ import { WritingRendererData } from '../../types.js';
 let styleScopeCounter = 0;
 
 /**
+ * The factor a math SVG's own width and height are multiplied by to give
+ * the size it is shown at.
+ */
+const MATH_SVG_SCALE = 0.85;
+
+/**
  * @param {Element} el
  * @returns {boolean}
  */
@@ -121,7 +127,7 @@ export class WritingRenderer extends WritingRendererData {
 
     container.appendChild(fragment);
 
-    // Append a phantom paragraph after a trailing code block so the
+    // Append a phantom paragraph after a trailing code or math block so the
     // user has somewhere to place the cursor.  This element is not
     // backed by a tree node — it is promoted on first interaction.
     this.ensurePhantomParagraph(container, syntaxTree);
@@ -474,7 +480,7 @@ export class WritingRenderer extends WritingRendererData {
 
   /**
    * Appends (or removes) a phantom paragraph at the end of the container
-   * when the last tree node is a code block.  The phantom is a
+   * when the last tree node is a code or math block.  The phantom is a
    * presentation-only DOM element — it is not backed by a tree node.
    * When the user interacts with it (clicks, types), it is promoted to
    * a real SyntaxNode by {@link Editor#promotePhantomParagraph}.
@@ -486,7 +492,7 @@ export class WritingRenderer extends WritingRendererData {
     const existing = container.querySelector(`[data-is-phantom]`);
     const children = tree.children;
     const last = children.length > 0 ? children[children.length - 1] : undefined;
-    const needsPhantom = last?.type === `code-block`;
+    const needsPhantom = !!last?.isRawBlock();
 
     if (needsPhantom && !existing) {
       const phantom = document.createElement(`p`);
@@ -546,6 +552,7 @@ export class WritingRenderer extends WritingRendererData {
       case `blockquote`:
         return `blockquote`;
       case `code-block`:
+      case `math-block`:
         return `pre`;
       case `list-item`:
         return `li`;
@@ -592,6 +599,9 @@ export class WritingRenderer extends WritingRendererData {
 
       case `code-block`:
         return this.renderCodeBlock(node, element, isFocused);
+
+      case `math-block`:
+        return this.renderMathBlock(node, element, isFocused);
 
       case `list-item`:
         return this.renderListItem(node, element, isFocused);
@@ -675,38 +685,15 @@ export class WritingRenderer extends WritingRendererData {
     // The mousedown guard (preventDefault + stopPropagation) keeps the
     // browser from moving the caret, which would overwrite the user's
     // cursor offset.
-    const tagTop = document.createElement(`span`);
-    tagTop.className = `top`;
-    tagTop.dataset.lang = ``;
-    tagTop.addEventListener(`mousedown`, (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-    });
-    const tagBottom = document.createElement(`span`);
-    tagBottom.className = `bottom`;
-    tagBottom.dataset.lang = ``;
-    tagBottom.addEventListener(`mousedown`, (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-    });
-    if (language) {
-      tagTop.textContent = language;
-      tagBottom.textContent = language;
-    } else {
-      tagTop.textContent = `lang`;
-      tagBottom.textContent = `lang`;
+    const tagTop = this.blockTag(`top`, language || `lang`);
+    const tagBottom = this.blockTag(`bottom`, language || `lang`);
+    if (!language) {
       tagTop.classList.add(`empty`);
       tagBottom.classList.add(`empty`);
     }
 
-    const code = document.createElement(`code`);
-    code.className = `md-content`;
-    if (isFocused) {
-      // Plain text when focused so cursor positions map 1:1.
-      // Append a trailing newline so the last line always has
-      // visual height (trailing newlines collapse even in <pre>).
-      code.textContent = `${node.content}\n`;
-    } else {
+    const code = this.rawContentElement(node, isFocused);
+    if (!isFocused) {
       code.appendChild(highlight(node.content, language));
     }
 
@@ -721,6 +708,116 @@ export class WritingRenderer extends WritingRendererData {
     element.appendChild(tagBottom);
 
     return element;
+  }
+
+  /**
+   * A tag span at the top or bottom right of a code or math block.  Its
+   * mousedown guard (preventDefault + stopPropagation) keeps the browser
+   * from moving the caret, which would overwrite the user's cursor offset.
+   * @param {string} position - `top` or `bottom`
+   * @param {string} text
+   * @returns {HTMLSpanElement}
+   */
+  blockTag(position, text) {
+    const tag = document.createElement(`span`);
+    tag.className = position;
+    tag.dataset.lang = ``;
+    tag.textContent = text;
+    tag.addEventListener(`mousedown`, (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+    });
+    return tag;
+  }
+
+  /**
+   * The `code` element holding a code or math block's editable content.
+   * When the block is focused it holds the block's text as plain text,
+   * so cursor positions map 1:1, plus a trailing newline, so the last
+   * line always has visual height (trailing newlines collapse even in
+   * <pre>).  Otherwise it is empty.
+   * @param {SyntaxNode} node
+   * @param {boolean} isFocused
+   * @returns {HTMLElement}
+   */
+  rawContentElement(node, isFocused) {
+    const code = document.createElement(`code`);
+    code.className = `md-content`;
+    if (isFocused) {
+      code.textContent = `${node.content}\n`;
+    }
+    return code;
+  }
+
+  /**
+   * Renders a math block: its LaTeX source under a `math` tag when
+   * focused, and otherwise the SVG math-render makes of it in the page
+   * text colour, once the backend has made it.
+   * @param {SyntaxNode} node
+   * @param {HTMLElement} element
+   * @param {boolean} isFocused
+   * @returns {HTMLElement}
+   */
+  renderMathBlock(node, element, isFocused) {
+    if (isFocused) {
+      element.appendChild(this.blockTag(`top`, `math`));
+      element.appendChild(this.rawContentElement(node, true));
+      return element;
+    }
+
+    this.mathNodes.set(element, node);
+    const color = getComputedStyle(document.documentElement).getPropertyValue(`--page-text`).trim();
+    const key = `${color}\n${node.content}`;
+    const svg = this.mathSvgs.get(key);
+    if (svg === undefined || svg instanceof Promise) {
+      (svg ?? this.requestMathSvg(key, node.content, color)).then(() => {
+        const fresh = this.renderNode(node, false);
+        if (fresh && element.isConnected) element.replaceWith(fresh);
+      });
+    } else if (svg) {
+      element.appendChild(svg.cloneNode());
+    }
+    return element;
+  }
+
+  /**
+   * Asks the backend for the SVG of LaTeX math in a colour, and keeps it
+   * under the key as an `img` that shows it at its own width and height
+   * times MATH_SVG_SCALE, or as null when the backend made none.
+   * @param {string} key
+   * @param {string} tex
+   * @param {string} color
+   * @returns {Promise<void>}
+   */
+  requestMathSvg(key, tex, color) {
+    const request = Promise.resolve(window.pageToBackendBridge?.renderMath(tex, color)).then(
+      (result) => {
+        if (!result?.svg) {
+          this.mathSvgs.set(key, null);
+          return;
+        }
+        const root = new DOMParser().parseFromString(result.svg, `image/svg+xml`).documentElement;
+        const img = document.createElement(`img`);
+        img.src = `data:image/svg+xml,${encodeURIComponent(result.svg)}`;
+        img.style.width = `${Number.parseFloat(root.getAttribute(`width`) ?? ``) * MATH_SVG_SCALE}pt`;
+        img.style.height = `${Number.parseFloat(root.getAttribute(`height`) ?? ``) * MATH_SVG_SCALE}pt`;
+        this.mathSvgs.set(key, img);
+      },
+    );
+    this.mathSvgs.set(key, request);
+    return request;
+  }
+
+  /**
+   * Renders every math block that shows an SVG again, in every tab, in
+   * the page text colour as it is now.
+   */
+  rerenderMath() {
+    for (const element of document.querySelectorAll(`.md-math-block:not([data-has-focus])`)) {
+      const node = this.mathNodes.get(element);
+      const fresh = node && this.renderNode(node, false);
+      if (fresh) element.replaceWith(fresh);
+    }
   }
 
   /**

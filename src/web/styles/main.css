@@ -57,6 +57,8 @@
     --spacing-md: 1rem;
     --spacing-lg: 1.5rem;
     --spacing-xl: 2rem;
+    --list-indent: 1.5em;
+    --math-block-indent: calc(2 * var(--list-indent));
 
     /* Corners */
     --radius-xs: 2px;

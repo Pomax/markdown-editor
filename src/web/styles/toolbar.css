@@ -127,7 +127,8 @@
     &[data-button-id="heading4"] { color: var(--icon-blue-lighter); }
     &[data-button-id="paragraph"] { color: var(--icon-grey); }
     &[data-button-id="blockquote"] { color: var(--icon-violet); }
-    &[data-button-id="code-block"] { color: var(--icon-emerald); }
+    &[data-button-id="code-block"],
+    &[data-button-id="math-block"] { color: var(--icon-emerald); }
     &[data-button-id="bold"] { color: var(--icon-red); }
     &[data-button-id="italic"] { color: var(--icon-amber); }
     &[data-button-id="strikethrough"] { color: var(--icon-grey-light); }

@@ -64,7 +64,7 @@ export async function handleDelete(ops) {
     const oldPrefixLen = ops.editor.getPrefixLength(node.type, node.attributes);
 
     // Code-block content is raw code — skip re-parsing.
-    if (node.type === `code-block`) {
+    if (node.isRawBlock()) {
       node.content = newContent;
       ops.editor.syntaxTree.treeCursor = {
         nodeId: node.id,

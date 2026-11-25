@@ -178,6 +178,10 @@ class DFAParser {
       ctx.pos = saved;
     }
 
+    if (this.isMathBlockStart(ctx)) {
+      return this.parseMathBlock(ctx);
+    }
+
     // Blockquote: GT at start
     if (tok.type === `GT`) {
       return await this.parseBlockquote(ctx);
@@ -370,6 +374,61 @@ class DFAParser {
 
     const node = new SyntaxNode(`code-block`, content);
     node.attributes = { language, fenceCount };
+    node.startLine = startLine;
+    node.endLine = ctx.line > startLine ? ctx.line - 1 : startLine;
+    return node;
+  }
+
+  /**
+   * Whether a math block's opening line, `\[` on its own, starts here.
+   * @param {{tokens: DFAToken[], pos: number}} ctx
+   * @returns {boolean}
+   */
+  isMathBlockStart(ctx) {
+    return (
+      ctx.tokens[ctx.pos].type === `TEXT` &&
+      ctx.tokens[ctx.pos].value === `\\` &&
+      this.lookType(ctx, 1) === `LBRACKET` &&
+      this.lookType(ctx, 2) === `NEWLINE`
+    );
+  }
+
+  /**
+   * Whether a math block's closing line, `\]` on its own, starts here.
+   * @param {{tokens: DFAToken[], pos: number}} ctx
+   * @returns {boolean}
+   */
+  isMathBlockEnd(ctx) {
+    const after = this.lookType(ctx, 2);
+    return (
+      ctx.tokens[ctx.pos].type === `TEXT` &&
+      ctx.tokens[ctx.pos].value === `\\` &&
+      this.lookType(ctx, 1) === `RBRACKET` &&
+      (after === `NEWLINE` || after === `EOF`)
+    );
+  }
+
+  /**
+   * Parses the lines between a `\[` line and the next `\]` line, or the
+   * end of the document when no `\]` line follows, into a math block.
+   * @param {{tokens: DFAToken[], pos: number, line: number}} ctx
+   * @returns {SyntaxNode}
+   */
+  parseMathBlock(ctx) {
+    const startLine = ctx.line;
+    this.consumeToEndOfLine(ctx);
+
+    /** @type {string[]} */
+    const lines = [];
+    while (ctx.pos < ctx.tokens.length && ctx.tokens[ctx.pos].type !== `EOF`) {
+      if (this.isMathBlockEnd(ctx)) {
+        this.consumeToEndOfLine(ctx);
+        break;
+      }
+      lines.push(this.consumeToEndOfLine(ctx));
+    }
+
+    const node = new SyntaxNode(`math-block`, lines.join(`\n`));
     node.startLine = startLine;
     node.endLine = ctx.line > startLine ? ctx.line - 1 : startLine;
     return node;
@@ -1553,6 +1612,8 @@ class DFAParser {
       this.lookType(ctx, 2) === `BACKTICK`
     )
       return true;
+
+    if (this.isMathBlockStart(ctx)) return true;
 
     // Blockquote
     if (t === `GT`) return true;

@@ -62,7 +62,7 @@ export async function handleBackspace(ops) {
     const oldPrefixLen = ops.editor.getPrefixLength(node.type, node.attributes);
 
     // Code-block content is raw code — skip re-parsing.
-    if (node.type === `code-block`) {
+    if (node.isRawBlock()) {
       node.content = newContent;
       ops.editor.syntaxTree.treeCursor = {
         nodeId: node.id,
@@ -112,7 +112,7 @@ export async function handleBackspace(ops) {
     // into while still preserving the code-block structure, so this
     // is a no-op (consistent with html-block boundary behaviour).
     // With empty content, convert to paragraph.
-    if (node.type === `code-block`) {
+    if (node.isRawBlock()) {
       if (node.content === ``) {
         node.type = `paragraph`;
         node.content = ``;

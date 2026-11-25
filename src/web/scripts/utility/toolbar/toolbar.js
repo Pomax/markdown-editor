@@ -132,6 +132,13 @@ export class Toolbar extends ToolbarData {
         applicableTo: [`paragraph`, `list-item`],
       },
       {
+        id: `math-block`,
+        label: `Math Block`,
+        icon: `∑`,
+        action: `changeType:math-block`,
+        applicableTo: [`paragraph`, `list-item`],
+      },
+      {
         id: `image`,
         label: `Image`,
         icon: `🖼`,

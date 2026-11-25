@@ -29,6 +29,7 @@ fn main() {
             "image_browse",
             "image_rename",
             "path_to_relative",
+            "render_math",
             "file_confirm_close",
             "dialog_confirm",
             "view_open_files_changed",

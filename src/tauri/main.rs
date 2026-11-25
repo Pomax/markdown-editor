@@ -79,6 +79,7 @@ fn main() {
             ipc_handler::image_browse,
             ipc_handler::image_rename,
             ipc_handler::path_to_relative,
+            ipc_handler::render_math,
             ipc_handler::file_confirm_close,
             ipc_handler::dialog_confirm,
             ipc_handler::view_open_files_changed,

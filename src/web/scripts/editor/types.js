@@ -373,6 +373,17 @@ export class AppData {
 export class WritingRendererData {
   /** @type {Editor} */
   editor;
+  /**
+   * Each math SVG by page text colour and source, as an `img` to clone,
+   * null when the backend made none, or the request still under way.
+   * @type {Map<string, HTMLImageElement | null | Promise<void>>}
+   */
+  mathSvgs = new Map();
+  /**
+   * The node each rendered math block element that shows an SVG is for.
+   * @type {WeakMap<Element, SyntaxNode>}
+   */
+  mathNodes = new WeakMap();
 }
 
 export class UndoManagerData {
