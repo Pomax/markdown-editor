@@ -727,9 +727,6 @@ export class WritingRenderer extends WritingRendererData {
 
     // Language tag spans are always rendered so the user can click
     // to set or change the language even when none is set yet.
-    // The mousedown guard (preventDefault + stopPropagation) keeps the
-    // browser from moving the caret, which would overwrite the user's
-    // cursor offset.
     const tagTop = this.blockTag(`top`, language || `lang`);
     const tagBottom = this.blockTag(`bottom`, language || `lang`);
     if (!language) {
