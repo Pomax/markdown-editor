@@ -628,28 +628,6 @@ pub fn path_to_relative(image_path: String, document_path: String) -> String {
     crate::image_path::to_relative(&image_path, &document_path)
 }
 
-/// The LaTeX of the placeholder shown for math that cannot be rendered.
-const INVALID_MATH: &str = r"\text{invalid Math LaTeX}";
-
-/// `math:render`: the SVG of LaTeX math as display math, in the given
-/// text colour on a transparent background, or, for LaTeX that
-/// math-render cannot convert, `success: false` with the SVG of a
-/// placeholder saying so.
-#[tauri::command]
-pub async fn render_math(tex: String, color: String) -> Value {
-    match math_render::render_svg(&tex, true, &color) {
-        Ok(svg) => json!({ "success": true, "svg": String::from_utf8_lossy(&svg) }),
-        Err(error) => match math_render::render_svg(INVALID_MATH, true, &color) {
-            Ok(svg) => json!({
-                "success": false,
-                "svg": String::from_utf8_lossy(&svg),
-                "message": error.to_string()
-            }),
-            Err(error) => json!({ "success": false, "message": error.to_string() }),
-        },
-    }
-}
-
 /// `view:openFilesChanged`: records the renderer's open files for the
 /// View menu, makes the active one the current file, persists the list
 /// so it survives an ungraceful exit, and rebuilds the menu.

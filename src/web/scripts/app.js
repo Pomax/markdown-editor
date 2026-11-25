@@ -219,11 +219,6 @@ class App extends AppData {
       }
     });
 
-    // Math is rendered in the page text colour, so it renders again when the colours change
-    document.addEventListener(`colors:changed`, () => {
-      this.editor?.writingRenderer.rerenderMath();
-    });
-
     // Listen for content settings changes from the preferences modal
     document.addEventListener(`content:settingsChanged`, (e) => {
       const detail = /** @type {CustomEvent} */ (e).detail;

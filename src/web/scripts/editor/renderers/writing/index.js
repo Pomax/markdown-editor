@@ -11,10 +11,55 @@ import { WritingRendererData } from '../../types.js';
 let styleScopeCounter = 0;
 
 /**
- * The factor a math SVG's own width and height are multiplied by to give
- * the size it is shown at.
+ * The factor the size of KaTeX's math is multiplied by.
  */
-const MATH_SVG_SCALE = 0.85;
+const MATH_SCALE = 0.85;
+
+/**
+ * The LaTeX of the placeholder shown for math KaTeX cannot render.
+ */
+const INVALID_MATH = String.raw`\text{invalid Math LaTeX}`;
+
+/**
+ * Makes an element match a freshly rendered one of the same tag, in place:
+ * its attributes are copied, its text nodes take the new text, and its
+ * child elements of the same tag are updated the same way, so that only
+ * children of a different kind are replaced.
+ * @param {Element} existing
+ * @param {Element} fresh
+ */
+function updateElement(existing, fresh) {
+  copyAttributes(existing, fresh);
+  const before = [...existing.childNodes];
+  const after = [...fresh.childNodes];
+  after.forEach((node, i) => {
+    const old = before[i];
+    if (!old) {
+      existing.appendChild(node);
+    } else if (old instanceof Element && node instanceof Element && old.tagName === node.tagName) {
+      updateElement(old, node);
+    } else if (old.nodeType === Node.TEXT_NODE && node.nodeType === Node.TEXT_NODE) {
+      if (old.nodeValue !== node.nodeValue) old.nodeValue = node.nodeValue;
+    } else if (!old.isEqualNode(node)) {
+      old.replaceWith(node);
+    }
+  });
+  for (const old of before.slice(after.length)) old.remove();
+}
+
+/**
+ * Gives an element exactly the attributes of another.
+ * @param {Element} target
+ * @param {Element} source
+ */
+function copyAttributes(target, source) {
+  for (const { name } of [...target.attributes]) {
+    if (!source.hasAttribute(name)) target.removeAttribute(name);
+  }
+  for (const { name, value } of [...source.attributes]) {
+    if (target.getAttribute(name) !== value) target.setAttribute(name, value);
+  }
+}
 
 /**
  * @param {Element} el
@@ -344,10 +389,10 @@ export class WritingRenderer extends WritingRendererData {
       if (isListItem && wasListItem && this.listShapeUnchanged(tree, node, existing)) {
         const fresh = this.renderNode(node, nodeId === currentNodeId);
         if (!fresh) continue;
-        for (const child of [...existing.children]) {
-          if (isListElement(child)) fresh.appendChild(child);
-        }
-        existing.replaceWith(fresh);
+        const lists = [...existing.children].filter(isListElement);
+        for (const list of lists) list.remove();
+        updateElement(existing, fresh);
+        for (const list of lists) existing.appendChild(list);
         continue;
       }
       listTouched.add(nodeId);
@@ -523,9 +568,9 @@ export class WritingRenderer extends WritingRendererData {
     if (!existing) return;
 
     const updated = this.renderNode(node, isFocused);
-    if (updated) {
-      existing.replaceWith(updated);
-    }
+    if (!updated) return;
+    if (existing.tagName === updated.tagName) updateElement(existing, updated);
+    else existing.replaceWith(updated);
   }
 
   /**
@@ -751,8 +796,8 @@ export class WritingRenderer extends WritingRendererData {
 
   /**
    * Renders a math block: its LaTeX source under a `math` tag when
-   * focused, and otherwise the SVG math-render makes of it in the page
-   * text colour, once the backend has made it.
+   * focused, and otherwise the math KaTeX makes of it, or the
+   * INVALID_MATH placeholder for LaTeX KaTeX cannot render.
    * @param {SyntaxNode} node
    * @param {HTMLElement} element
    * @param {boolean} isFocused
@@ -765,59 +810,17 @@ export class WritingRenderer extends WritingRendererData {
       return element;
     }
 
-    this.mathNodes.set(element, node);
-    const color = getComputedStyle(document.documentElement).getPropertyValue(`--page-text`).trim();
-    const key = `${color}\n${node.content}`;
-    const svg = this.mathSvgs.get(key);
-    if (svg === undefined || svg instanceof Promise) {
-      (svg ?? this.requestMathSvg(key, node.content, color)).then(() => {
-        const fresh = this.renderNode(node, false);
-        if (fresh && element.isConnected) element.replaceWith(fresh);
-      });
-    } else if (svg) {
-      element.appendChild(svg.cloneNode());
+    const math = document.createElement(`div`);
+    math.className = `md-math`;
+    math.contentEditable = `false`;
+    math.style.fontSize = `${MATH_SCALE}em`;
+    try {
+      window.katex.render(node.content, math, { displayMode: true });
+    } catch {
+      window.katex.render(INVALID_MATH, math, { displayMode: true });
     }
+    element.appendChild(math);
     return element;
-  }
-
-  /**
-   * Asks the backend for the SVG of LaTeX math in a colour, and keeps it
-   * under the key as an `img` that shows it at its own width and height
-   * times MATH_SVG_SCALE, or as null when the backend made none.
-   * @param {string} key
-   * @param {string} tex
-   * @param {string} color
-   * @returns {Promise<void>}
-   */
-  requestMathSvg(key, tex, color) {
-    const request = Promise.resolve(window.pageToBackendBridge?.renderMath(tex, color)).then(
-      (result) => {
-        if (!result?.svg) {
-          this.mathSvgs.set(key, null);
-          return;
-        }
-        const root = new DOMParser().parseFromString(result.svg, `image/svg+xml`).documentElement;
-        const img = document.createElement(`img`);
-        img.src = `data:image/svg+xml,${encodeURIComponent(result.svg)}`;
-        img.style.width = `${Number.parseFloat(root.getAttribute(`width`) ?? ``) * MATH_SVG_SCALE}pt`;
-        img.style.height = `${Number.parseFloat(root.getAttribute(`height`) ?? ``) * MATH_SVG_SCALE}pt`;
-        this.mathSvgs.set(key, img);
-      },
-    );
-    this.mathSvgs.set(key, request);
-    return request;
-  }
-
-  /**
-   * Renders every math block that shows an SVG again, in every tab, in
-   * the page text colour as it is now.
-   */
-  rerenderMath() {
-    for (const element of document.querySelectorAll(`.md-math-block:not([data-has-focus])`)) {
-      const node = this.mathNodes.get(element);
-      const fresh = node && this.renderNode(node, false);
-      if (fresh) element.replaceWith(fresh);
-    }
   }
 
   /**

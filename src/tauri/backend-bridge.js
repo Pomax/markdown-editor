@@ -216,8 +216,6 @@
       invoke(`image_rename`, { oldPath, newName }),
     toRelativeImagePath: (/** @type {string} */ imagePath, /** @type {string} */ documentPath) =>
       invoke(`path_to_relative`, { imagePath, documentPath }),
-    renderMath: (/** @type {string} */ tex, /** @type {string} */ color) =>
-      invoke(`render_math`, { tex, color }),
     changeElementType: (/** @type {string} */ elementType) =>
       invoke(`element_change_type`, { elementType }),
     applyFormat: (/** @type {string} */ format) => invoke(`element_format`, { format }),

@@ -205,9 +205,32 @@ test(`Inspect Element opens DevTools on the element under the pointer`, async ()
   expect(await app.isDevtoolsOpen()).toBe(false);
   await openContextMenu();
   const { x, y } = (await app.contextMenus()).at(-1);
+  await page.evaluate(() => {
+    const own = /** @type {any} */ (window);
+    window.addEventListener(
+      `contextmenu`,
+      (event) => {
+        if (!own.__inspectNextContextMenu) return;
+        own.__inspected = event.target;
+        // Takes focus from the page, as DevTools opening in the app does.
+        setTimeout(() => /** @type {HTMLElement} */ (document.activeElement)?.blur());
+      },
+      { capture: true },
+    );
+  });
   expect(await app.contextMenu.click(`Inspect Element`)).toBe(true);
   await expect.poll(() => app.inspections()).toEqual([{ x, y }]);
   await expect.poll(() => app.isDevtoolsOpen()).toBe(true);
+  await page.waitForTimeout(500);
+  expect(
+    await page.evaluate(({ x, y }) => {
+      const inspected = /** @type {any} */ (window).__inspected;
+      return {
+        connected: inspected?.isConnected,
+        atPoint: document.elementFromPoint(x, y) === inspected,
+      };
+    }, { x, y }),
+  ).toEqual({ connected: true, atPoint: true });
 });
 
 test(`Inspect Element opens DevTools where the webview cannot inspect a point`, async () => {

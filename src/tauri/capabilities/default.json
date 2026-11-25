@@ -30,7 +30,6 @@
     "allow-image-browse",
     "allow-image-rename",
     "allow-path-to-relative",
-    "allow-render-math",
     "allow-file-confirm-close",
     "allow-dialog-confirm",
     "allow-view-open-files-changed",

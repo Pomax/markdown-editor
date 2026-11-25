@@ -144,13 +144,15 @@ export class EventHandler extends EventHandlerData {
         this.editor.imageHelper.openImageModalForNode(node);
         return;
       }
-      // Clicking a math block's SVG puts the cursor at the start of the math block.
-      if (node?.type === `math-block` && el && this.editor.syntaxTree) {
-        this.editor.syntaxTree.treeCursor = { nodeId: node.id, offset: 0 };
-        this.editor.treeRange = undefined;
-        window.getSelection()?.collapse(el, 0);
-        return;
-      }
+    }
+
+    // Clicking a math block's rendered math puts the cursor at the start of the math block.
+    const math = this.editor.viewMode === `writing` ? target.closest?.(`.md-math-block:not([data-has-focus])`) : null;
+    if (math instanceof HTMLElement && math.dataset.nodeId && this.editor.syntaxTree) {
+      this.editor.syntaxTree.treeCursor = { nodeId: math.dataset.nodeId, offset: 0 };
+      this.editor.treeRange = undefined;
+      window.getSelection()?.collapse(math, 0);
+      return;
     }
 
     // In writing view, clicking a language tag span opens the language

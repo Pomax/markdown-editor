@@ -136,6 +136,7 @@ export class Toolbar extends ToolbarData {
         label: `Math Block`,
         icon: `∑`,
         action: `changeType:math-block`,
+        shortcut: `Mod+Shift+M`,
         applicableTo: [`paragraph`, `list-item`],
       },
       {

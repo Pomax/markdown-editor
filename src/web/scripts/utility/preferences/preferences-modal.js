@@ -1028,15 +1028,13 @@ export function applyMargins(margins) {
 }
 
 /**
- * Applies page color values to the document's CSS custom properties, and
- * announces the change with a `colors:changed` event.
+ * Applies page color values to the document's CSS custom properties.
  * @param {{ pageBg: string, pageText: string }} colors
  */
 export function applyColors(colors) {
   const root = document.documentElement;
   root.style.setProperty(`--page-bg`, colors.pageBg);
   root.style.setProperty(`--page-text`, colors.pageText);
-  document.dispatchEvent(new CustomEvent(`colors:changed`));
 }
 
 /**
