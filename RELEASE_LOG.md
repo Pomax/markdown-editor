@@ -1,5 +1,10 @@
 # Release Log
 
+## v3.2.0
+
+- LaTeX math support (blocks only for now)
+- floating button bar that can be docked top/right/bottom/left or even just disabled
+
 ## v3.1.0
 
 Several bug fixes related to markdown parsing and input handling
