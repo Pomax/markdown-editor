@@ -26,7 +26,8 @@ jobs:
           components: rustfmt
       - run: |
           dotnet tool install --global SetResolution
-          SetResolution 1080
+          $video = Get-CimInstance Win32_VideoController
+          SetResolution SET -w 1920 -h 1080 -f $video.CurrentRefreshRate -b $video.CurrentBitsPerPixel -noprompt
         shell: pwsh
       - run: npm ci --ignore-scripts && npm run setup && npm test
 
