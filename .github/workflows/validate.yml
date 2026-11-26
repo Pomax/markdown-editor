@@ -24,6 +24,10 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt
+      - run: |
+          Set-DisplayResolution -Width 1920 -Height 1280 -Force
+          Get-DisplayResolution
+        shell: pwsh
       - run: npm ci --ignore-scripts && npm run setup && npm test
 
   test-macos:
