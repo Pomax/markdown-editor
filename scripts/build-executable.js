@@ -1,5 +1,7 @@
 /**
- * @fileoverview Builds the release app with Tauri and copies the result to
+ * @fileoverview Makes the app's icon images from src/tauri/icons/icon.svg
+ * with build-icons.js, in a process of its own, then builds the release
+ * app with Tauri and copies the result to
  * Markdown-Editor.<ext> in its platform's folder under
  * dist/, touching nothing else there: on Windows the release .exe itself
  * in dist/windows (the frontend is embedded, so there is no bundle), on
@@ -14,6 +16,7 @@
  * Run with: npm run build, or npm run dist:win / dist:mac / dist:linux
  */
 
+import { spawnSync } from 'node:child_process';
 import { copyFileSync, mkdirSync, readdirSync, statSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import process from 'node:process';
@@ -131,6 +134,13 @@ async function buildExecutable() {
     process.exit(1);
   }
   const target = releaseTarget(flag);
+  const icons = spawnSync(process.execPath, [join(root, `scripts`, `build-icons.js`)], {
+    stdio: `inherit`,
+  });
+  if (icons.status !== 0) {
+    console.error(`Making the icon images failed`);
+    process.exit(1);
+  }
   Object.assign(process.env, target.env);
   try {
     await run(target.args, `build-executable`);

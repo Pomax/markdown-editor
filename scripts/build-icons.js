@@ -5,7 +5,7 @@
  * folder keeps the images it has and gets no others. The command's output
  * goes to build/icons, which is deleted once the images are copied. Fails,
  * changing nothing, when the command makes no image of one of those names.
- * Run with: npm run build:icons
+ * Every build runs it first; on its own, run with: npm run build:icons
  */
 
 import { copyFileSync, existsSync, readdirSync, rmSync } from 'node:fs';
