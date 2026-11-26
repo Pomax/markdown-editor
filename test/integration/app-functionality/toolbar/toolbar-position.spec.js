@@ -39,15 +39,31 @@ async function setToolbarPreferences({ visible, position }) {
 }
 
 /**
- * Makes the window as small as it allows, and waits for it to have got
+ * Makes the window as small as it allows, asking again until it has got
  * smaller than it was.
  * @param {{ innerWidth: number }} before - The window's state before.
  */
 async function shrinkWindow(before) {
-  await app.setWindowBounds({ width: 400, height: 300 });
   await expect
-    .poll(async () => (await app.windowState()).innerWidth)
+    .poll(async () => {
+      await app.setWindowBounds({ width: 400, height: 300 });
+      return (await app.windowState()).innerWidth;
+    })
     .toBeLessThan(before.innerWidth);
+}
+
+/**
+ * Gives the window the size it had before, asking again until it has it.
+ * @param {{ width: number, height: number, innerWidth: number, innerHeight: number }} before - The window's state before.
+ */
+async function restoreWindow(before) {
+  await expect
+    .poll(async () => {
+      await app.setWindowBounds({ width: before.width, height: before.height });
+      const now = await app.windowState();
+      return { width: now.innerWidth, height: now.innerHeight };
+    })
+    .toEqual({ width: before.innerWidth, height: before.innerHeight });
 }
 
 test(`unticking Show content button bar hides the toolbar, and leaves the position changeable`, async () => {
@@ -76,7 +92,7 @@ for (const position of /** @type {ToolbarPosition[]} */ ([`top`, `right`, `botto
       await expectToolbarToFit(page);
     } finally {
       await setToolbarPreferences({ position: `bottom` });
-      await app.setWindowBounds({ width: before.width, height: before.height });
+      await restoreWindow(before);
     }
   });
 }
@@ -88,13 +104,10 @@ test(`with the toolbar hidden the window can get narrower than the toolbar needs
     await expectToolbarToFit(page);
     const shown = await app.windowState();
     await setToolbarPreferences({ visible: false });
-    await app.setWindowBounds({ width: 400, height: 300 });
-    await expect
-      .poll(async () => (await app.windowState()).innerWidth)
-      .toBeLessThan(shown.innerWidth);
+    await shrinkWindow(shown);
   } finally {
     await setToolbarPreferences({ visible: true });
-    await app.setWindowBounds({ width: before.width, height: before.height });
+    await restoreWindow(before);
   }
 });
 
@@ -111,7 +124,7 @@ test(`moving the toolbar to a side of a window too short for it makes the window
     await expectToolbarToFit(page);
   } finally {
     await setToolbarPreferences({ position: `bottom` });
-    await app.setWindowBounds({ width: before.width, height: before.height });
+    await restoreWindow(before);
   }
 });
 
@@ -152,6 +165,6 @@ test(`the table of contents cannot get wider than leaves room for the toolbar`, 
     });
   } finally {
     await page.evaluate(() => document.documentElement.style.removeProperty(`--toc-width`));
-    await app.setWindowBounds({ width: before.width, height: before.height });
+    await restoreWindow(before);
   }
 });

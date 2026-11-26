@@ -125,6 +125,7 @@ These rules describe general actions that MAY NEVER BE PERFORMED BY THE WORKER
 - Telling the user to close an application so a step of mine succeeds.
 - Taking the pointer, keyboard or screen without a yes, every time.
 - Going looking through the machine for something the user can state.
+- Using long polls for terminal output monitoring. You must check every five seconds.
 
 ### Files and shell
 
