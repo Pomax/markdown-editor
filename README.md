@@ -47,7 +47,7 @@ There are prebuilt executables, but if you want to run the project from source, 
 
 All platforms:
 
-- Git, with the Unix tools install if you're on Windows
+- Git, with the Unix tools installed if you're on Windows
 - A currently supported version of Node.js (I recommend using [nvm](https://www.nvmnode.com/guide/download.html))
 - [Rust](https://rust-lang.org/tools/install)
 
