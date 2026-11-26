@@ -24,10 +24,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt
-      - run: |
-          dotnet tool install --global SetResolution
-          $video = Get-CimInstance Win32_VideoController
-          SetResolution SET -w 1920 -h 1080 -f $video.CurrentRefreshRate -b $video.CurrentBitsPerPixel -noprompt
+      - run: Set-DisplayResolution -Width 1920 -Height 1080 -Force
         shell: pwsh
       - run: npm ci --ignore-scripts && npm run setup && npm test
 
