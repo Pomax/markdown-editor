@@ -1,8 +1,7 @@
 /**
- * @fileoverview Integration tests for checklist support (GitHub issue #88).
+ * @fileoverview Integration tests for checklist support.
  *
  * Covers:
- *   - Parsing and rendering checklist items in source and writing views
  *   - Toolbar button converts paragraph to checklist
  *   - Toolbar button toggles checklist off
  *   - Switching between bullet ↔ checklist ↔ ordered via toolbar
@@ -36,24 +35,6 @@ test.beforeAll(async () => {
 
 test.afterAll(async () => {
   await closeApp(app);
-});
-
-test(`writing view renders checkbox for checklist item`, async () => {
-  await loadContent(page, `- [ ] My task\n`);
-  await setWritingView(page);
-
-  const checkbox = page.locator(`#editor .md-list-item input[type="checkbox"]`);
-  await expect(checkbox).toBeVisible();
-  await expect(checkbox).not.toBeChecked();
-});
-
-test(`writing view renders checked checkbox for checked checklist item`, async () => {
-  await loadContent(page, `- [x] Done task\n`);
-  await setWritingView(page);
-
-  const checkbox = page.locator(`#editor .md-list-item input[type="checkbox"]`);
-  await expect(checkbox).toBeVisible();
-  await expect(checkbox).toBeChecked();
 });
 
 test(`clicking checklist button converts paragraph to checklist item`, async () => {
@@ -255,15 +236,6 @@ test(`switching entire contiguous checklist run to bullet via toolbar`, async ()
     expect(text).toMatch(/^- Task [ABC]/);
     expect(text).not.toMatch(/\[[ x]\]/);
   }
-});
-
-test(`writing view does not show bullet marker for checklist items`, async () => {
-  await loadContent(page, `- [ ] No bullet\n`);
-  await setWritingView(page);
-
-  const line = page.locator(`#editor [data-node-id]`).first();
-  const style = await line.evaluate((el) => window.getComputedStyle(el).listStyleType);
-  expect(style).toBe(`none`);
 });
 
 /**

@@ -1,6 +1,6 @@
 /**
  * @fileoverview Integration tests for the view-mode toggle button in the toolbar.
- * Verifies the toggle has a label, defaults to "Writing View", cycles through
+ * Verifies the toggle cycles through
  * writing → source → source2 → writing, and stays in sync when the
  * view mode is changed externally via the menu/IPC.
  */
@@ -34,18 +34,6 @@ test.beforeAll(async () => {
 
 test.afterAll(async () => {
   await closeApp(app);
-});
-
-test(`view mode toggle has a visible label`, async () => {
-  const label = page.locator(`.toolbar-view-mode-label`);
-  await expect(label).toBeVisible();
-  await expect(label).toHaveText(`View:`);
-});
-
-test(`view mode toggle defaults to Writing View`, async () => {
-  const toggle = page.locator(`.toolbar-view-mode-toggle`);
-  await expect(toggle).toBeVisible();
-  await expect(toggle).toHaveText(`Writing View`);
 });
 
 test(`clicking toggle from source2 switches back to writing mode`, async () => {

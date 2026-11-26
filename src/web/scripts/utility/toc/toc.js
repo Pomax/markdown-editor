@@ -418,11 +418,12 @@ export class TableOfContents extends TableOfContentsData {
   }
 
   /**
-   * Sets the sidebar width via CSS custom property.
+   * Sets the sidebar width via CSS custom property, no wider than
+   * `widthLimit` allows.
    * @param {number} width - Width in pixels
    */
   setWidth(width) {
-    const clamped = Math.max(120, Math.min(400, width));
+    const clamped = Math.max(120, Math.min(400, this.widthLimit(), width));
     document.documentElement.style.setProperty(`--toc-width`, `${clamped}px`);
   }
 

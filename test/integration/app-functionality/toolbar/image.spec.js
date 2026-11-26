@@ -1,11 +1,11 @@
 /**
- * @fileoverview Integration tests for image support.
- * Verifies the image toolbar button, image modal dialog, image parsing,
- * and image rendering in both source and writing modes.
+ * @fileoverview Integration tests for the image modal dialog: the image
+ * toolbar button opens it, inserting from it creates an image node, and
+ * on an existing image it opens pre-filled with that image's data.
  */
 
 import { expect, test } from '@playwright/test';
-import { MOD_LABEL, clickInEditor, closeApp, launchApp, setWritingView } from '../../test-utils.js';
+import { clickInEditor, closeApp, launchApp, setWritingView } from '../../test-utils.js';
 
 /** @type {import('../../tauri-app.js').TauriApp} */
 let app;
@@ -19,12 +19,6 @@ test.beforeAll(async () => {
 
 test.afterAll(async () => {
   await closeApp(app);
-});
-
-test(`image button is visible in the toolbar`, async () => {
-  const imageButton = page.locator(`[data-button-id="image"]`);
-  await expect(imageButton).toBeVisible();
-  await expect(imageButton).toHaveAttribute(`data-tooltip`, `Image (${MOD_LABEL}+Shift+I)`);
 });
 
 test(`clicking image button opens the image modal`, async () => {

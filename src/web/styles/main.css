@@ -59,6 +59,7 @@
     --spacing-xl: 2rem;
     --list-indent: 1.5em;
     --math-block-indent: calc(1 * var(--list-indent));
+    --button-margin: 1rem;
 
     /* Corners */
     --radius-xs: 2px;
@@ -143,6 +144,13 @@ html, body {
     flex: 1;
     display: flex;
     overflow: hidden;
+}
+
+#document-area {
+    flex: 1;
+    display: flex;
+    position: relative;
+    min-width: 0;
 }
 
 #editor-container {

@@ -2,8 +2,9 @@
 //! by the app's process id, brings it to the front, sends real keyboard
 //! and mouse input through `SendInput`, and reports the window's title and
 //! the menu that is open. It sends keys only while the app's window is in
-//! front, and clicks only where the app's window is the one under the
-//! point, so input never goes to another program. One command per run;
+//! front, and clicks and starts drags only where the app's window is the
+//! one under the point, so input never goes to another program. One
+//! command per run;
 //! the answer is one JSON line on standard output, an error a message on
 //! standard error and exit code 1.
 //!
@@ -16,6 +17,10 @@
 //! - `type <pid> <text>`: types the text
 //! - `click <pid> <x> <y>`: clicks at a point of the client area, in
 //!   physical pixels
+//! - `drag <pid> <x> <y> <x> <y>`: presses the left button at the first
+//!   point, moves to the second in steps and lets go there; the points
+//!   are of the client area, in physical pixels, and the first may be on
+//!   the window's frame, outside the client area
 //! - `menu <pid>`: whether the window's thread is in menu mode, and the
 //!   items of the popup menu that is open, if any
 
@@ -106,6 +111,20 @@ fn absolute_point(x: i32, y: i32, desktop: (i32, i32, i32, i32)) -> (i32, i32) {
     (scale(x, left, width), scale(y, top, height))
 }
 
+/// The points a drag moves through from one point to another, in even
+/// steps, ending on the second point.
+fn drag_path(from: (i32, i32), to: (i32, i32), steps: i32) -> Vec<(i32, i32)> {
+    let steps = steps.max(1);
+    (1..=steps)
+        .map(|step| {
+            (
+                from.0 + (to.0 - from.0) * step / steps,
+                from.1 + (to.1 - from.1) * step / steps,
+            )
+        })
+        .collect()
+}
+
 /// The process id named by a command's first argument.
 #[cfg_attr(not(windows), allow(dead_code))]
 fn pid_argument(args: &[String]) -> Result<u32, String> {
@@ -134,13 +153,13 @@ fn run(args: &[String]) -> Result<Value, String> {
 /// The runner sends input through Windows only.
 #[cfg(not(windows))]
 fn run(_args: &[String]) -> Result<Value, String> {
-    let _ = (parse_combo, absolute_point);
+    let _ = (parse_combo, absolute_point, drag_path);
     Err("the runner works on Windows only".to_string())
 }
 
 #[cfg(windows)]
 mod windows_input {
-    use super::{absolute_point, parse_combo, pid_argument};
+    use super::{absolute_point, drag_path, parse_combo, pid_argument};
     use serde_json::{Value, json};
     use std::time::Duration;
     use windows::Win32::Foundation::{HWND, LPARAM, POINT, RECT};
@@ -168,6 +187,26 @@ mod windows_input {
 
     /// How long `focus` waits for the window to come to the front.
     const FOCUS_TRIES: u32 = 50;
+
+    /// How many steps a drag moves in.
+    const DRAG_STEPS: i32 = 20;
+
+    /// How long a drag waits after pressing the button and after each step.
+    const DRAG_PAUSE: Duration = Duration::from_millis(15);
+
+    /// The whole numbers a command's arguments give, as many as it needs,
+    /// or the error that says what it needs.
+    fn numbers(arguments: &[String], count: usize, needs: &str) -> Result<Vec<i32>, String> {
+        (0..count)
+            .map(|index| {
+                arguments
+                    .get(index)
+                    .and_then(|value| value.parse::<f64>().ok())
+                    .map(|value| value.round() as i32)
+                    .ok_or_else(|| needs.to_string())
+            })
+            .collect()
+    }
 
     /// Runs one command.
     pub fn run(args: &[String]) -> Result<Value, String> {
@@ -207,14 +246,13 @@ mod windows_input {
                 Ok(json!(true))
             }
             "click" => {
-                let number = |index: usize| {
-                    arguments
-                        .get(index)
-                        .and_then(|value| value.parse::<f64>().ok())
-                        .map(|value| value.round() as i32)
-                        .ok_or_else(|| "click needs x and y".to_string())
-                };
-                click(window, number(0)?, number(1)?)?;
+                let point = numbers(arguments, 2, "click needs x and y")?;
+                click(window, point[0], point[1])?;
+                Ok(json!(true))
+            }
+            "drag" => {
+                let points = numbers(arguments, 4, "drag needs x and y to start and to end at")?;
+                drag(window, (points[0], points[1]), (points[2], points[3]))?;
                 Ok(json!(true))
             }
             "menu" => Ok(menu_state(window)),
@@ -454,32 +492,75 @@ mod windows_input {
         }
     }
 
-    /// Clicks at a point of the window's client area, if the window is the
-    /// one under that point.
-    fn click(window: HWND, x: i32, y: i32) -> Result<(), String> {
+    /// A point of the window's client area, on screen.
+    fn screen_point(window: HWND, x: i32, y: i32) -> POINT {
         let mut point = POINT { x, y };
-        // Safe: plain window and metrics calls; the out-pointer points at a
-        // local.
-        let (under, desktop) = unsafe {
+        // Safe: the out-pointer points at a local.
+        unsafe {
             let _ = ClientToScreen(window, &mut point);
-            let under = GetAncestor(WindowFromPoint(point), GA_ROOT);
-            let desktop = (
+        }
+        point
+    }
+
+    /// Whether the window is the one under a point on screen.
+    fn under_point(window: HWND, point: POINT) -> bool {
+        // Safe: plain window calls.
+        unsafe { GetAncestor(WindowFromPoint(point), GA_ROOT) == window }
+    }
+
+    /// A point on screen as `SendInput`'s absolute coordinates.
+    fn input_point(point: POINT) -> (i32, i32) {
+        // Safe: plain metrics calls.
+        let desktop = unsafe {
+            (
                 GetSystemMetrics(SM_XVIRTUALSCREEN),
                 GetSystemMetrics(SM_YVIRTUALSCREEN),
                 GetSystemMetrics(SM_CXVIRTUALSCREEN),
                 GetSystemMetrics(SM_CYVIRTUALSCREEN),
-            );
-            (under, desktop)
+            )
         };
-        if under != window {
+        absolute_point(point.x, point.y, desktop)
+    }
+
+    /// Clicks at a point of the window's client area, if the window is the
+    /// one under that point.
+    fn click(window: HWND, x: i32, y: i32) -> Result<(), String> {
+        let point = screen_point(window, x, y);
+        if !under_point(window, point) {
             return Err("another window covers that point; no click was sent".to_string());
         }
-        let (ax, ay) = absolute_point(point.x, point.y, desktop);
+        let (ax, ay) = input_point(point);
         send(&[
             mouse_event(ax, ay, MOUSEEVENTF_MOVE),
             mouse_event(ax, ay, MOUSEEVENTF_LEFTDOWN),
             mouse_event(ax, ay, MOUSEEVENTF_LEFTUP),
         ]);
+        Ok(())
+    }
+
+    /// Presses the left button at a point of the window's client area or
+    /// frame, moves to another point in steps, and lets go there, if the
+    /// window is the one under the first point. Both points are put on
+    /// screen before the drag starts, so resizing the window does not move
+    /// them.
+    fn drag(window: HWND, from: (i32, i32), to: (i32, i32)) -> Result<(), String> {
+        let start = screen_point(window, from.0, from.1);
+        if !under_point(window, start) {
+            return Err("another window covers the starting point; no drag was sent".to_string());
+        }
+        let end = screen_point(window, to.0, to.1);
+        let (sx, sy) = input_point(start);
+        send(&[mouse_event(sx, sy, MOUSEEVENTF_MOVE)]);
+        std::thread::sleep(DRAG_PAUSE);
+        send(&[mouse_event(sx, sy, MOUSEEVENTF_LEFTDOWN)]);
+        std::thread::sleep(DRAG_PAUSE);
+        for (x, y) in drag_path((start.x, start.y), (end.x, end.y), DRAG_STEPS) {
+            let (ax, ay) = input_point(POINT { x, y });
+            send(&[mouse_event(ax, ay, MOUSEEVENTF_MOVE)]);
+            std::thread::sleep(DRAG_PAUSE);
+        }
+        let (ex, ey) = input_point(end);
+        send(&[mouse_event(ex, ey, MOUSEEVENTF_LEFTUP)]);
         Ok(())
     }
 
@@ -614,5 +695,14 @@ mod tests {
         assert_eq!(absolute_point(-1920, 0, two), (0, 0));
         assert_eq!(absolute_point(1919, 1079, two), (65535, 65535));
         assert_eq!(absolute_point(0, 540, two).0, 32776);
+    }
+
+    #[test]
+    fn win_runner_drags_in_even_steps_to_the_end_point() {
+        assert_eq!(
+            drag_path((0, 0), (40, -20), 4),
+            vec![(10, -5), (20, -10), (30, -15), (40, -20)]
+        );
+        assert_eq!(drag_path((5, 5), (5, 5), 0), vec![(5, 5)]);
     }
 }

@@ -216,6 +216,8 @@
       invoke(`image_rename`, { oldPath, newName }),
     toRelativeImagePath: (/** @type {string} */ imagePath, /** @type {string} */ documentPath) =>
       invoke(`path_to_relative`, { imagePath, documentPath }),
+    setWindowMinimum: (/** @type {number} */ width, /** @type {number} */ height) =>
+      invoke(`window_minimum`, { width, height }),
     changeElementType: (/** @type {string} */ elementType) =>
       invoke(`element_change_type`, { elementType }),
     applyFormat: (/** @type {string} */ format) => invoke(`element_format`, { format }),

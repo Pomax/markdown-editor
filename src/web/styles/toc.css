@@ -28,7 +28,7 @@
     }
 }
 
-#editor-container {
+#document-area {
     .toc-position-right > & {
         order: 0;
     }

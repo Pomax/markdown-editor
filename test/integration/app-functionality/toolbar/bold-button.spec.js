@@ -1,7 +1,7 @@
 /**
  * @fileoverview Integration tests for the toolbar bold button.
  *
- * Covers the four problems from GitHub issue #26:
+ * Covers:
  *   1. Bold first word in first paragraph, then toggle off
  *   2. Bold middle word in first paragraph (correct placement, no trailing space)
  *   3. Bold first word in second paragraph (should not affect first paragraph)
@@ -110,7 +110,7 @@ async function clickBoldButton(pg) {
   await pg.waitForTimeout(200);
 }
 
-test.describe(`Problem 1 — bold first word, toggle off`, () => {
+test.describe(`bold first word, toggle off`, () => {
   test(`bolding first word produces correct markdown`, async () => {
     await loadContent(page, fixtureContent);
     await setWritingView(page);
@@ -146,7 +146,7 @@ test.describe(`Problem 1 — bold first word, toggle off`, () => {
   });
 });
 
-test.describe(`Problem 2 — bold middle word, paragraph 1`, () => {
+test.describe(`bold middle word, paragraph 1`, () => {
   test(`bolding middle word produces correct markdown`, async () => {
     await loadContent(page, fixtureContent);
     await setWritingView(page);
@@ -180,7 +180,7 @@ test.describe(`Problem 2 — bold middle word, paragraph 1`, () => {
   });
 });
 
-test.describe(`Problem 3 — bold first word, paragraph 2`, () => {
+test.describe(`bold first word, paragraph 2`, () => {
   test(`bolding first word of second paragraph produces correct markdown`, async () => {
     await loadContent(page, fixtureContent);
     await setWritingView(page);
@@ -200,7 +200,7 @@ test.describe(`Problem 3 — bold first word, paragraph 2`, () => {
   });
 });
 
-test.describe(`Problem 4 — bold middle word, paragraph 2`, () => {
+test.describe(`bold middle word, paragraph 2`, () => {
   test(`bolding middle word of second paragraph produces correct markdown`, async () => {
     await loadContent(page, fixtureContent);
     await setWritingView(page);

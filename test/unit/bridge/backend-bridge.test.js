@@ -61,6 +61,7 @@ const EXPECTED_MEMBERS = [
   `getPathForFile`,
   `renameImage`,
   `toRelativeImagePath`,
+  `setWindowMinimum`,
   `changeElementType`,
   `applyFormat`,
   `onMenuAction`,

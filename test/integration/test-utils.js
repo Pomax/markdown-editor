@@ -26,8 +26,9 @@ import { createServer } from 'node:net';
 import path from 'node:path';
 import process from 'node:process';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { chromium, test } from '@playwright/test';
+import { chromium, expect, test } from '@playwright/test';
 import { TEST_APP_BINARY } from '../../scripts/build-test-app.js';
+import { startServer, stopServer } from './test-http-server.js';
 import { WebviewPage } from './webview-page.js';
 import { MacInput, MacInspector } from './mac-webview.js';
 import { TauriApp } from './tauri-app.js';
@@ -582,6 +583,28 @@ export async function resetPage(page) {
 }
 
 /**
+ * Serves the app's page over HTTP and opens it in one page of the browser,
+ * at the standard viewport, for a browser spec whose tests share that page.
+ *
+ * @param {import('@playwright/test').Browser} browser
+ * @returns {Promise<{ page: import('@playwright/test').Page, close: () => Promise<void> }>}
+ */
+export async function openServedPage(browser) {
+  const { server, baseURL } = await startServer();
+  const page = await browser.newPage({ viewport: VIEWPORT });
+  await page.goto(baseURL);
+  await page.waitForSelector(`#editor [data-node-id]`);
+  return {
+    page,
+    close: async () => {
+      await resetPage(page);
+      await page.context().close();
+      await stopServer(server);
+    },
+  };
+}
+
+/**
  * Switch the editor to writing view via the editor API.
  * If already in writing view, this is a no-op.
  *
@@ -823,4 +846,63 @@ export async function treeCursorTextAround(pg, beforeLength, afterLength) {
     },
     { beforeLength, afterLength },
   );
+}
+
+/**
+ * How far the toolbar is from each edge of the part of the document area
+ * beside its scrollbar, and its size, in whole CSS pixels, with the
+ * `--button-margin` it keeps from the edges.
+ * @param {import('@playwright/test').Page} page
+ * @returns {Promise<{ margin: number, top: number, right: number, bottom: number, left: number, width: number, height: number }>}
+ */
+export function toolbarLayout(page) {
+  return page.evaluate(() => {
+    const area = /** @type {HTMLElement} */ (document.getElementById(`document-area`));
+    const scroller = /** @type {HTMLElement} */ (document.getElementById(`editor-container`));
+    const bar = /** @type {HTMLElement} */ (document.querySelector(`.toolbar`));
+    const probe = document.createElement(`div`);
+    probe.style.width = `var(--button-margin)`;
+    area.appendChild(probe);
+    const margin = probe.getBoundingClientRect().width;
+    probe.remove();
+    const scrollbar = scroller.offsetWidth - scroller.clientWidth;
+    const outer = area.getBoundingClientRect();
+    const box = bar.getBoundingClientRect();
+    return {
+      margin: Math.round(margin),
+      top: Math.round(box.top - outer.top),
+      right: Math.round(outer.right - scrollbar - box.right),
+      bottom: Math.round(outer.bottom - box.bottom),
+      left: Math.round(box.left - outer.left),
+      width: Math.round(box.width),
+      height: Math.round(box.height),
+    };
+  });
+}
+
+/**
+ * Puts the toolbar at an edge of the document area, as its Bar position
+ * preference does.
+ * @param {import('@playwright/test').Page} page
+ * @param {ToolbarPosition} position
+ */
+export async function setToolbarPosition(page, position) {
+  await page
+    .locator(`.toolbar`)
+    .evaluate((bar, edge) => bar.setAttribute(`data-position`, edge), position);
+}
+
+/**
+ * Waits for the toolbar to be at least `--button-margin` from every edge of
+ * the document area, and fails with its layout when it does not get there.
+ * @param {import('@playwright/test').Page} page
+ */
+export async function expectToolbarToFit(page) {
+  await expect
+    .poll(async () => {
+      const layout = await toolbarLayout(page);
+      const edges = [layout.top, layout.right, layout.bottom, layout.left];
+      return Math.min(...edges) >= layout.margin || JSON.stringify(layout);
+    })
+    .toBe(true);
 }

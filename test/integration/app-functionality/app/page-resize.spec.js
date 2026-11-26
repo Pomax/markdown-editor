@@ -1,9 +1,8 @@
 /**
  * @fileoverview Integration tests for page resize handles.
  *
- * Verifies that the drag handles appear in both focused and source modes,
- * and that dragging a handle changes the page width and persists the new
- * value to settings.
+ * Verifies that dragging a handle changes the page width and persists the
+ * new value to settings.
  *
  * Drag tests dispatch real DOM MouseEvents via page.evaluate() rather
  * than using Playwright's mouse abstraction, which does not reliably
@@ -11,7 +10,7 @@
  */
 
 import { expect, test } from '@playwright/test';
-import { closeApp, launchApp, setSource2View, setWritingView } from '../../test-utils.js';
+import { closeApp, launchApp, setWritingView } from '../../test-utils.js';
 
 /** @type {import('../../tauri-app.js').TauriApp} */
 let app;
@@ -60,23 +59,6 @@ async function simulateDrag(pg, side, dx) {
   // Let rAF and persist settle
   await pg.waitForTimeout(200);
 }
-
-test(`resize handles are visible in writing mode`, async () => {
-  await setWritingView(page);
-  const left = page.locator(`.editor-resize-handle--left`);
-  const right = page.locator(`.editor-resize-handle--right`);
-  await expect(left).toBeAttached();
-  await expect(right).toBeAttached();
-});
-
-test(`resize handles are visible in source2 mode`, async () => {
-  await setSource2View(page);
-  const left = page.locator(`.editor-resize-handle--left`);
-  const right = page.locator(`.editor-resize-handle--right`);
-  await expect(left).toBeAttached();
-  await expect(right).toBeAttached();
-  await setWritingView(page);
-});
 
 test(`dragging the right handle increases page width`, async () => {
   await setWritingView(page);

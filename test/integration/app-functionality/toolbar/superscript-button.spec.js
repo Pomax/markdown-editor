@@ -8,10 +8,6 @@
  *   4. Superscript middle word in second paragraph
  *   5. Cursor position after superscript
  *   6. Collapsed cursor: superscript word under caret
- *
- * Note: superscript uses HTML tags (<sup>...</sup>) and toggle-off is not
- * yet supported in findFormatSpan.  Toggle tests are included so they
- * serve as regression markers once toggle support is added.
  */
 
 import fs from 'node:fs';

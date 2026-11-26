@@ -2,9 +2,8 @@
  * @fileoverview Integration tests for cursor position while typing inline
  * delimiters in writing view.
  *
- * Verifies the fix for GitHub issue #44: typing `*`, `_`, `~~`, or
- * `<sub>` should leave the cursor immediately after the typed character,
- * not jump it backwards.
+ * Typing `*`, `_`, `~~`, or `<sub>` leaves the cursor immediately after
+ * the typed character.
  */
 
 import { expect, test } from '@playwright/test';

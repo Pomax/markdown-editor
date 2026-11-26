@@ -218,6 +218,8 @@ export class EditOperationsData {
 export class ToolbarData {
   /** @type {HTMLElement} */
   container;
+  /** @type {HTMLElement} */
+  documentArea;
   /** @type {Editor} */
   editor;
   /** @type {HTMLElement} */
@@ -287,6 +289,11 @@ export class TableOfContentsData {
   visible = true;
   /** @type {TocPosition} */
   position = `left`;
+  /**
+   * The widest the sidebar may be, in pixels, as things beside it allow.
+   * @type {() => number}
+   */
+  widthLimit = () => Number.POSITIVE_INFINITY;
   /** @type {Map<string, string>} */
   nodeToHeadingId = new Map();
   /** @type {((e: Event) => void) | undefined} */

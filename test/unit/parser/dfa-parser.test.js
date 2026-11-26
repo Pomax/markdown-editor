@@ -367,7 +367,7 @@ describe(`DFAParser`, () => {
       assert.strictEqual(tree.children[1].content, `text after`);
     });
 
-    it(`issue #82 example 1: four-backtick fence with nested three-backtick literal text`, async () => {
+    it(`a four-backtick fence keeps three-backtick sequences inside it as literal text`, async () => {
       const md = `This is a paragraph of text.\n\n\`\`\`\`\ncode with \`\`\` in it\nand more \`\`\` here\n\`\`\`\`\n\nAnd this is regular text again.`;
       const tree = await parser.parse(md);
       assert.strictEqual(tree.children.length, 3);
@@ -379,7 +379,7 @@ describe(`DFAParser`, () => {
       assert.strictEqual(tree.toMarkdown(), md);
     });
 
-    it(`issue #82 example 2: ten-backtick fence with nine-backtick literal text`, async () => {
+    it(`a ten-backtick fence keeps nine backticks inside it as literal text`, async () => {
       const md = `This is text\n\n\`\`\`\`\`\`\`\`\`\`\nThis is code, with \`\`\`\`\`\`\`\`\` in it\n\`\`\`\`\`\`\`\`\`\`\n\nBut this is text again.`;
       const tree = await parser.parse(md);
       assert.strictEqual(tree.children.length, 3);

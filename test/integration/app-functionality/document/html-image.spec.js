@@ -1,8 +1,8 @@
 /**
- * @fileoverview Integration tests for HTML <img> tag support.
- * Verifies that HTML img tags are parsed as image nodes, rendered
- * correctly in both view modes, and that the image modal includes a
- * style field that round-trips through editing. The images are a fixture
+ * @fileoverview Integration tests for editing HTML <img> tags through the
+ * image modal: its style and class fields show the img's style and class,
+ * and editing them updates the parse tree, the rendered image and the
+ * markdown. The images are a fixture
  * image given as a file URL, so they load in every webview.
  */
 
@@ -32,18 +32,6 @@ test.beforeAll(async () => {
 
 test.afterAll(async () => {
   await closeApp(app);
-});
-
-test(`HTML img tag is parsed as an image node in writing mode`, async () => {
-  await loadContent(page, HTML_IMG);
-  await setWritingView(page);
-
-  const imageNode = page.locator(`[data-node-id].md-image`);
-  await expect(imageNode).toBeVisible();
-
-  // The rendered <img> element should exist
-  const img = page.locator(`.md-image img`);
-  await expect(img).toBeVisible();
 });
 
 test(`clicking HTML img in writing mode opens edit modal with style field`, async () => {
@@ -161,15 +149,6 @@ test(`markdown image without style does not show style in modal`, async () => {
   const cancelBtn = page.locator(`.image-btn--cancel`);
   await cancelBtn.click();
   await expect(dialog).not.toBeVisible();
-});
-
-test(`HTML img class is applied to the rendered image in writing mode`, async () => {
-  await loadContent(page, HTML_IMG_CLASS);
-  await setWritingView(page);
-
-  const img = page.locator(`.md-image img`);
-  await expect(img).toBeVisible();
-  await expect(img).toHaveClass(`wide framed`);
 });
 
 test(`edit modal shows the class of an HTML img`, async () => {

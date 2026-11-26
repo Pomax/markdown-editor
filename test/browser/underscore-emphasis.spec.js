@@ -1,25 +1,25 @@
 /**
- * @fileoverview Integration test for underscore emphasis (_italic_) support.
+ * @fileoverview Browser test for underscore emphasis (_italic_) support.
  * Verifies that `_text_`, `__text__`, `**_text_**`, and `_**text**_` are
  * rendered correctly in writing mode: formatting is always applied (WYSIWYG),
  * both when the node is focused and unfocused.
  */
 
 import { expect, test } from '@playwright/test';
-import { clickInEditor, closeApp, launchApp, setWritingView } from '../../test-utils.js';
-
-/** @type {import('../../tauri-app.js').TauriApp} */
-let app;
+import { clickInEditor, openServedPage, setWritingView } from '../integration/test-utils.js';
 
 /** @type {import('@playwright/test').Page} */
 let page;
 
-test.beforeAll(async () => {
-  ({ app, page } = await launchApp());
+/** @type {() => Promise<void>} */
+let close;
+
+test.beforeAll(async ({ browser }) => {
+  ({ page, close } = await openServedPage(browser));
 });
 
 test.afterAll(async () => {
-  await closeApp(app);
+  await close();
 });
 
 test(`underscore emphasis _text_ renders as <em> when unfocused`, async () => {

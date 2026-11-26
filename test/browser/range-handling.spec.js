@@ -1,13 +1,13 @@
 /**
- * @fileoverview Integration tests for range (selection) handling.
+ * @fileoverview Browser tests for range (selection) handling.
  * Covers: type-with-selection, backspace/delete-with-selection,
  * cross-node selection deletion, context-restricted Ctrl+A,
  * cut, copy, and paste-with-selection.
  */
 
 import { expect, test } from '@playwright/test';
-import { END, HOME, MOD, clickInEditor, resetPage } from '../../test-utils.js';
-import { startServer, stopServer } from '../../test-http-server.js';
+import { END, HOME, MOD, clickInEditor, resetPage } from '../integration/test-utils.js';
+import { startServer, stopServer } from '../integration/test-http-server.js';
 
 /** @type {import('node:http').Server} */
 let server;

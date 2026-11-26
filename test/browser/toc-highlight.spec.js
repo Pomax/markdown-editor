@@ -1,5 +1,5 @@
 /**
- * @fileoverview Integration test for the ToC scroll-spy highlighting.
+ * @fileoverview Browser test for the ToC scroll-spy highlighting.
  *
  * Verifies that as the user scrolls through the document, the ToC
  * sidebar highlights the heading whose section occupies the most
@@ -10,12 +10,12 @@ import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { expect, test } from '@playwright/test';
-import { clickInEditor, resetPage } from '../../test-utils.js';
-import { startServer, stopServer } from '../../test-http-server.js';
+import { clickInEditor, resetPage } from '../integration/test-utils.js';
+import { startServer, stopServer } from '../integration/test-http-server.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const FIXTURES_DIR = path.join(__dirname, `..`, `..`, `..`, `fixtures`);
+const FIXTURES_DIR = path.join(__dirname, `..`, `fixtures`);
 
 /** @type {import('node:http').Server} */
 let server;

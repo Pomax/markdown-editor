@@ -1,10 +1,9 @@
 /**
  * @fileoverview Integration tests for HTML block container support.
  * Loads test/fixtures/nested.md which contains headings both inside and
- * outside an HTML `<div>` element, then verifies:
- *   1. The Table of Contents includes headings nested inside the div.
- *   2. The toolbar correctly identifies node types for headings after
- *      an HTML block container.
+ * outside an HTML `<div>` element, then verifies that clicking a heading
+ * inside or after the HTML block container marks the toolbar's heading
+ * button for that heading's level as active.
  */
 
 import fs from 'node:fs';
@@ -30,19 +29,6 @@ test.beforeAll(async () => {
 
 test.afterAll(async () => {
   await closeApp(app);
-});
-
-test(`ToC includes heading nested inside an HTML block`, async () => {
-  // The TOC should list both h2 headings: the one inside the <div>
-  // ("and this an h2") and the one outside ("with another heading").
-  const tocLinks = page.locator(`#toc-sidebar .toc-link`);
-
-  // There should be at least 3 TOC entries: the h1 title plus 2 h2s.
-  await expect(tocLinks).toHaveCount(3);
-
-  const texts = await tocLinks.allInnerTexts();
-  expect(texts).toContain(`and this an h2`);
-  expect(texts).toContain(`with another heading`);
 });
 
 test(`toolbar flags heading inside HTML block as h2`, async () => {

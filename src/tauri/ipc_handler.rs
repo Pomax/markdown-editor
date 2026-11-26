@@ -628,6 +628,13 @@ pub fn path_to_relative(image_path: String, document_path: String) -> String {
     crate::image_path::to_relative(&image_path, &document_path)
 }
 
+/// `window:minimum`: keeps the window large enough for a page `width` by
+/// `height` CSS pixels, the size the page needs for its toolbar to fit.
+#[tauri::command]
+pub fn window_minimum(width: f64, height: f64, window: WebviewWindow) {
+    let _ = crate::set_page_minimum(&window, width, height);
+}
+
 /// `view:openFilesChanged`: records the renderer's open files for the
 /// View menu, makes the active one the current file, persists the list
 /// so it survives an ungraceful exit, and rebuilds the menu.
