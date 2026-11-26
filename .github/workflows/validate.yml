@@ -25,8 +25,8 @@ jobs:
         with:
           components: rustfmt
       - run: |
-          Set-DisplayResolution -Width 1920 -Height 1280 -Force
-          Get-DisplayResolution
+          dotnet tool install --global SetResolution
+          SetResolution 1080
         shell: pwsh
       - run: npm ci --ignore-scripts && npm run setup && npm test
 
