@@ -223,13 +223,16 @@ test(`Inspect Element opens DevTools on the element under the pointer`, async ()
   await expect.poll(() => app.isDevtoolsOpen()).toBe(true);
   await page.waitForTimeout(500);
   expect(
-    await page.evaluate(({ x, y }) => {
-      const inspected = /** @type {any} */ (window).__inspected;
-      return {
-        connected: inspected?.isConnected,
-        atPoint: document.elementFromPoint(x, y) === inspected,
-      };
-    }, { x, y }),
+    await page.evaluate(
+      ({ x, y }) => {
+        const inspected = /** @type {any} */ (window).__inspected;
+        return {
+          connected: inspected?.isConnected,
+          atPoint: document.elementFromPoint(x, y) === inspected,
+        };
+      },
+      { x, y },
+    ),
   ).toEqual({ connected: true, atPoint: true });
 });
 

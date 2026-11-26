@@ -25,7 +25,7 @@ const readmeContent = fs.readFileSync(readmePath, `utf-8`);
 /**
  * The narrowest page `fit_main_window` in main.rs allows.
  */
-const MIN_PAGE_WIDTH = process.platform === `darwin` ? 1003 : 998;
+const MIN_PAGE_WIDTH = process.platform === `darwin` ? 1003 : 1034;
 
 /** @type {import('../../tauri-app.js').TauriApp} */
 let app;

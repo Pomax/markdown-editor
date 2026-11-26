@@ -136,7 +136,8 @@ test.describe(`Math blocks in the writing view`, () => {
     const drawn = await editor.locator(`.md-math-block .katex-html`).evaluate(async (html) => {
       await document.fonts.ready;
       const main = [...document.fonts].find(
-        (font) => font.family.includes(`KaTeX_Main`) && font.weight === `400` && font.style === `normal`,
+        (font) =>
+          font.family.includes(`KaTeX_Main`) && font.weight === `400` && font.style === `normal`,
       );
       const leaves = [...html.querySelectorAll(`span`)].filter(
         (span) => span.children.length === 0 && span.textContent?.trim(),
@@ -170,7 +171,9 @@ test.describe(`Math blocks in the writing view`, () => {
 
     const offset = await editor.locator(`.md-math-block .md-math`).evaluate((math) => {
       const base = math.querySelector(`.katex-html > *`);
-      return Math.round((base?.getBoundingClientRect().left ?? -1) - math.getBoundingClientRect().left);
+      return Math.round(
+        (base?.getBoundingClientRect().left ?? -1) - math.getBoundingClientRect().left,
+      );
     });
     expect(offset).toBe(0);
   });

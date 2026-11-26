@@ -40,7 +40,7 @@ const PAGE_WIDTH = 1216;
 const WINDOW_HEIGHT = 1131;
 
 /** The narrowest page (`MIN_PAGE_WIDTH` in main.rs). */
-const MIN_PAGE_WIDTH = process.platform === `darwin` ? 1003 : 998;
+const MIN_PAGE_WIDTH = process.platform === `darwin` ? 1003 : 1034;
 
 /** The whole window's minimum height (main.rs). */
 const MIN_WINDOW_HEIGHT = 848;
@@ -186,7 +186,7 @@ test(`at its starting size the page shows everything without running past the ri
   }
 });
 
-test(`the window keeps at least a 998 wide page and 848 high`, async () => {
+test(`the window keeps at least a 1034 wide page and 848 high`, async () => {
   const { app } = await launchMeasured();
   try {
     await app.setWindowBounds({ width: 400, height: 300 });

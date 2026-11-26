@@ -103,9 +103,10 @@ test(`End and Enter on a line that is a link put an empty paragraph after the li
   await expect
     .poll(() =>
       page.evaluate(() =>
-        /** @type {any} */ (window).__editor.syntaxTree.children.map(
-          (/** @type {any} */ node) => ({ type: node.type, content: node.content }),
-        ),
+        /** @type {any} */ (window).__editor.syntaxTree.children.map((/** @type {any} */ node) => ({
+          type: node.type,
+          content: node.content,
+        })),
       ),
     )
     .toEqual([

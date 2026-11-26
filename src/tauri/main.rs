@@ -449,7 +449,7 @@ pub fn restore_open_files(app: &tauri::AppHandle, entries: &[Value]) {
 const MIN_PAGE_WIDTH: f64 = if cfg!(target_os = "macos") {
     1003.0
 } else {
-    998.0
+    1034.0
 };
 
 /// The page width the window starts with.

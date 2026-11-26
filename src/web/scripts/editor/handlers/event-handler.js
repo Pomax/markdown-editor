@@ -147,7 +147,10 @@ export class EventHandler extends EventHandlerData {
     }
 
     // Clicking a math block's rendered math puts the cursor at the start of the math block.
-    const math = this.editor.viewMode === `writing` ? target.closest?.(`.md-math-block:not([data-has-focus])`) : null;
+    const math =
+      this.editor.viewMode === `writing`
+        ? target.closest?.(`.md-math-block:not([data-has-focus])`)
+        : null;
     if (math instanceof HTMLElement && math.dataset.nodeId && this.editor.syntaxTree) {
       this.editor.syntaxTree.treeCursor = { nodeId: math.dataset.nodeId, offset: 0 };
       this.editor.treeRange = undefined;

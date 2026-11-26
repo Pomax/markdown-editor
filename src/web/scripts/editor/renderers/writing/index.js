@@ -22,14 +22,17 @@ const INVALID_MATH = String.raw`\text{invalid Math LaTeX}`;
 
 /**
  * Makes an element match a freshly rendered one of the same tag, in place:
- * its attributes are copied, its text nodes take the new text, and its
- * child elements of the same tag are updated the same way, so that only
- * children of a different kind are replaced.
+ * its attributes are copied, an input's checked state too, its text nodes
+ * take the new text, and its child elements of the same tag are updated the
+ * same way, so that only children of a different kind are replaced.
  * @param {Element} existing
  * @param {Element} fresh
  */
 function updateElement(existing, fresh) {
   copyAttributes(existing, fresh);
+  if (existing instanceof HTMLInputElement && fresh instanceof HTMLInputElement) {
+    existing.checked = fresh.checked;
+  }
   const before = [...existing.childNodes];
   const after = [...fresh.childNodes];
   after.forEach((node, i) => {
@@ -860,7 +863,9 @@ export class WritingRenderer extends WritingRendererData {
           before,
           after: this.editor.getMarkdown(),
         });
-        this.editor.renderNodesAndPlaceCursor({ updated: [node.id] });
+        // A prevented click puts the checkbox's state back once the click
+        // is done, so the toggled state is rendered after that.
+        setTimeout(() => this.editor.renderNodesAndPlaceCursor({ updated: [node.id] }));
         this.editor.setUnsavedChanges(true);
       });
 
