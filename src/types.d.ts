@@ -189,7 +189,7 @@ interface PageToBackendBridge {
     browseForImage(): Promise<{ success: boolean; filePath?: string }>;
     renameImage(oldPath: string, newName: string): Promise<{ success: boolean; newPath?: string; message?: string }>;
     toRelativeImagePath(imagePath: string, documentPath: string): Promise<string>;
-    setWindowMinimum(width: number, height: number): Promise<void>;
+    setWindowMinimum(width: number, height: number, viewportWidth: number, viewportHeight: number): Promise<void>;
     getPathForFile(file: File): string;
     executeAPICommand(command: string, params: object): Promise<any>;
     setWritingView(): Promise<{ success: boolean }>;

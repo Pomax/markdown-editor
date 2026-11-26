@@ -550,19 +550,30 @@ fn fit_main_window(app: &tauri::AppHandle) -> tauri::Result<()> {
 }
 
 /// Makes the smallest page the window may have the larger of the smallest
-/// page it allows and a page `width` by `height` CSS pixels, with the menu
-/// bar the window holds above the page, which is what the page needs for
-/// its toolbar to fit, and grows a window that is smaller than that, unless
-/// it is maximized.
+/// page it allows and a page `width` by `height` CSS pixels, which is what
+/// the page needs for its toolbar to fit, with what the window's inner size
+/// holds besides the page, its inner size less the page's `viewport_width`
+/// by `viewport_height` CSS pixels, and grows a window that is smaller than
+/// that, unless it is maximized.
 pub fn set_page_minimum(
     window: &tauri::WebviewWindow,
     width: f64,
     height: f64,
+    viewport_width: f64,
+    viewport_height: f64,
 ) -> tauri::Result<()> {
     use tauri::{Manager, PhysicalSize};
     let scale = window.scale_factor()?;
     let physical = |logical: f64| (logical * scale).ceil() as u32;
-    let menu_bar = menu_bar_height(window);
+    let inner = window.inner_size()?;
+    let held = (
+        inner
+            .width
+            .saturating_sub((viewport_width * scale).round() as u32),
+        inner
+            .height
+            .saturating_sub((viewport_height * scale).round() as u32),
+    );
     let minimum = {
         let tracker = window.state::<WindowTrackerState>();
         let mut tracker = tracker.lock().expect("window tracker lock");
@@ -570,8 +581,8 @@ pub fn set_page_minimum(
             return Ok(());
         };
         let minimum = (
-            floor.0.max(physical(width)),
-            floor.1.max(physical(height) + menu_bar),
+            floor.0.max(physical(width) + held.0),
+            floor.1.max(physical(height) + held.1),
         );
         tracker.minimum = Some(minimum);
         minimum
@@ -585,32 +596,6 @@ pub fn set_page_minimum(
         ))?;
     }
     Ok(())
-}
-
-/// The height of the menu bar the window holds above the page, in physical
-/// pixels: GTK puts it inside the window's inner size. None is counted off
-/// the main thread, where GTK must not be called.
-#[cfg(target_os = "linux")]
-fn menu_bar_height(window: &tauri::WebviewWindow) -> u32 {
-    use gtk::prelude::*;
-    if !gtk::is_initialized_main_thread() {
-        return 0;
-    }
-    let (Ok(vbox), Ok(scale)) = (window.default_vbox(), window.scale_factor()) else {
-        return 0;
-    };
-    vbox.children()
-        .iter()
-        .filter(|child| child.is::<gtk::MenuBar>())
-        .map(|child| (f64::from(child.allocated_height().max(0)) * scale).round() as u32)
-        .sum()
-}
-
-/// The height of the menu bar the window holds above the page: none, since
-/// outside Linux the menu bar is not inside the window's inner size.
-#[cfg(not(target_os = "linux"))]
-fn menu_bar_height(_window: &tauri::WebviewWindow) -> u32 {
-    0
 }
 
 /// A work area to restore against when no monitor is known: one as large

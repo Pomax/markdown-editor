@@ -313,7 +313,12 @@ class App extends AppData {
       const height = Math.ceil(window.innerHeight - documentArea.clientHeight + needed.height);
       if (`${width}x${height}` === sent) return;
       sent = `${width}x${height}`;
-      window.pageToBackendBridge?.setWindowMinimum(width, height);
+      window.pageToBackendBridge?.setWindowMinimum(
+        width,
+        height,
+        window.innerWidth,
+        window.innerHeight,
+      );
     };
     const observer = new ResizeObserver(update);
     observer.observe(documentArea);

@@ -390,14 +390,18 @@ export class CursorManager extends CursorManagerData {
       const len = textNode.textContent?.length ?? 0;
       // Use strict < so that when remaining === len the cursor
       // advances past the current text node.  This gives "forward
-      // affinity": after a closing delimiter the cursor lands in
-      // the empty text node *after* the formatting element rather
-      // than at the end of the text node *inside* it.
+      // affinity": after a closing delimiter the cursor lands *after*
+      // the formatting element rather than at the end of the text
+      // node *inside* it: at the start of the text that follows the
+      // element, or in the empty text node after it when no text
+      // follows.
       if (remaining < len || (remaining === 0 && len === 0)) {
+        const next = len === 0 ? textNode.nextSibling : null;
+        const target = next instanceof Text && next.length > 0 ? next : textNode;
         const sel = window.getSelection();
         if (sel) {
           const range = document.createRange();
-          range.setStart(textNode, remaining);
+          range.setStart(target, remaining);
           range.collapse(true);
           sel.removeAllRanges();
           sel.addRange(range);

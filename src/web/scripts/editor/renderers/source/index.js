@@ -30,13 +30,20 @@ function syncScroll(textarea, pre) {
 const SIZES_TEXTAREAS = globalThis.CSS?.supports(`field-sizing`, `content`) ?? true;
 
 /**
- * Makes a textarea as tall as its content, where the webview does not.
+ * Makes a textarea as tall as its content, where the webview does not,
+ * with its wrapper kept at the height it has while the textarea is
+ * measured, so the scroll container around it keeps its scroll position.
  * @param {HTMLTextAreaElement} textarea
  */
 function fitTextarea(textarea) {
   if (SIZES_TEXTAREAS) return;
+  const wrapper = /** @type {HTMLElement} */ (textarea.parentElement);
+  wrapper.style.minHeight = `${wrapper.offsetHeight}px`;
+  textarea.style.flexGrow = `0`;
   textarea.style.height = `auto`;
   textarea.style.height = `${textarea.scrollHeight}px`;
+  textarea.style.flexGrow = ``;
+  wrapper.style.minHeight = ``;
 }
 
 /**
@@ -54,12 +61,15 @@ export class SourceRendererV2 extends SourceRendererV2Data {
 
   /**
    * Renders the syntax tree to the container by placing the full
-   * markdown text into a textarea with an overlapping pre mirror.
+   * markdown text into a textarea with an overlapping pre mirror.  Where
+   * the webview does not size textareas, the container keeps the height
+   * it had until the textarea has been made as tall as its content.
    * @param {SyntaxTree} syntaxTree - The syntax tree to render
    * @param {HTMLElement} container - The container element
    */
   fullRender(syntaxTree, container) {
     const markdown = syntaxTree.toMarkdown();
+    const heldHeight = SIZES_TEXTAREAS ? 0 : container.offsetHeight;
 
     container.innerHTML = ``;
     container.classList.add(`source-view-v2`);
@@ -92,7 +102,9 @@ export class SourceRendererV2 extends SourceRendererV2Data {
     wrapper.appendChild(pre);
     container.appendChild(wrapper);
     if (!SIZES_TEXTAREAS) {
+      container.style.minHeight = `${heldHeight}px`;
       fitTextarea(textarea);
+      container.style.minHeight = ``;
       new ResizeObserver(() => fitTextarea(textarea)).observe(wrapper);
     }
 
