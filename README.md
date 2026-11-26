@@ -1,6 +1,6 @@
 # Pomax's Markdown Editor
 
-A GitHub-flavoured markdown editor proof of concept built using the web stack and running in Tauri (a Rust alternative to the idiotically bloated Electron), built to make editing _actual_ documents (e.g. 50k+ word documents like [https://pomax.github.io/are-we-flying](https://pomax.github.io/are-we-flying)) relatively painless.
+A GitHub-flavoured markdown editor proof of concept built using the web stack and running in Tauri (a Rust alternative to Electron), built to make editing _actual_ documents (e.g. 50k+ word documents like [https://pomax.github.io/are-we-flying](https://pomax.github.io/are-we-flying)) relatively painless.
 
 <img src="./editor.png" style="width: 90%;" />
 
@@ -24,11 +24,20 @@ Alternatively, of course, you can just clone the repo, install all the dependenc
 
 I needed a standalone, GitHub flavoured markdown editor that can open individual files, has both wysiwyg and plain source modes with seamless toggling between those, has *full* "arbitrary html in markdown" support, _including stylesheets_, and the ability to load 50,000+ word documents in a way that edits are (near) immediate instead of trying to update a single, giant, string. Which rules out literally every markdown editor out there. Think of your favourite markdown editor: it fails at least one of those criteria.
 
-So this is that. It's a markdown editor that does what I need, and gets updated anytime I run into something it should do, but can't. Or does something wrong. It's a proof of concept put together using Claude, careful ATTD, and a fuckton of yelling out loud at how much of a piece of shit Anthropic's baby is.
+So this is that. It's a markdown editor that does what I need.
 
-### I don't want to use something made using AI
+### Features
 
-That's fine. This is a tool that ***I*** need. I'm putting it up on GitHub with a public domain license because that's what I do with almost everything I make, and if you don't want to use this, no one's forcing you to use it. Heck no one even forced you to make it this far in the README, just close this tab; no hard feelings.
+- Wysiwyg as well as source view edit modes 
+  - Optional wysiwyg button bar for those who want it.
+- Full GFM support, including regular HTML because that's literally part of GFM.
+  - That includes checkbox list support
+  - And the `<details>` element.
+- ToC based on your headings
+- Open as many files as you want
+- This editor will not get slower the larger your document is.
+- LaTeX math support (using LaTeX delimiters, not TeX delimiters), but onl
+  - (only blocks only for now, because inline math is bad math)
 
 ## Running from source
 
@@ -36,16 +45,17 @@ There are prebuilt executables, but if you want to run the project from source, 
 
 ### Prerequisites
 
-Software:
+All platforms:
 
+- Git, with the Unix tools install if you're on Windows
 - A currently supported version of Node.js (I recommend using [nvm](https://www.nvmnode.com/guide/download.html))
 - [Rust](https://rust-lang.org/tools/install)
 
 Build tools:
 
-- On Windows, the Microsoft C++ build tools and the WebView2 runtime
-- on macOS, the Xcode command line tools
-- on Linux, the WebKitGTK 4.1 development packages.
+- On Windows, the [Microsoft C++ Build Tools](https://visualstudio.microsoft.com/visual-cpp-build-tools/) (with the "Desktop development with C++" workload installed) and for Windows 10, the [WebView2 runtime](https://developer.microsoft.com/en-us/microsoft-edge/webview2/) component.
+- on macOS, the Xcode command line tools (`xcode-select --install` if not already installed)
+- on Linux, `sudo apt-get update && sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev xvfb openbox`.
 
 ### Installation
 
@@ -60,14 +70,16 @@ The setup script installs the Playwright Firefox browser used for browser testin
 
 For Windows users, run `scripts\build.bat`, for MacOS and Linux, run `./scripts/build.sh`
 
-### Running the build executable
+### Running the build
 
 For Windows users, run `scripts\run.bat`, for MacOS and Linux, run `./scripts/run.sh`
 
 ### Testing
 
-You run the full test suite using the `scripts\test.bat` or `./scripts/test.sh` scripts. Nice and simple. This will run linting, formatting, consistency testing, unit testing, the backend's Rust tests, integration testing, and browser testing.
+You run the regular test suite using the `scripts\test.bat` or `./scripts/test.sh` scripts. Nice and simple. This will run linting, formatting, consistency testing, unit testing, the backend's Rust tests, integration testing, and browser testing.
+
+To also run the real app tests, run `npm run test:real-input`. This will either hijack your real keyboard and mouse to drive the app, or it'll try to use virtual input devices and you're probably going to be told by your OS that you need to do one or more things to allow these tests to actually run correctly.
 
 ## License
 
-I didn't write this code, and AI can't be trusted, so this project is Public Domain. Literally do with it what you want, I'm only losing money on this while I figure out a way in which these tools make sense.
+I didn't write this code, and AI is just an autocomplete algoirhtm that looks at the previous _million_ rather than "several" words to come up with the statistically most likely next word, so there is nothing to copyright or license here. This project is Public Domain.
