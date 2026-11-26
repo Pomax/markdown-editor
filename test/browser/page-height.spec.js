@@ -1,12 +1,12 @@
 /**
- * @fileoverview Integration test for dynamic page height.
+ * @fileoverview Browser test for dynamic page height.
  * Verifies that the editor page grows to fit its content instead of
  * staying at a fixed height.
  */
 
 import { expect, test } from '@playwright/test';
-import { clickInEditor, resetPage } from '../../test-utils.js';
-import { startServer, stopServer } from '../../test-http-server.js';
+import { clickInEditor, resetPage } from '../integration/test-utils.js';
+import { startServer, stopServer } from '../integration/test-http-server.js';
 
 /** @type {import('node:http').Server} */
 let server;

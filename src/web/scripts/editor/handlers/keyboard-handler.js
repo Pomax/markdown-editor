@@ -40,6 +40,7 @@ export class KeyboardHandler extends KeyboardHandlerData {
       // Block shortcuts
       { key: `q`, ctrl: true, shift: true, action: `changeType:blockquote` },
       { key: `c`, ctrl: true, shift: true, action: `changeType:code-block` },
+      { key: `m`, ctrl: true, shift: true, action: `changeType:math-block` },
 
       // Insert shortcuts
       { key: `i`, ctrl: true, shift: true, action: `insert:image` },

@@ -552,6 +552,11 @@ export class Source2Formatter extends Source2FormatterData {
       return;
     }
 
+    if (elementType === `math-block`) {
+      this.toggleMathBlock(textarea);
+      return;
+    }
+
     const { selectionStart, selectionEnd, value } = textarea;
 
     if (elementType === `paragraph`) {
@@ -651,15 +656,37 @@ export class Source2Formatter extends Source2FormatterData {
    * @param {HTMLTextAreaElement} textarea
    */
   toggleCodeBlock(textarea) {
+    this.toggleFences(textarea, `\`\`\``, `\`\`\``, true);
+  }
+
+  /**
+   * Toggles `\[` and `\]` lines around the current line or selection, at
+   * the start of their lines, where a math block's delimiters must be.
+   * @param {HTMLTextAreaElement} textarea
+   */
+  toggleMathBlock(textarea) {
+    this.toggleFences(textarea, `\\[`, `\\]`, false);
+  }
+
+  /**
+   * Toggles an opening and a closing fence line around the current line or
+   * selection. Indented fences are put at the selected lines' own
+   * indentation; fences at that indentation, or at none, are removed.
+   * @param {HTMLTextAreaElement} textarea
+   * @param {string} open - The opening fence, without indentation.
+   * @param {string} close - The closing fence, without indentation.
+   * @param {boolean} indented - Whether the fences take the lines' indentation.
+   */
+  toggleFences(textarea, open, close, indented) {
     const { selectionStart, selectionEnd, value } = textarea;
     const { lineStart } = getLineRange(value, selectionStart);
     const { lineEnd } = getLineRange(value, selectionEnd);
     const selectedLines = value.substring(lineStart, lineEnd);
-    const indent = commonIndent(selectedLines);
+    const indent = indented ? commonIndent(selectedLines) : ``;
 
     for (const fenceIndent of new Set([indent, ``])) {
-      const fenceOpen = `${fenceIndent}\`\`\`\n`;
-      const fenceClose = `\n${fenceIndent}\`\`\``;
+      const fenceOpen = `${fenceIndent}${open}\n`;
+      const fenceClose = `\n${fenceIndent}${close}`;
       const beforeStart = value.substring(Math.max(0, lineStart - fenceOpen.length), lineStart);
       const afterEnd = value.substring(lineEnd, lineEnd + fenceClose.length);
       if (beforeStart === fenceOpen && afterEnd === fenceClose) {
@@ -675,8 +702,8 @@ export class Source2Formatter extends Source2FormatterData {
       }
     }
 
-    const fenceOpen = `${indent}\`\`\`\n`;
-    const fenceClose = `\n${indent}\`\`\``;
+    const fenceOpen = `${indent}${open}\n`;
+    const fenceClose = `\n${indent}${close}`;
     const wrapped = fenceOpen + selectedLines + fenceClose;
     applyTextareaEdit(
       textarea,

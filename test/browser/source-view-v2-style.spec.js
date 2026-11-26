@@ -1,5 +1,5 @@
 /**
- * @fileoverview Integration tests for the source view v2 textarea styling.
+ * @fileoverview Browser tests for the source view v2 textarea styling.
  *
  * Verifies that when switching to source2 mode, the textarea has the
  * correct computed styles: monospace font, no visible border, no resize
@@ -11,31 +11,30 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { expect, test } from '@playwright/test';
 import {
-  closeApp,
-  launchApp,
   loadContent,
+  openServedPage,
   projectRoot,
   setSource2View,
   setWritingView,
-} from '../../test-utils.js';
+} from '../integration/test-utils.js';
 
 const loremContent = fs.readFileSync(
   path.join(projectRoot, `test`, `fixtures`, `lorem.md`),
   `utf-8`,
 );
 
-/** @type {import('../../tauri-app.js').TauriApp} */
-let app;
-
 /** @type {import('@playwright/test').Page} */
 let page;
 
-test.beforeAll(async () => {
-  ({ app, page } = await launchApp());
+/** @type {() => Promise<void>} */
+let close;
+
+test.beforeAll(async ({ browser }) => {
+  ({ page, close } = await openServedPage(browser));
 });
 
 test.afterAll(async () => {
-  await closeApp(app);
+  await close();
 });
 
 test(`source2 textarea exists when in source2 mode`, async () => {

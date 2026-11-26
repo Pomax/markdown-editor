@@ -367,11 +367,13 @@
     }
 }
 
-.toc-settings-row {
+.toc-settings-row,
+.toolbar-settings-row {
     margin-bottom: var(--spacing-md);
 }
 
-.toc-visible-toggle {
+.toc-visible-toggle,
+.toolbar-visible-toggle {
     display: flex;
     align-items: center;
     gap: var(--spacing-sm);
@@ -385,7 +387,8 @@
     }
 }
 
-.toc-position-row {
+.toc-position-row,
+.toolbar-position-row {
     display: flex;
     align-items: center;
     gap: var(--spacing-sm);

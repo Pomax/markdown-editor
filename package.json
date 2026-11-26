@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "build": "npm run lint && node scripts/build-executable.js",
+    "build:icons": "node scripts/build-icons.js",
     "cleanup": "rm -rf test-results",
     "dist:linux": "node scripts/build-executable.js --linux",
     "dist:mac": "node scripts/build-executable.js --mac",

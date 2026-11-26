@@ -11,6 +11,60 @@ import { WritingRendererData } from '../../types.js';
 let styleScopeCounter = 0;
 
 /**
+ * The factor the size of KaTeX's math is multiplied by.
+ */
+const MATH_SCALE = 0.85;
+
+/**
+ * The LaTeX of the placeholder shown for math KaTeX cannot render.
+ */
+const INVALID_MATH = String.raw`\text{invalid Math LaTeX}`;
+
+/**
+ * Makes an element match a freshly rendered one of the same tag, in place:
+ * its attributes are copied, an input's checked state too, its text nodes
+ * take the new text, and its child elements of the same tag are updated the
+ * same way, so that only children of a different kind are replaced.
+ * @param {Element} existing
+ * @param {Element} fresh
+ */
+function updateElement(existing, fresh) {
+  copyAttributes(existing, fresh);
+  if (existing instanceof HTMLInputElement && fresh instanceof HTMLInputElement) {
+    existing.checked = fresh.checked;
+  }
+  const before = [...existing.childNodes];
+  const after = [...fresh.childNodes];
+  after.forEach((node, i) => {
+    const old = before[i];
+    if (!old) {
+      existing.appendChild(node);
+    } else if (old instanceof Element && node instanceof Element && old.tagName === node.tagName) {
+      updateElement(old, node);
+    } else if (old.nodeType === Node.TEXT_NODE && node.nodeType === Node.TEXT_NODE) {
+      if (old.nodeValue !== node.nodeValue) old.nodeValue = node.nodeValue;
+    } else if (!old.isEqualNode(node)) {
+      old.replaceWith(node);
+    }
+  });
+  for (const old of before.slice(after.length)) old.remove();
+}
+
+/**
+ * Gives an element exactly the attributes of another.
+ * @param {Element} target
+ * @param {Element} source
+ */
+function copyAttributes(target, source) {
+  for (const { name } of [...target.attributes]) {
+    if (!source.hasAttribute(name)) target.removeAttribute(name);
+  }
+  for (const { name, value } of [...source.attributes]) {
+    if (target.getAttribute(name) !== value) target.setAttribute(name, value);
+  }
+}
+
+/**
  * @param {Element} el
  * @returns {boolean}
  */
@@ -121,7 +175,7 @@ export class WritingRenderer extends WritingRendererData {
 
     container.appendChild(fragment);
 
-    // Append a phantom paragraph after a trailing code block so the
+    // Append a phantom paragraph after a trailing code or math block so the
     // user has somewhere to place the cursor.  This element is not
     // backed by a tree node — it is promoted on first interaction.
     this.ensurePhantomParagraph(container, syntaxTree);
@@ -338,10 +392,10 @@ export class WritingRenderer extends WritingRendererData {
       if (isListItem && wasListItem && this.listShapeUnchanged(tree, node, existing)) {
         const fresh = this.renderNode(node, nodeId === currentNodeId);
         if (!fresh) continue;
-        for (const child of [...existing.children]) {
-          if (isListElement(child)) fresh.appendChild(child);
-        }
-        existing.replaceWith(fresh);
+        const lists = [...existing.children].filter(isListElement);
+        for (const list of lists) list.remove();
+        updateElement(existing, fresh);
+        for (const list of lists) existing.appendChild(list);
         continue;
       }
       listTouched.add(nodeId);
@@ -474,7 +528,7 @@ export class WritingRenderer extends WritingRendererData {
 
   /**
    * Appends (or removes) a phantom paragraph at the end of the container
-   * when the last tree node is a code block.  The phantom is a
+   * when the last tree node is a code or math block.  The phantom is a
    * presentation-only DOM element — it is not backed by a tree node.
    * When the user interacts with it (clicks, types), it is promoted to
    * a real SyntaxNode by {@link Editor#promotePhantomParagraph}.
@@ -486,7 +540,7 @@ export class WritingRenderer extends WritingRendererData {
     const existing = container.querySelector(`[data-is-phantom]`);
     const children = tree.children;
     const last = children.length > 0 ? children[children.length - 1] : undefined;
-    const needsPhantom = last?.type === `code-block`;
+    const needsPhantom = !!last?.isRawBlock();
 
     if (needsPhantom && !existing) {
       const phantom = document.createElement(`p`);
@@ -517,9 +571,9 @@ export class WritingRenderer extends WritingRendererData {
     if (!existing) return;
 
     const updated = this.renderNode(node, isFocused);
-    if (updated) {
-      existing.replaceWith(updated);
-    }
+    if (!updated) return;
+    if (existing.tagName === updated.tagName) updateElement(existing, updated);
+    else existing.replaceWith(updated);
   }
 
   /**
@@ -546,6 +600,7 @@ export class WritingRenderer extends WritingRendererData {
       case `blockquote`:
         return `blockquote`;
       case `code-block`:
+      case `math-block`:
         return `pre`;
       case `list-item`:
         return `li`;
@@ -592,6 +647,9 @@ export class WritingRenderer extends WritingRendererData {
 
       case `code-block`:
         return this.renderCodeBlock(node, element, isFocused);
+
+      case `math-block`:
+        return this.renderMathBlock(node, element, isFocused);
 
       case `list-item`:
         return this.renderListItem(node, element, isFocused);
@@ -672,41 +730,15 @@ export class WritingRenderer extends WritingRendererData {
 
     // Language tag spans are always rendered so the user can click
     // to set or change the language even when none is set yet.
-    // The mousedown guard (preventDefault + stopPropagation) keeps the
-    // browser from moving the caret, which would overwrite the user's
-    // cursor offset.
-    const tagTop = document.createElement(`span`);
-    tagTop.className = `top`;
-    tagTop.dataset.lang = ``;
-    tagTop.addEventListener(`mousedown`, (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-    });
-    const tagBottom = document.createElement(`span`);
-    tagBottom.className = `bottom`;
-    tagBottom.dataset.lang = ``;
-    tagBottom.addEventListener(`mousedown`, (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-    });
-    if (language) {
-      tagTop.textContent = language;
-      tagBottom.textContent = language;
-    } else {
-      tagTop.textContent = `lang`;
-      tagBottom.textContent = `lang`;
+    const tagTop = this.blockTag(`top`, language || `lang`);
+    const tagBottom = this.blockTag(`bottom`, language || `lang`);
+    if (!language) {
       tagTop.classList.add(`empty`);
       tagBottom.classList.add(`empty`);
     }
 
-    const code = document.createElement(`code`);
-    code.className = `md-content`;
-    if (isFocused) {
-      // Plain text when focused so cursor positions map 1:1.
-      // Append a trailing newline so the last line always has
-      // visual height (trailing newlines collapse even in <pre>).
-      code.textContent = `${node.content}\n`;
-    } else {
+    const code = this.rawContentElement(node, isFocused);
+    if (!isFocused) {
       code.appendChild(highlight(node.content, language));
     }
 
@@ -720,6 +752,74 @@ export class WritingRenderer extends WritingRendererData {
     element.appendChild(code);
     element.appendChild(tagBottom);
 
+    return element;
+  }
+
+  /**
+   * A tag span at the top or bottom right of a code or math block.  Its
+   * mousedown guard (preventDefault + stopPropagation) keeps the browser
+   * from moving the caret, which would overwrite the user's cursor offset.
+   * @param {string} position - `top` or `bottom`
+   * @param {string} text
+   * @returns {HTMLSpanElement}
+   */
+  blockTag(position, text) {
+    const tag = document.createElement(`span`);
+    tag.className = position;
+    tag.dataset.lang = ``;
+    tag.textContent = text;
+    tag.addEventListener(`mousedown`, (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+    });
+    return tag;
+  }
+
+  /**
+   * The `code` element holding a code or math block's editable content.
+   * When the block is focused it holds the block's text as plain text,
+   * so cursor positions map 1:1, plus a trailing newline, so the last
+   * line always has visual height (trailing newlines collapse even in
+   * <pre>).  Otherwise it is empty.
+   * @param {SyntaxNode} node
+   * @param {boolean} isFocused
+   * @returns {HTMLElement}
+   */
+  rawContentElement(node, isFocused) {
+    const code = document.createElement(`code`);
+    code.className = `md-content`;
+    if (isFocused) {
+      code.textContent = `${node.content}\n`;
+    }
+    return code;
+  }
+
+  /**
+   * Renders a math block: its LaTeX source under a `math` tag when
+   * focused, and otherwise the math KaTeX makes of it, or the
+   * INVALID_MATH placeholder for LaTeX KaTeX cannot render.
+   * @param {SyntaxNode} node
+   * @param {HTMLElement} element
+   * @param {boolean} isFocused
+   * @returns {HTMLElement}
+   */
+  renderMathBlock(node, element, isFocused) {
+    if (isFocused) {
+      element.appendChild(this.blockTag(`top`, `math`));
+      element.appendChild(this.rawContentElement(node, true));
+      return element;
+    }
+
+    const math = document.createElement(`div`);
+    math.className = `md-math`;
+    math.contentEditable = `false`;
+    math.style.fontSize = `${MATH_SCALE}em`;
+    try {
+      window.katex.render(node.content, math, { displayMode: true });
+    } catch {
+      window.katex.render(INVALID_MATH, math, { displayMode: true });
+    }
+    element.appendChild(math);
     return element;
   }
 
@@ -763,7 +863,9 @@ export class WritingRenderer extends WritingRendererData {
           before,
           after: this.editor.getMarkdown(),
         });
-        this.editor.renderNodesAndPlaceCursor({ updated: [node.id] });
+        // A prevented click puts the checkbox's state back once the click
+        // is done, so the toggled state is rendered after that.
+        setTimeout(() => this.editor.renderNodesAndPlaceCursor({ updated: [node.id] }));
         this.editor.setUnsavedChanges(true);
       });
 

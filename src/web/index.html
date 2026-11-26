@@ -21,14 +21,18 @@
         @import url("styles/search.css") layer(app);
         @import url("styles/code-language.css") layer(app);
     </style>
+    <link rel="stylesheet" href="scripts/vendor/katex/katex.min.css">
+    <script src="scripts/vendor/katex/katex.min.js"></script>
 </head>
 <body class="with-highlight">
     <div id="app">
         <div id="toolbar-container"></div>
         <div id="content-wrapper" class="toc-position-left">
             <div id="toc-sidebar"></div>
-            <div id="editor-container">
-                <div id="editor" class="editor" contenteditable="true" spellcheck="false"></div>
+            <div id="document-area">
+                <div id="editor-container">
+                    <div id="editor" class="editor" contenteditable="true" spellcheck="false"></div>
+                </div>
             </div>
         </div>
         <div id="tab-bar"></div>

@@ -126,7 +126,7 @@ export async function handleTab(ops, shift) {
   const node = editor.getCurrentBlockNode();
   if (!node || node.isContainer() || node.type === `table`) return;
 
-  if (node.type === `code-block` && !shift) {
+  if (node.isRawBlock() && !shift) {
     await ops.insertTextAtCursor(`\t`);
     return;
   }

@@ -46,6 +46,7 @@ These mandatory rules describe actions that MUST BE FOLLOWED AT EVERY STEP BY TH
 - State a caveat as a fact.
 - The test runner must be `scripts\test.bat` on Windows
 - The test runner must be `scripts/test.sh` on all other operating systems
+- Any task involving tests MUST have all tests pass, and CANNOT be claimed complete until a successful build has been run.
 - All commands must run in the foreground, in a terminal the user can see.
 - All commands must run in the same terminal, you may not create new terminals unless you have no working terminal
 - On windows, powershell may not be used except to run commands via `cmd` invocations.
@@ -124,6 +125,7 @@ These rules describe general actions that MAY NEVER BE PERFORMED BY THE WORKER
 - Telling the user to close an application so a step of mine succeeds.
 - Taking the pointer, keyboard or screen without a yes, every time.
 - Going looking through the machine for something the user can state.
+- Using long polls for terminal output monitoring. You must check every five seconds.
 
 ### Files and shell
 

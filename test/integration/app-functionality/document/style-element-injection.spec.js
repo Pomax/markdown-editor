@@ -277,9 +277,9 @@ test.describe(`style element injection`, () => {
 });
 
 /**
- * Regression test: enabling style injection with real-world CSS that contains
- * unscoped rules (e.g. `img { … }`, `figure { … }`) must not destroy the
- * Table of Contents sidebar.  Extracted from are-we-flying/docs/index.md.
+ * Enabling style injection with CSS that contains unscoped rules (e.g.
+ * `img { … }`, `figure { … }`) leaves the Table of Contents sidebar in
+ * place.
  */
 test.describe(`style injection does not wreck the ToC sidebar`, () => {
   const REAL_WORLD_STYLE_DOC = [

@@ -83,7 +83,12 @@ body.with-highlight {
     }
   }
 
-  .md-code-block {
+  .md-math-block:not([data-has-focus]) {
+    padding-left: var(--math-block-indent);
+  }
+
+  .md-code-block,
+  .md-math-block[data-has-focus] {
     background-color: var(--color-code-bg);
     padding: 1em;
     margin: 0;

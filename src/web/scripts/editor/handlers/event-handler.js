@@ -146,6 +146,18 @@ export class EventHandler extends EventHandlerData {
       }
     }
 
+    // Clicking a math block's rendered math puts the cursor at the start of the math block.
+    const math =
+      this.editor.viewMode === `writing`
+        ? target.closest?.(`.md-math-block:not([data-has-focus])`)
+        : null;
+    if (math instanceof HTMLElement && math.dataset.nodeId && this.editor.syntaxTree) {
+      this.editor.syntaxTree.treeCursor = { nodeId: math.dataset.nodeId, offset: 0 };
+      this.editor.treeRange = undefined;
+      window.getSelection()?.collapse(math, 0);
+      return;
+    }
+
     // In writing view, clicking a language tag span opens the language
     // editing modal so the user can set or change the code fence language.
     // This check must happen *before* syncCursorFromDOM — the tag span

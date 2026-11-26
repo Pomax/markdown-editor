@@ -14,11 +14,13 @@ import { ToolbarData } from '../../editor/types.js';
 export class Toolbar extends ToolbarData {
   /**
    * @param {HTMLElement} container - The toolbar container element
+   * @param {HTMLElement} documentArea - The document area the toolbar floats in
    * @param {Editor} editor - The editor instance
    */
-  constructor(container, editor) {
+  constructor(container, documentArea, editor) {
     super();
     this.container = container;
+    this.documentArea = documentArea;
     this.editor = editor;
     this.buttonConfigs = this.getButtonConfigs();
   }
@@ -129,6 +131,14 @@ export class Toolbar extends ToolbarData {
         icon: `</>`,
         action: `changeType:code-block`,
         shortcut: `Mod+Shift+C`,
+        applicableTo: [`paragraph`, `list-item`],
+      },
+      {
+        id: `math-block`,
+        label: `Math Block`,
+        icon: `∑`,
+        action: `changeType:math-block`,
+        shortcut: `Mod+Shift+M`,
         applicableTo: [`paragraph`, `list-item`],
       },
       {
@@ -294,20 +304,15 @@ export class Toolbar extends ToolbarData {
     // File-button group (grid-area: left)
     this.createFileButtonGroup();
 
-    // Content toolbar (grid-area: center)
+    // View mode toggle (grid-area: right)
+    this.container.appendChild(this.createViewModeToggle());
+
+    // Toolbar, floating in the document area
     this.toolbarElement = document.createElement(`div`);
     this.toolbarElement.className = `toolbar`;
     this.toolbarElement.setAttribute(`role`, `toolbar`);
     this.toolbarElement.setAttribute(`aria-label`, `Formatting toolbar`);
-
-    // Create view mode toggle
-    const viewModeGroup = this.createViewModeToggle();
-    this.toolbarElement.appendChild(viewModeGroup);
-
-    // Separator after toggle
-    const sep = document.createElement(`div`);
-    sep.className = `toolbar-separator`;
-    this.toolbarElement.appendChild(sep);
+    this.setPosition(`bottom`);
 
     // Create buttons
     for (const config of this.buttonConfigs) {
@@ -322,7 +327,8 @@ export class Toolbar extends ToolbarData {
       }
     }
 
-    this.container.appendChild(this.toolbarElement);
+    this.documentArea.appendChild(this.toolbarElement);
+    this.trackScrollbarWidth();
 
     // Listen for selection changes on document so tab switches
     // (which swap editor.container) keep working.
@@ -723,6 +729,59 @@ export class Toolbar extends ToolbarData {
         button.setActive(activeFormats.has(config.id));
       }
     }
+  }
+
+  /**
+   * Keeps the document area's `--scrollbar-width` at the width of the
+   * scrollbar its scroll container shows, so the toolbar is placed within
+   * the part of the document area the scrollbar leaves.
+   */
+  trackScrollbarWidth() {
+    const scroller = this.documentArea.querySelector(`#editor-container`);
+    if (!(scroller instanceof HTMLElement)) return;
+    const update = () => {
+      const width = scroller.offsetWidth - scroller.clientWidth;
+      this.documentArea.style.setProperty(`--scrollbar-width`, `${width}px`);
+    };
+    new ResizeObserver(update).observe(scroller);
+    update();
+  }
+
+  /**
+   * The size, in CSS pixels, the document area needs for the toolbar to fit
+   * in it beside the scrollbar, with `--button-margin` to spare on every
+   * side; none when the toolbar is hidden.
+   * @returns {{ width: number, height: number }}
+   */
+  requiredArea() {
+    const bar = this.toolbarElement;
+    if (!bar || bar.classList.contains(`hidden`)) return { width: 0, height: 0 };
+    const position = bar.getAttribute(`data-position`) ?? `bottom`;
+    const scrollbar =
+      Number.parseFloat(this.documentArea.style.getPropertyValue(`--scrollbar-width`)) || 0;
+    const offset = Number.parseFloat(getComputedStyle(bar).getPropertyValue(position)) || 0;
+    const margin = position === `right` ? offset - scrollbar : offset;
+    return {
+      width: bar.offsetWidth + 2 * margin + scrollbar,
+      height: bar.offsetHeight + 2 * margin,
+    };
+  }
+
+  /**
+   * How much wider, in CSS pixels, the document area is than the toolbar
+   * needs it to be.
+   * @returns {number}
+   */
+  spareWidth() {
+    return this.documentArea.clientWidth - this.requiredArea().width;
+  }
+
+  /**
+   * Puts the toolbar at an edge of the document area.
+   * @param {ToolbarPosition} position
+   */
+  setPosition(position) {
+    this.toolbarElement?.setAttribute(`data-position`, position);
   }
 
   /**

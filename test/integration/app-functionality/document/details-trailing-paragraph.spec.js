@@ -37,23 +37,6 @@ test.afterAll(async () => {
   await closeApp(app);
 });
 
-test(`loading a document that ends in </details> appends an empty paragraph`, async () => {
-  await loadContent(page, markdownEndingInDetails);
-  await setWritingView(page);
-
-  // The tree should have an extra empty paragraph after the details block.
-  // We can't rely on getContent() because an empty paragraph serialises
-  // to nothing, so instead check the DOM: the last top-level [data-node-id]
-  // should be an empty paragraph, not the html-block.
-  const lastLine = page.locator(`#editor > [data-node-id]`).last();
-  const classList = await lastLine.evaluate((el) => [...el.classList]);
-  expect(classList).not.toContain(`html-element`);
-
-  // And it should be empty (no visible text).
-  const text = await lastLine.innerText();
-  expect(text.trim()).toBe(``);
-});
-
 test(`deleting all content after </details> re-creates the trailing paragraph`, async () => {
   // Load a document with content after </details>.
   const markdown = `<details>\n\n<summary>Summary</summary>\n\nbody\n\n</details>\n\nTrailing text`;

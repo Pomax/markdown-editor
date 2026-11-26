@@ -54,7 +54,7 @@ npm install --ignore-scripts
 npm run setup
 ```
 
-The setup script installs the Playwright Firefox browser used for integration testing, so it's technically optional if all you want to do is compile the editor, but like... you might as well, so you can run the tests to make sure everything works?
+The setup script installs the Playwright Firefox browser used for browser testing, so it's technically optional if all you want to do is compile the editor, but like... you might as well, so you can run the tests to make sure everything works?
 
 ### Building
 
@@ -66,7 +66,7 @@ For Windows users, run `scripts\run.bat`, for MacOS and Linux, run `./scripts/ru
 
 ### Testing
 
-You run the full test suite using the `scripts\test.bat` or `./scripts/test.sh` scripts. Nice and simple. This will run linting, formatting, consistency testing, unit testing, the backend's Rust tests, and integration testing.
+You run the full test suite using the `scripts\test.bat` or `./scripts/test.sh` scripts. Nice and simple. This will run linting, formatting, consistency testing, unit testing, the backend's Rust tests, integration testing, and browser testing.
 
 ## License
 

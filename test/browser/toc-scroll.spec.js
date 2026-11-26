@@ -1,12 +1,12 @@
 /**
- * @fileoverview Integration test for the Table of Contents sidebar.
+ * @fileoverview Browser test for the Table of Contents sidebar.
  * Verifies that clicking a TOC link scrolls the heading to the top of
  * the editor container.
  */
 
 import { expect, test } from '@playwright/test';
-import { resetPage } from '../../test-utils.js';
-import { startServer, stopServer } from '../../test-http-server.js';
+import { resetPage } from '../integration/test-utils.js';
+import { startServer, stopServer } from '../integration/test-http-server.js';
 
 /** @type {import('node:http').Server} */
 let server;

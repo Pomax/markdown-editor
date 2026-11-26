@@ -83,8 +83,18 @@ export function handleEnterKey(ops) {
     }
   }
 
-  // Enter inside a code block → insert newline
-  if (node.type === `code-block`) {
+  // Early conversion: \[ + Enter → math block
+  if (node.type === `paragraph` && node.content === `\\[`) {
+    node.type = `math-block`;
+    node.content = ``;
+    node.attributes = {};
+    ops.editor.syntaxTree.treeCursor = { nodeId: node.id, offset: 0 };
+    ops.editor.recordAndRender(before, { updated: [node.id] });
+    return;
+  }
+
+  // Enter inside a code block or math block → insert newline
+  if (node.isRawBlock()) {
     const left = node.content.substring(0, ops.editor.syntaxTree.treeCursor.offset);
     const right = node.content.substring(ops.editor.syntaxTree.treeCursor.offset);
     node.content = `${left}\n${right}`;

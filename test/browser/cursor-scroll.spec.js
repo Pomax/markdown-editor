@@ -1,5 +1,5 @@
 /**
- * @fileoverview Integration test for scroll-to-cursor behaviour.
+ * @fileoverview Browser test for scroll-to-cursor behaviour.
  *
  * Verifies that when the cursor is placed programmatically (e.g. via
  * session restore), the editor scrolls so the focused line is visible.
@@ -9,12 +9,12 @@ import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { expect, test } from '@playwright/test';
-import { clickInEditor, clickQuerySelector, resetPage } from '../../test-utils.js';
-import { startServer, stopServer } from '../../test-http-server.js';
+import { clickInEditor, clickQuerySelector, resetPage } from '../integration/test-utils.js';
+import { startServer, stopServer } from '../integration/test-http-server.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const FIXTURES_DIR = path.join(__dirname, `..`, `..`, `..`, `fixtures`);
+const FIXTURES_DIR = path.join(__dirname, `..`, `fixtures`);
 
 /** The text that the target line must contain. */
 const TARGET_TEXT = `Chapter 5`;

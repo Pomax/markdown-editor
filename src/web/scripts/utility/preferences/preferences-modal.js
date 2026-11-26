@@ -43,6 +43,24 @@ const DEFAULT_TOC_VISIBLE = true;
 const DEFAULT_TOC_POSITION = `left`;
 
 /**
+ * Default toolbar visibility (shown by default).
+ * @type {boolean}
+ */
+const DEFAULT_TOOLBAR_VISIBLE = true;
+
+/**
+ * Default toolbar position.
+ * @type {ToolbarPosition}
+ */
+const DEFAULT_TOOLBAR_POSITION = `bottom`;
+
+/**
+ * The positions the toolbar can have.
+ * @type {ToolbarPosition[]}
+ */
+const TOOLBAR_POSITIONS = [`top`, `right`, `bottom`, `left`];
+
+/**
  * Default setting for automatic local image path rewriting.
  * @type {boolean}
  */
@@ -101,6 +119,7 @@ export class PreferencesModal extends PreferencesModalData {
                             <li><a href="#" class="preferences-nav-link" data-section="pref-margins">Margins</a></li>
                             <li><a href="#" class="preferences-nav-link" data-section="pref-colors">Colors</a></li>
                             <li><a href="#" class="preferences-nav-link" data-section="pref-toc">Table of Contents</a></li>
+                            <li><a href="#" class="preferences-nav-link" data-section="pref-toolbar">Content Button Bar</a></li>
                             <li><a href="#" class="preferences-nav-link" data-section="pref-images">Image Handling</a></li>
                             <li><a href="#" class="preferences-nav-link" data-section="pref-content">Content</a></li>
                         </ul>
@@ -214,6 +233,24 @@ export class PreferencesModal extends PreferencesModalData {
                             <select id="toc-position-select" name="tocPosition">
                                 <option value="left">Left</option>
                                 <option value="right">Right</option>
+                            </select>
+                        </div>
+                    </fieldset>
+                    <fieldset class="preferences-fieldset" id="pref-toolbar">
+                        <legend>Content Button Bar</legend>
+                        <div class="toolbar-settings-row">
+                            <label class="toolbar-visible-toggle">
+                                <input type="checkbox" id="toolbar-visible" checked>
+                                <span>Show content button bar</span>
+                            </label>
+                        </div>
+                        <div class="toolbar-position-row">
+                            <label for="toolbar-position-select">Bar position</label>
+                            <select id="toolbar-position-select" name="toolbarPosition">
+                                <option value="top">Top</option>
+                                <option value="right">Right</option>
+                                <option value="bottom">Bottom</option>
+                                <option value="left">Left</option>
                             </select>
                         </div>
                     </fieldset>
@@ -645,6 +682,16 @@ export class PreferencesModal extends PreferencesModalData {
     );
     tocPositionSelect.value = tocPosition;
 
+    // Load toolbar settings
+    const toolbarVisibleCb = /** @type {HTMLInputElement} */ (
+      this.dialog.querySelector(`#toolbar-visible`)
+    );
+    toolbarVisibleCb.checked = await this.loadToolbarVisible();
+    const toolbarPositionSelect = /** @type {HTMLSelectElement} */ (
+      this.dialog.querySelector(`#toolbar-position-select`)
+    );
+    toolbarPositionSelect.value = await this.loadToolbarPosition();
+
     // Load image handling settings
     const ensureLocalPaths = await this.loadEnsureLocalPaths();
     const ensureLocalPathsCb = /** @type {HTMLInputElement} */ (
@@ -810,6 +857,42 @@ export class PreferencesModal extends PreferencesModalData {
   }
 
   /**
+   * Loads the toolbar visibility setting from the settings database.
+   * @returns {Promise<boolean>}
+   */
+  async loadToolbarVisible() {
+    if (!window.pageToBackendBridge) return DEFAULT_TOOLBAR_VISIBLE;
+
+    try {
+      const result = await window.pageToBackendBridge.getSetting(`toolbarVisible`);
+      if (result.success && result.value !== undefined) {
+        return !!result.value;
+      }
+    } catch {
+      // Fall through to default
+    }
+
+    return DEFAULT_TOOLBAR_VISIBLE;
+  }
+
+  /**
+   * Loads the toolbar position setting from the settings database.
+   * @returns {Promise<ToolbarPosition>}
+   */
+  async loadToolbarPosition() {
+    if (!window.pageToBackendBridge) return DEFAULT_TOOLBAR_POSITION;
+
+    try {
+      const result = await window.pageToBackendBridge.getSetting(`toolbarPosition`);
+      if (result.success) return toolbarPosition(result.value);
+    } catch {
+      // Fall through to default
+    }
+
+    return DEFAULT_TOOLBAR_POSITION;
+  }
+
+  /**
    * Loads the "ensure local paths" setting from the settings database.
    * @returns {Promise<boolean>}
    */
@@ -936,6 +1019,14 @@ export class PreferencesModal extends PreferencesModalData {
     );
     const tocPosition = tocPositionSelect.value === `right` ? `right` : `left`;
 
+    const toolbarVisible = /** @type {HTMLInputElement} */ (
+      this.dialog.querySelector(`#toolbar-visible`)
+    ).checked;
+    const toolbarPositionValue = toolbarPosition(
+      /** @type {HTMLSelectElement} */ (this.dialog.querySelector(`#toolbar-position-select`))
+        .value,
+    );
+
     const ensureLocalPathsCb = /** @type {HTMLInputElement} */ (
       this.dialog.querySelector(`#ensure-local-paths`)
     );
@@ -964,6 +1055,8 @@ export class PreferencesModal extends PreferencesModalData {
       await window.pageToBackendBridge.setSetting(`colors`, colors);
       await window.pageToBackendBridge.setSetting(`tocVisible`, tocVisible);
       await window.pageToBackendBridge.setSetting(`tocPosition`, tocPosition);
+      await window.pageToBackendBridge.setSetting(`toolbarVisible`, toolbarVisible);
+      await window.pageToBackendBridge.setSetting(`toolbarPosition`, toolbarPositionValue);
       await window.pageToBackendBridge.setSetting(`ensureLocalPaths`, ensureLocalPaths);
       await window.pageToBackendBridge.setSetting(`highlightActiveElement`, highlightActiveElement);
       await window.pageToBackendBridge.setSetting(`detailsClosed`, detailsClosed);
@@ -983,6 +1076,13 @@ export class PreferencesModal extends PreferencesModalData {
       }),
     );
 
+    // Apply toolbar settings via custom event so the App class can handle it
+    document.dispatchEvent(
+      new CustomEvent(`toolbar:settingsChanged`, {
+        detail: { visible: toolbarVisible, position: toolbarPositionValue },
+      }),
+    );
+
     // Notify listeners about image handling settings
     document.dispatchEvent(
       new CustomEvent(`imageHandling:settingsChanged`, {
@@ -999,6 +1099,15 @@ export class PreferencesModal extends PreferencesModalData {
 
     this.close();
   }
+}
+
+/**
+ * A stored toolbar position, or the default for anything else.
+ * @param {unknown} value
+ * @returns {ToolbarPosition}
+ */
+export function toolbarPosition(value) {
+  return TOOLBAR_POSITIONS.find((position) => position === value) ?? DEFAULT_TOOLBAR_POSITION;
 }
 
 /**

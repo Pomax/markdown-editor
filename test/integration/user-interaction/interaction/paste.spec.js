@@ -1,5 +1,5 @@
 /**
- * @fileoverview Integration tests for paste support (issue #91).
+ * @fileoverview Integration tests for paste support.
  *
  * Verifies that pasting text in both source and writing views:
  * - Inserts the text at the cursor position

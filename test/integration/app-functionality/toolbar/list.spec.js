@@ -1,5 +1,5 @@
 /**
- * @fileoverview Integration tests for list support (GitHub issue #40).
+ * @fileoverview Integration tests for list support.
  *
  * Covers:
  *   - Converting a paragraph to a bullet list item via toolbar

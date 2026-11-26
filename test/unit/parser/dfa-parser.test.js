@@ -367,7 +367,7 @@ describe(`DFAParser`, () => {
       assert.strictEqual(tree.children[1].content, `text after`);
     });
 
-    it(`issue #82 example 1: four-backtick fence with nested three-backtick literal text`, async () => {
+    it(`a four-backtick fence keeps three-backtick sequences inside it as literal text`, async () => {
       const md = `This is a paragraph of text.\n\n\`\`\`\`\ncode with \`\`\` in it\nand more \`\`\` here\n\`\`\`\`\n\nAnd this is regular text again.`;
       const tree = await parser.parse(md);
       assert.strictEqual(tree.children.length, 3);
@@ -379,7 +379,7 @@ describe(`DFAParser`, () => {
       assert.strictEqual(tree.toMarkdown(), md);
     });
 
-    it(`issue #82 example 2: ten-backtick fence with nine-backtick literal text`, async () => {
+    it(`a ten-backtick fence keeps nine backticks inside it as literal text`, async () => {
       const md = `This is text\n\n\`\`\`\`\`\`\`\`\`\`\nThis is code, with \`\`\`\`\`\`\`\`\` in it\n\`\`\`\`\`\`\`\`\`\`\n\nBut this is text again.`;
       const tree = await parser.parse(md);
       assert.strictEqual(tree.children.length, 3);
@@ -388,6 +388,74 @@ describe(`DFAParser`, () => {
       assert.strictEqual(tree.children[1].attributes.fenceCount, 10);
       assert.strictEqual(tree.children[1].content, `This is code, with \`\`\`\`\`\`\`\`\` in it`);
       assert.strictEqual(tree.children[2].type, `paragraph`);
+      assert.strictEqual(tree.toMarkdown(), md);
+    });
+  });
+
+  describe(`math blocks`, () => {
+    it(`should parse \\[ and \\] lines into a math block`, async () => {
+      const tree = await parser.parse(`\\[\n\\frac{\\pi}{2}\n\\]`);
+      assert.strictEqual(tree.children.length, 1);
+      assert.strictEqual(tree.children[0].type, `math-block`);
+      assert.strictEqual(tree.children[0].content, `\\frac{\\pi}{2}`);
+    });
+
+    it(`should keep every line between the delimiters`, async () => {
+      const tree = await parser.parse(`\\[\na = b \\\\\nc = d\n\\]`);
+      assert.strictEqual(tree.children.length, 1);
+      assert.strictEqual(tree.children[0].content, `a = b \\\\\nc = d`);
+    });
+
+    it(`should parse text after a closed math block`, async () => {
+      const tree = await parser.parse(`\\[\nx\n\\]\n\ntext after`);
+      assert.deepStrictEqual(
+        tree.children.map((node) => node.type),
+        [`math-block`, `paragraph`],
+      );
+      assert.strictEqual(tree.children[1].content, `text after`);
+    });
+
+    it(`should start a math block on the line after a paragraph`, async () => {
+      const tree = await parser.parse(`text before\n\\[\nx\n\\]`);
+      assert.deepStrictEqual(
+        tree.children.map((node) => node.type),
+        [`paragraph`, `math-block`],
+      );
+      assert.strictEqual(tree.children[0].content, `text before`);
+    });
+
+    it(`should not close on a line that only starts with \\]`, async () => {
+      const tree = await parser.parse(`\\[\n\\]x\n\\]`);
+      assert.strictEqual(tree.children.length, 1);
+      assert.strictEqual(tree.children[0].content, `\\]x`);
+    });
+
+    it(`should not close on a \\] after other text on its line`, async () => {
+      const tree = await parser.parse(`\\[\na \\]\n\\]`);
+      assert.strictEqual(tree.children.length, 1);
+      assert.strictEqual(tree.children[0].content, `a \\]`);
+    });
+
+    it(`should not start a math block when \\[ has text after it on its line`, async () => {
+      const tree = await parser.parse(`\\[x\n\\]`);
+      assert.strictEqual(tree.children.length, 1);
+      assert.strictEqual(tree.children[0].type, `paragraph`);
+    });
+
+    it(`should run an unclosed math block to the end of the document`, async () => {
+      const tree = await parser.parse(`\\[\nx\ny`);
+      assert.strictEqual(tree.children.length, 1);
+      assert.strictEqual(tree.children[0].type, `math-block`);
+      assert.strictEqual(tree.children[0].content, `x\ny`);
+    });
+
+    it(`should round-trip through toMarkdown`, async () => {
+      const md = `before\n\n\\[\n\\frac{\\pi}{2}\n\\]\n\nafter`;
+      const tree = await parser.parse(md);
+      assert.deepStrictEqual(
+        tree.children.map((node) => node.type),
+        [`paragraph`, `math-block`, `paragraph`],
+      );
       assert.strictEqual(tree.toMarkdown(), md);
     });
   });

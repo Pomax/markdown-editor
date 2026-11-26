@@ -411,6 +411,10 @@ export function pageHarness() {
         const value = element.classList.toString();
         return { matches: matchesText(value), received: value };
       }
+      case `to.have.css`: {
+        const value = getComputedStyle(element).getPropertyValue(options.expressionArg);
+        return { matches: matchesText(value), received: value };
+      }
       case `to.have.text`: {
         const value = options.useInnerText ? element.innerText : elementText(element);
         return { matches: matchesText(value), received: value };
@@ -1037,6 +1041,25 @@ export class WebviewLocator {
   /** Unchecks a checkbox. */
   async uncheck() {
     await this.#setChecked(false);
+  }
+
+  /**
+   * Checks or unchecks a checkbox.
+   * @param {boolean} checked
+   */
+  async setChecked(checked) {
+    await this.#setChecked(checked);
+  }
+
+  /**
+   * Selects the option of a `<select>` that has the given value, and
+   * dispatches `input` and `change`, as Playwright's selectOption does.
+   * @param {string} value
+   */
+  async selectOption(value) {
+    await this.#withElement(
+      `if (!(element instanceof HTMLSelectElement)) throw new Error('Element is not a <select> element'); if (![...element.options].some((option) => option.value === ${source(value)})) throw new Error('the select has no option with value ' + ${source(value)}); element.value = ${source(value)}; element.dispatchEvent(new Event('input', { bubbles: true, composed: true })); element.dispatchEvent(new Event('change', { bubbles: true }));`,
+    );
   }
 
   /**

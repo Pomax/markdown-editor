@@ -1,8 +1,6 @@
 /**
- * @fileoverview Regression test: enabling style injection with CSS that
- * contains global selectors must NOT wreck the ToC sidebar.
- *
- * Uses the exact CSS from the are-we-flying docs/index.md file.
+ * @fileoverview Integration test: enabling style injection with CSS that
+ * contains global selectors leaves the ToC sidebar in place.
  */
 
 import { expect, test } from '@playwright/test';

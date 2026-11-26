@@ -79,6 +79,7 @@ fn main() {
             ipc_handler::image_browse,
             ipc_handler::image_rename,
             ipc_handler::path_to_relative,
+            ipc_handler::window_minimum,
             ipc_handler::file_confirm_close,
             ipc_handler::dialog_confirm,
             ipc_handler::view_open_files_changed,
@@ -444,12 +445,13 @@ pub fn restore_open_files(app: &tauri::AppHandle, entries: &[Value]) {
     menu_builder::refresh_menu(app);
 }
 
-/// The narrowest page the toolbar row fits in at full size: its padding,
-/// the file buttons and the toolbar, as `file-buttons.spec.js` measures it.
+/// The narrowest page the top row fits in: its padding, the file buttons
+/// and the View switch, as `file-buttons.spec.js` measures it. Once the
+/// page has loaded, it keeps the window as wide as its UI needs.
 const MIN_PAGE_WIDTH: f64 = if cfg!(target_os = "macos") {
     1003.0
 } else {
-    998.0
+    300.0
 };
 
 /// The page width the window starts with.
@@ -461,7 +463,8 @@ const PAGE_WIDTH: f64 = 1216.0;
 /// has been shown, and a count of moves and resizes, so that only the last
 /// of a run of them saves. Also the smallest page the window may have, in
 /// physical pixels, which Windows applies only while the user drags the
-/// window's edges.
+/// window's edges, and the smallest page the window allows whatever the
+/// page asks for.
 #[derive(Default)]
 pub struct WindowTracker {
     normal: Option<LogicalBounds>,
@@ -469,6 +472,7 @@ pub struct WindowTracker {
     shown: bool,
     changes: u64,
     minimum: Option<(u32, u32)>,
+    floor: Option<(u32, u32)>,
 }
 
 /// The managed window tracker.
@@ -526,10 +530,12 @@ fn fit_main_window(app: &tauri::AppHandle) -> tauri::Result<()> {
         physical(MIN_PAGE_WIDTH),
         physical(848.0).saturating_sub(frame_height),
     );
-    app.state::<WindowTrackerState>()
-        .lock()
-        .expect("window tracker lock")
-        .minimum = Some(minimum);
+    {
+        let tracker = app.state::<WindowTrackerState>();
+        let mut tracker = tracker.lock().expect("window tracker lock");
+        tracker.minimum = Some(minimum);
+        tracker.floor = Some(minimum);
+    }
     window.set_min_size(Some(PhysicalSize::new(minimum.0, minimum.1)))?;
     window.set_size(PhysicalSize::new(
         placed.width.saturating_sub(frame_width),
@@ -540,6 +546,55 @@ fn fit_main_window(app: &tauri::AppHandle) -> tauri::Result<()> {
     let mut tracker = tracker.lock().expect("window tracker lock");
     tracker.normal = Some(logical_bounds(placed, scale));
     tracker.maximized = restored.maximized;
+    Ok(())
+}
+
+/// Makes the smallest page the window may have the larger of the smallest
+/// page it allows and a page `width` by `height` CSS pixels, which is what
+/// the page needs for its toolbar to fit, with what the window's inner size
+/// holds besides the page, its inner size less the page's `viewport_width`
+/// by `viewport_height` CSS pixels, and grows a window that is smaller than
+/// that, unless it is maximized.
+pub fn set_page_minimum(
+    window: &tauri::WebviewWindow,
+    width: f64,
+    height: f64,
+    viewport_width: f64,
+    viewport_height: f64,
+) -> tauri::Result<()> {
+    use tauri::{Manager, PhysicalSize};
+    let scale = window.scale_factor()?;
+    let physical = |logical: f64| (logical * scale).ceil() as u32;
+    let inner = window.inner_size()?;
+    let held = (
+        inner
+            .width
+            .saturating_sub((viewport_width * scale).round() as u32),
+        inner
+            .height
+            .saturating_sub((viewport_height * scale).round() as u32),
+    );
+    let minimum = {
+        let tracker = window.state::<WindowTrackerState>();
+        let mut tracker = tracker.lock().expect("window tracker lock");
+        let Some(floor) = tracker.floor else {
+            return Ok(());
+        };
+        let minimum = (
+            floor.0.max(physical(width) + held.0),
+            floor.1.max(physical(height) + held.1),
+        );
+        tracker.minimum = Some(minimum);
+        minimum
+    };
+    window.set_min_size(Some(PhysicalSize::new(minimum.0, minimum.1)))?;
+    let inner = window.inner_size()?;
+    if !window.is_maximized()? && (inner.width < minimum.0 || inner.height < minimum.1) {
+        window.set_size(PhysicalSize::new(
+            inner.width.max(minimum.0),
+            inner.height.max(minimum.1),
+        ))?;
+    }
     Ok(())
 }
 

@@ -19,7 +19,7 @@ import {
   setSource2View,
   setWritingView,
 } from '../integration/test-utils.js';
-import { clientPoint, runner } from './runner.js';
+import { clickElement, runner } from './runner.js';
 
 test.skip(process.platform !== `win32`, `the Windows runner sends input on Windows only`);
 
@@ -37,28 +37,17 @@ test.afterAll(async () => {
   await closeApp(app);
 });
 
-/**
- * Brings the app to the front and clicks the middle of an element with
- * the real mouse.
- * @param {import('@playwright/test').Locator} locator
- */
-async function click(locator) {
-  runner(`focus`, app.pid);
-  const point = await clientPoint(locator);
-  runner(`click`, app.pid, point.x, point.y);
-}
-
 test(`an image picked with Browse and put in with Insert is shown`, async ({}, testInfo) => {
   const imagePath = testInfo.outputPath(`picture.png`);
   fs.copyFileSync(path.join(projectRoot, `test`, `fixtures`, `image.png`), imagePath);
   await app.setFileDialogResult(imagePath);
   await loadContent(page, `picture`);
-  await click(page.locator(`#editor [data-node-id]`).first());
+  await clickElement(app, page.locator(`#editor [data-node-id]`).first());
   runner(`keys`, app.pid, `End`, `Control+Shift+I`);
   await expect(page.locator(`.image-dialog[open]`)).toHaveCount(1);
-  await click(page.locator(`.image-browse-btn`));
+  await clickElement(app, page.locator(`.image-browse-btn`));
   await expect(page.locator(`#image-src`)).toHaveValue(imagePath);
-  await click(page.locator(`.image-btn--insert`));
+  await clickElement(app, page.locator(`.image-btn--insert`));
   await expect(page.locator(`.image-dialog[open]`)).toHaveCount(0);
   const image = page.locator(`#editor img`);
   await expect(image).toHaveCount(1);

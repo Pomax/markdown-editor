@@ -1,6 +1,7 @@
 /**
- * @fileoverview Playwright configuration for integration tests.
- * Uses Firefox as the browser for testing.
+ * @fileoverview Playwright configuration for the integration specs in
+ * test/integration, which run the app, and the browser specs in
+ * test/browser, which run the page in Firefox.
  */
 
 import { defineConfig, devices } from "@playwright/test";
@@ -55,8 +56,8 @@ if (platform === `linux` && process.env.TEST_ON_DESKTOP) {
 
 export default defineConfig({
   ...config,
-  testDir: `./test/integration`,
-  testMatch: `**/*.spec.js`,
+  testDir: `./test`,
+  testMatch: [`integration/**/*.spec.js`, `browser/**/*.spec.js`],
   fullyParallel: false,
   reporter: `list`,
   projects: [

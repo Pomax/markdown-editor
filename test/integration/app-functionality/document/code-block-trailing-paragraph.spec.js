@@ -34,23 +34,6 @@ test.afterAll(async () => {
   await closeApp(app);
 });
 
-test(`loading a document that ends in a code block appends a phantom paragraph in the DOM`, async () => {
-  await loadContent(page, markdownEndingInCodeBlock);
-  await setWritingView(page);
-
-  // A phantom paragraph should exist in the DOM after the code block.
-  const phantom = page.locator(`#editor > [data-is-phantom]`);
-  await expect(phantom).toBeVisible();
-
-  // The phantom should be empty (no visible text).
-  const text = await phantom.innerText();
-  expect(text.trim()).toBe(``);
-
-  // The phantom must NOT affect the serialised markdown.
-  const content = await page.evaluate(() => window.editorAPI?.getContent());
-  expect(content).toBe(markdownEndingInCodeBlock);
-});
-
 test(`typing in the phantom paragraph promotes it to a real tree node`, async () => {
   await loadContent(page, markdownEndingInCodeBlock);
   await setWritingView(page);

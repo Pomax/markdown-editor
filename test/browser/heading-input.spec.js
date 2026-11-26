@@ -1,11 +1,11 @@
 /**
- * @fileoverview Integration test for heading creation via keyboard input.
+ * @fileoverview Browser test for heading creation via keyboard input.
  * Serves the renderer content over HTTP and tests in a real Firefox browser.
  */
 
 import { expect, test } from '@playwright/test';
-import { HOME, clickInEditor, resetPage } from '../../test-utils.js';
-import { startServer, stopServer } from '../../test-http-server.js';
+import { HOME, clickInEditor, resetPage } from '../integration/test-utils.js';
+import { startServer, stopServer } from '../integration/test-http-server.js';
 
 /** @type {import('node:http').Server} */
 let server;

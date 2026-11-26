@@ -54,6 +54,11 @@ interface TreeRange {
 type TocPosition = 'left' | 'right';
 
 /**
+ * The edge of the document area the toolbar sits at.
+ */
+type ToolbarPosition = 'top' | 'right' | 'bottom' | 'left';
+
+/**
  * A heading entry in the table of contents.
  */
 interface TocHeading {
@@ -184,6 +189,7 @@ interface PageToBackendBridge {
     browseForImage(): Promise<{ success: boolean; filePath?: string }>;
     renameImage(oldPath: string, newName: string): Promise<{ success: boolean; newPath?: string; message?: string }>;
     toRelativeImagePath(imagePath: string, documentPath: string): Promise<string>;
+    setWindowMinimum(width: number, height: number, viewportWidth: number, viewportHeight: number): Promise<void>;
     getPathForFile(file: File): string;
     executeAPICommand(command: string, params: object): Promise<any>;
     setWritingView(): Promise<{ success: boolean }>;
@@ -566,4 +572,5 @@ interface Formatter {
 interface Window {
     editorAPI?: EditorAPI;
     pageToBackendBridge?: PageToBackendBridge;
+    katex: { render(tex: string, element: HTMLElement, options?: { displayMode?: boolean }): void };
 }

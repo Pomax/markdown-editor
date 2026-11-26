@@ -11,6 +11,7 @@ import {
   applyHighlightActiveElement,
   applyMargins,
   applyPageWidth,
+  toolbarPosition,
 } from './utility/preferences/preferences-modal.js';
 import { SearchBar } from './utility/search/search-bar.js';
 import { TabBar, getDisambiguatedLabels } from './utility/tab-bar/tab-bar.js';
@@ -34,9 +35,10 @@ class App extends AppData {
     // Get container elements
     const editorContainer = document.getElementById(`editor`);
     const toolbarContainer = document.getElementById(`toolbar-container`);
+    const documentArea = document.getElementById(`document-area`);
     const tocContainer = document.getElementById(`toc-sidebar`);
 
-    if (!editorContainer || !toolbarContainer) {
+    if (!editorContainer || !toolbarContainer || !documentArea) {
       console.error(`Required container elements not found`);
       return;
     }
@@ -55,7 +57,7 @@ class App extends AppData {
     this.retargetResizeHandles = initPageResizeHandles(editorContainer);
 
     // Initialize toolbar
-    this.toolbar = new Toolbar(toolbarContainer, this.editor);
+    this.toolbar = new Toolbar(toolbarContainer, documentArea, this.editor);
     this.toolbar.initialize();
 
     // Initialize handlers
@@ -80,7 +82,12 @@ class App extends AppData {
     if (tocContainer) {
       this.toc = new TableOfContents(tocContainer, this.editor);
       this.toc.initialize();
+      const toc = this.toc;
+      const toolbar = this.toolbar;
+      if (toolbar) toc.widthLimit = () => toc.getWidth() + toolbar.spareWidth();
     }
+
+    this.trackWindowMinimum(documentArea, toolbarContainer);
 
     // Initialize tab bar
     const tabBarContainer = document.getElementById(`tab-bar`);
@@ -204,6 +211,14 @@ class App extends AppData {
       }
     });
 
+    // Listen for toolbar settings changes from the preferences modal
+    document.addEventListener(`toolbar:settingsChanged`, (e) => {
+      const detail = /** @type {CustomEvent} */ (e).detail;
+      if (this.toolbar && detail) {
+        this.applyToolbarSettings(detail.visible, detail.position);
+      }
+    });
+
     // Listen for image handling settings changes from the preferences modal
     document.addEventListener(`imageHandling:settingsChanged`, (e) => {
       const detail = /** @type {CustomEvent} */ (e).detail;
@@ -272,6 +287,55 @@ class App extends AppData {
     this.menuHandler.initialize();
 
     await this.loadSettings();
+  }
+
+  /**
+   * Keeps the window from getting smaller than fits the top row's file
+   * buttons and View switch, or than leaves the document area room for the
+   * toolbar, as these change size.
+   * @param {HTMLElement} documentArea
+   * @param {HTMLElement} topRow
+   */
+  trackWindowMinimum(documentArea, topRow) {
+    const toolbar = this.toolbar;
+    if (!toolbar) return;
+    let sent = ``;
+    const update = () => {
+      const needed = toolbar.requiredArea();
+      const rowStyle = getComputedStyle(topRow);
+      const rowWidth = [...topRow.children].reduce(
+        (sum, child) => sum + child.getBoundingClientRect().width,
+        Number.parseFloat(rowStyle.paddingLeft) + Number.parseFloat(rowStyle.paddingRight),
+      );
+      const width = Math.ceil(
+        Math.max(rowWidth, window.innerWidth - documentArea.clientWidth + needed.width),
+      );
+      const height = Math.ceil(window.innerHeight - documentArea.clientHeight + needed.height);
+      if (`${width}x${height}` === sent) return;
+      sent = `${width}x${height}`;
+      window.pageToBackendBridge?.setWindowMinimum(
+        width,
+        height,
+        window.innerWidth,
+        window.innerHeight,
+      );
+    };
+    const observer = new ResizeObserver(update);
+    observer.observe(documentArea);
+    observer.observe(topRow);
+    observer.observe(toolbar.toolbarElement);
+  }
+
+  /**
+   * Shows or hides the toolbar, and puts it at an edge of the document area.
+   * @param {boolean} visible
+   * @param {ToolbarPosition} position
+   */
+  applyToolbarSettings(visible, position) {
+    if (!this.toolbar) return;
+    this.toolbar.setPosition(position);
+    if (visible) this.toolbar.show();
+    else this.toolbar.hide();
   }
 
   /**
@@ -885,6 +949,17 @@ class App extends AppData {
       }
     } catch {
       // Default is left
+    }
+
+    try {
+      const visible = await window.pageToBackendBridge.getSetting(`toolbarVisible`);
+      const position = await window.pageToBackendBridge.getSetting(`toolbarPosition`);
+      this.applyToolbarSettings(
+        !(visible.success && visible.value === false),
+        toolbarPosition(position.success ? position.value : undefined),
+      );
+    } catch {
+      // Default is shown, at the bottom
     }
 
     try {

@@ -1,16 +1,13 @@
 /**
- * @fileoverview Integration tests for the file-button group.
- *
- * Verifies that the toolbar contains three file-operation buttons
- * (New, Open, Save) in a left-aligned group, and that the content
- * toolbar remains visually centred in the toolbar container.
+ * @fileoverview Integration tests for switching tabs: after switching back
+ * to a tab, the caret is where it was, and clicking formatted text marks
+ * the toolbar's buttons for that formatting as active.
  */
 
 import fs from 'node:fs';
 import path from 'node:path';
 import { expect, test } from '@playwright/test';
 import {
-  VIEWPORT,
   clickInEditor,
   closeApp,
   launchApp,
@@ -21,11 +18,6 @@ import {
 
 const readmePath = path.join(projectRoot, `README.md`);
 const readmeContent = fs.readFileSync(readmePath, `utf-8`);
-
-/**
- * The narrowest page `fit_main_window` in main.rs allows.
- */
-const MIN_PAGE_WIDTH = process.platform === `darwin` ? 1003 : 998;
 
 /** @type {import('../../tauri-app.js').TauriApp} */
 let app;
@@ -40,89 +32,6 @@ test.beforeAll(async () => {
 
 test.afterAll(async () => {
   await closeApp(app);
-});
-
-test(`file-button group exists and contains three buttons`, async () => {
-  const group = page.locator(`.toolbar-file-group`);
-  await expect(group).toBeVisible();
-
-  const buttons = group.locator(`.toolbar-button`);
-  await expect(buttons).toHaveCount(3);
-});
-
-test(`file buttons have correct labels`, async () => {
-  const newBtn = page.locator(`.toolbar-button[data-button-id="file-new"]`);
-  const openBtn = page.locator(`.toolbar-button[data-button-id="file-open"]`);
-  const saveBtn = page.locator(`.toolbar-button[data-button-id="file-save"]`);
-
-  await expect(newBtn).toHaveAttribute(`aria-label`, `New File`);
-  await expect(openBtn).toHaveAttribute(`aria-label`, `Open File`);
-  await expect(saveBtn).toHaveAttribute(`aria-label`, `Save File`);
-});
-
-test(`file buttons contain SVG icons`, async () => {
-  const group = page.locator(`.toolbar-file-group`);
-  const svgs = group.locator(`.toolbar-button svg`);
-  await expect(svgs).toHaveCount(3);
-});
-
-test(`file-button group is left-aligned, content toolbar is centred`, async () => {
-  const container = page.locator(`#toolbar-container`);
-  const fileGroup = page.locator(`.toolbar-file-group`);
-  const toolbar = page.locator(`.toolbar`);
-
-  const containerBox = await container.boundingBox();
-  const fileGroupBox = await fileGroup.boundingBox();
-  const toolbarBox = await toolbar.boundingBox();
-
-  if (!containerBox || !fileGroupBox || !toolbarBox) {
-    throw new Error(`Could not get bounding boxes for layout assertions`);
-  }
-
-  // File group should be near the left edge of the container
-  expect(fileGroupBox.x - containerBox.x).toBeLessThan(30);
-
-  // Content toolbar centre should be roughly at container centre
-  const containerCentreX = containerBox.x + containerBox.width / 2;
-  const toolbarCentreX = toolbarBox.x + toolbarBox.width / 2;
-  expect(Math.abs(toolbarCentreX - containerCentreX)).toBeLessThan(containerBox.width * 0.15);
-});
-
-test(`at the minimum page width the toolbar fits at full size beside the file buttons`, async () => {
-  // WebKit lays the toolbar out from the margins it had at the previous
-  // width, so the page narrows a pixel at a time, as dragging the window's
-  // edge narrows it, until the layout has settled.
-  for (let extra = 16; extra >= 0; extra -= 1) {
-    await page.setViewportSize({ width: MIN_PAGE_WIDTH + extra, height: VIEWPORT.height });
-  }
-  try {
-    await page.evaluate(
-      () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))),
-    );
-    const layout = await page.evaluate(() => {
-      /** @param {string} selector */
-      const rect = (selector) =>
-        /** @type {Element} */ (document.querySelector(selector)).getBoundingClientRect();
-      const container = rect(`#toolbar-container`);
-      const containerStyle = getComputedStyle(
-        /** @type {Element} */ (document.querySelector(`#toolbar-container`)),
-      );
-      const style = getComputedStyle(/** @type {Element} */ (document.querySelector(`.toolbar`)));
-      return {
-        transform: style.transform,
-        containerRight: container.right - Number.parseFloat(containerStyle.paddingRight),
-        fileGroupRight: rect(`.toolbar-file-group`).right,
-        itemsLeft: rect(`.toolbar > :first-child`).left,
-        itemsRight: rect(`.toolbar > :last-child`).right,
-      };
-    });
-
-    expect(layout.transform, JSON.stringify(layout)).toBe(`none`);
-    expect(layout.itemsLeft, JSON.stringify(layout)).toBeGreaterThanOrEqual(layout.fileGroupRight);
-    expect(layout.itemsRight, JSON.stringify(layout)).toBeLessThanOrEqual(layout.containerRight);
-  } finally {
-    await page.setViewportSize(VIEWPORT);
-  }
 });
 
 test(`toolbar heading button activates after switching back to a tab with a heading`, async () => {

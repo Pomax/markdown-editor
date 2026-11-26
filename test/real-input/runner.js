@@ -41,3 +41,15 @@ export async function clientPoint(locator) {
     y: Math.round((box.y + box.height / 2) * ratio),
   };
 }
+
+/**
+ * Brings the app to the front and clicks the middle of an element with
+ * the real mouse.
+ * @param {{ pid: number }} app
+ * @param {import('@playwright/test').Locator} locator
+ */
+export async function clickElement(app, locator) {
+  runner(`focus`, app.pid);
+  const point = await clientPoint(locator);
+  runner(`click`, app.pid, point.x, point.y);
+}

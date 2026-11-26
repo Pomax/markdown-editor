@@ -63,10 +63,8 @@ test(`switching to source2 does not scroll a short document`, async () => {
   await editor.click();
   await page.waitForTimeout(100);
 
-  // Type text containing an inline element so the cursor ends up
-  // after a closing tag — Firefox returns a zero-height rect for
-  // the collapsed selection there, which used to produce a bogus
-  // savedCaretTop and scroll the content off-screen.
+  // Type text containing an inline element, so the cursor ends up
+  // after a closing tag.
   const text = `this is <em>a test</em>.`;
   for (const ch of text) {
     await page.keyboard.press(ch);
