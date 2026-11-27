@@ -11,8 +11,10 @@
  * --win, --mac or --linux and defaults to the one the script runs on.
  * The Tauri CLI is called through its Node API, so no .cmd shim is
  * spawned. On Windows the C runtime is linked statically, so the .exe
- * runs without the Visual C++ runtime installed. What the build leaves
- * behind is deleted once it is done; Cargo's target/ stays.
+ * runs without the Visual C++ runtime installed, and the copy in
+ * dist/windows is compressed in place with UPX, which has to be on
+ * PATH. What the build leaves behind is deleted once it is done;
+ * Cargo's target/ stays.
  * Run with: npm run build, or npm run dist:win / dist:mac / dist:linux
  */
 
@@ -33,8 +35,10 @@ const release = join(root, `target`, `release`);
  * What a platform's build runs and where its result goes: Tauri's build
  * arguments, the environment variables the build gets, the folder the
  * result is left in, the result's file name there (`*.<ext>` for a bundle,
- * whose name Tauri derives), the platform's folder under dist/, and the
- * result's name in that folder.
+ * whose name Tauri derives), the platform's folder under dist/, the
+ * result's name in that folder, and the command that compresses the copy
+ * there in place, given its path as the last argument, or null when it
+ * is not compressed.
  * @typedef {object} ReleaseTarget
  * @property {string[]} args
  * @property {Record<string, string>} env
@@ -42,6 +46,7 @@ const release = join(root, `target`, `release`);
  * @property {string} sourceName
  * @property {string} distDir
  * @property {string} artifact
+ * @property {string[] | null} compress
  */
 
 /**
@@ -82,6 +87,7 @@ export function releaseTarget(flag) {
         sourceName: `markdown-editor.exe`,
         distDir: join(dist, `windows`),
         artifact: `Markdown-Editor.exe`,
+        compress: [`upx`, `--best`, `--lzma`],
       };
     case `--mac`:
       return {
@@ -91,6 +97,7 @@ export function releaseTarget(flag) {
         sourceName: `*.dmg`,
         distDir: join(dist, `macos`),
         artifact: `Markdown-Editor.dmg`,
+        compress: null,
       };
     case `--linux`:
       return {
@@ -100,6 +107,7 @@ export function releaseTarget(flag) {
         sourceName: `*.deb`,
         distDir: join(dist, `ubuntu`),
         artifact: `Markdown-Editor.deb`,
+        compress: null,
       };
     default:
       throw new Error(`No release target for ${flag}`);
@@ -155,6 +163,14 @@ async function buildExecutable() {
   mkdirSync(target.distDir, { recursive: true });
   const destination = join(target.distDir, target.artifact);
   copyFileSync(source, destination);
+  if (target.compress) {
+    const [command, ...args] = target.compress;
+    const compressed = spawnSync(command, [...args, destination], { stdio: `inherit` });
+    if (compressed.status !== 0) {
+      console.error(`Compressing ${target.artifact} failed`);
+      process.exit(1);
+    }
+  }
   console.log(`  ${target.artifact}: ${statSync(destination).size} bytes`);
 }
 

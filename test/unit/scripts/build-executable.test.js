@@ -3,9 +3,10 @@
  * --win, --mac and --linux, the arguments Tauri's build gets, the
  * environment it gets (on Windows, Rust flags that link the C runtime
  * statically), the folder and file it leaves its result in (Cargo's
- * target/ at the project root), and the folder under dist/ and the name
- * that result is copied to; the flag each platform defaults to; and
- * picking the built file out of its folder.
+ * target/ at the project root), the folder under dist/ and the name
+ * that result is copied to, and the command that compresses that copy
+ * (UPX on Windows, none on macOS and Linux); the flag each platform
+ * defaults to; and picking the built file out of its folder.
  */
 
 import assert from 'node:assert';
@@ -19,7 +20,7 @@ const release = join(root, `target`, `release`);
 const dist = join(root, `dist`);
 
 describe(`build-executable`, () => {
-  it(`builds the Windows exe without a bundle and names it Markdown-Editor.exe`, () => {
+  it(`builds the Windows exe without a bundle, names it Markdown-Editor.exe and compresses it with UPX`, () => {
     assert.deepStrictEqual(releaseTarget(`--win`), {
       args: [`build`, `--no-bundle`],
       env: { CARGO_TARGET_X86_64_PC_WINDOWS_MSVC_RUSTFLAGS: `-C target-feature=+crt-static` },
@@ -27,6 +28,7 @@ describe(`build-executable`, () => {
       sourceName: `markdown-editor.exe`,
       distDir: join(dist, `windows`),
       artifact: `Markdown-Editor.exe`,
+      compress: [`upx`, `--best`, `--lzma`],
     });
   });
 
@@ -38,6 +40,7 @@ describe(`build-executable`, () => {
       sourceName: `*.dmg`,
       distDir: join(dist, `macos`),
       artifact: `Markdown-Editor.dmg`,
+      compress: null,
     });
   });
 
@@ -49,6 +52,7 @@ describe(`build-executable`, () => {
       sourceName: `*.deb`,
       distDir: join(dist, `ubuntu`),
       artifact: `Markdown-Editor.deb`,
+      compress: null,
     });
   });
 

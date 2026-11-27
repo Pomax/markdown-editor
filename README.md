@@ -53,7 +53,7 @@ All platforms:
 
 Build tools:
 
-- On Windows, the [Microsoft C++ Build Tools](https://visualstudio.microsoft.com/visual-cpp-build-tools/) (with the "Desktop development with C++" workload installed) and for Windows 10, the [WebView2 runtime](https://developer.microsoft.com/en-us/microsoft-edge/webview2/) component.
+- On Windows, the [Microsoft C++ Build Tools](https://visualstudio.microsoft.com/visual-cpp-build-tools/) (with the "Desktop development with C++" workload installed) and for Windows 10, the [WebView2 runtime](https://developer.microsoft.com/en-us/microsoft-edge/webview2/) component, and [UPX](https://upx.github.io/) on your PATH, which the build uses to compress the .exe.
 - on macOS, the Xcode command line tools (`xcode-select --install` if not already installed)
 - on Linux, `sudo apt-get update && sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev xvfb openbox`.
 

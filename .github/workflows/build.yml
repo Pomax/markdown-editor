@@ -18,6 +18,12 @@ jobs:
         with:
           components: rustfmt
       - run: npm ci --ignore-scripts
+      - name: Install UPX
+        shell: cmd
+        run: |
+          curl -fsSL -o "%RUNNER_TEMP%\upx.zip" https://github.com/upx/upx/releases/download/v5.2.1/upx-5.2.1-win64.zip || exit /b 1
+          "%SystemRoot%\System32\tar.exe" -xf "%RUNNER_TEMP%\upx.zip" -C "%RUNNER_TEMP%" || exit /b 1
+          echo %RUNNER_TEMP%\upx-5.2.1-win64>>"%GITHUB_PATH%"
       - run: npm run dist:win
       - uses: actions/upload-artifact@v7
         with:
