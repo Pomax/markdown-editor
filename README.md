@@ -4,7 +4,7 @@ A GitHub-flavoured markdown editor proof of concept built using the web stack an
 
 <img src="./editor.png" style="width: 90%;" />
 
-## Current version: v3.2.0
+## Current version: v3.2.1
 
 See the [release log](./RELEASE_LOG.md) for what's new in this version.
 
@@ -12,9 +12,9 @@ See the [release log](./RELEASE_LOG.md) for what's new in this version.
 
 This editor is released as a single executable. The current download links are:
 
-- Windows: [Markdown-Editor.exe](https://github.com/Pomax/Pomax-s-Markdown-Editor/releases/download/v3.2.0/Markdown-Editor.exe)
-- MacOS: [Markdown-Editor.dmg](https://github.com/Pomax/Pomax-s-Markdown-Editor/releases/download/v3.2.0/Markdown-Editor.dmg)
-- Linux: [Markdown-Editor.deb](https://github.com/Pomax/Pomax-s-Markdown-Editor/releases/download/v3.2.0/Markdown-Editor.deb)
+- Windows: [Markdown-Editor.exe](https://github.com/Pomax/Pomax-s-Markdown-Editor/releases/download/v3.2.1/Markdown-Editor.exe)
+- MacOS: [Markdown-Editor.dmg](https://github.com/Pomax/Pomax-s-Markdown-Editor/releases/download/v3.2.1/Markdown-Editor.dmg)
+- Linux: [Markdown-Editor.deb](https://github.com/Pomax/Pomax-s-Markdown-Editor/releases/download/v3.2.1/Markdown-Editor.deb)
 
 Previous versions can be found over on the [Releases](https://github.com/Pomax/Pomax-s-Markdown-Editor/releases/latest) page.
 
