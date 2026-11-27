@@ -196,8 +196,40 @@ function describeCaretsIn(title, tree) {
   });
 }
 
+const listLinesTree = await parser.parse(
+  [
+    `- 3 sets of tiles`,
+    `  1. bamboo, where 1 is a bird:`,
+    `  <img src="a.jpg"> <img src="b.jpg">`,
+    `  1. characters:`,
+    `  <img src="c.jpg">`,
+    ``,
+    `After the list.`,
+  ].join(`\n`),
+);
+
+const htmlTree = await parser.parse(
+  [
+    `<div class="tiles"><img src="a.jpg">tiles`,
+    `<img src="b.jpg"><br>`,
+    `</div>`,
+    ``,
+    `<div class="board"><img src="c.jpg">`,
+    ``,
+    `# A heading in a div`,
+    ``,
+    `A paragraph in a div`,
+    ``,
+    `</div>`,
+    ``,
+    `After the divs.`,
+  ].join(`\n`),
+);
+
 describeCaretsIn(`a caret in a normal markdown document`, tree);
 describeCaretsIn(`a caret in quotes nested three deep`, quotesTree);
+describeCaretsIn(`a caret in list items with lines under them`, listLinesTree);
+describeCaretsIn(`a caret in HTML elements with HTML of their own`, htmlTree);
 
 function makeTree(...nodes) {
   const tree = new SyntaxTree();

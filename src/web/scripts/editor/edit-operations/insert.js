@@ -150,7 +150,7 @@ export async function insertTextAtCursor(ops, text) {
   }
 
   // Re-parse the full markdown line to detect type changes
-  const wasBareText = !!node.attributes.bareText;
+  const previousAttributes = node.attributes;
   const fullLine = ops.editor.buildMarkdownLine(node.type, newContent, node.attributes);
   const parsed = await ops.editor.reparseLine(fullLine);
 
@@ -166,14 +166,6 @@ export async function insertTextAtCursor(ops, text) {
     // fence pattern (```) is converted on Enter instead.
     if (parsed.type === `code-block` && oldType !== `code-block`) {
       node.content = newContent;
-      // Suppress image/linked-image block conversion during typing —
-      // the inline tokenizer handles ![alt](src) within paragraphs.
-    } else if (
-      (parsed.type === `image` || parsed.type === `linked-image`) &&
-      oldType !== `image` &&
-      oldType !== `linked-image`
-    ) {
-      node.content = newContent;
     } else if (parsed.type === `blockquote`) {
       // A `>` with no space after it stays text until the space is typed.
       node.content = newContent;
@@ -186,11 +178,7 @@ export async function insertTextAtCursor(ops, text) {
     node.content = newContent;
   }
 
-  // Preserve the bareText flag — it is not part of the markdown syntax
-  // that parseSingleLine can reconstruct, so it would be lost.
-  if (wasBareText) {
-    node.attributes.bareText = true;
-  }
+  ops.keepLayoutAttributes(node, previousAttributes);
 
   // Compute cursor position: the absolute position in the full
   // markdown line advances by the inserted text length.

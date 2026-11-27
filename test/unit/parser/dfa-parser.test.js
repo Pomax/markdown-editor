@@ -620,33 +620,38 @@ describe(`DFAParser`, () => {
   });
 
   describe(`images`, () => {
-    it(`should parse a bare image`, async () => {
+    it(`should parse a bare image as a paragraph holding the image`, async () => {
       const tree = await parser.parse(`![alt text](image.png)`);
       assert.strictEqual(tree.children.length, 1);
-      assert.strictEqual(tree.children[0].type, `image`);
-      assert.strictEqual(tree.children[0].content, `alt text`);
-      assert.strictEqual(tree.children[0].attributes.alt, `alt text`);
-      assert.strictEqual(tree.children[0].attributes.url, `image.png`);
-      assert.strictEqual(tree.children[0].attributes.href, undefined);
+      assert.strictEqual(tree.children[0].type, `paragraph`);
+      assert.strictEqual(tree.children[0].content, `![alt text](image.png)`);
+      const [img] = tree.children[0].children;
+      assert.strictEqual(img.type, `inline-image`);
+      assert.strictEqual(img.attributes.alt, `alt text`);
+      assert.strictEqual(img.attributes.src, `image.png`);
     });
 
     it(`should parse an image with empty alt text`, async () => {
       const tree = await parser.parse(`![](photo.jpg)`);
       assert.strictEqual(tree.children.length, 1);
-      assert.strictEqual(tree.children[0].type, `image`);
-      assert.strictEqual(tree.children[0].content, ``);
-      assert.strictEqual(tree.children[0].attributes.alt, ``);
-      assert.strictEqual(tree.children[0].attributes.url, `photo.jpg`);
+      assert.strictEqual(tree.children[0].type, `paragraph`);
+      const [img] = tree.children[0].children;
+      assert.strictEqual(img.type, `inline-image`);
+      assert.strictEqual(img.attributes.alt, ``);
+      assert.strictEqual(img.attributes.src, `photo.jpg`);
     });
 
-    it(`should parse a linked image`, async () => {
+    it(`should parse a linked image as a paragraph holding a link around the image`, async () => {
       const tree = await parser.parse(`[![logo](logo.png)](https://example.com)`);
       assert.strictEqual(tree.children.length, 1);
-      assert.strictEqual(tree.children[0].type, `image`);
-      assert.strictEqual(tree.children[0].content, `logo`);
-      assert.strictEqual(tree.children[0].attributes.alt, `logo`);
-      assert.strictEqual(tree.children[0].attributes.url, `logo.png`);
-      assert.strictEqual(tree.children[0].attributes.href, `https://example.com`);
+      assert.strictEqual(tree.children[0].type, `paragraph`);
+      const [link] = tree.children[0].children;
+      assert.strictEqual(link.type, `link`);
+      assert.strictEqual(link.attributes.href, `https://example.com`);
+      const [img] = link.children;
+      assert.strictEqual(img.type, `inline-image`);
+      assert.strictEqual(img.attributes.alt, `logo`);
+      assert.strictEqual(img.attributes.src, `logo.png`);
     });
 
     it(`should round-trip a bare image through toMarkdown`, async () => {
@@ -663,8 +668,9 @@ describe(`DFAParser`, () => {
 
     it(`should parse an image with a full URL`, async () => {
       const tree = await parser.parse(`![photo](https://example.com/img.jpg)`);
-      assert.strictEqual(tree.children[0].type, `image`);
-      assert.strictEqual(tree.children[0].attributes.url, `https://example.com/img.jpg`);
+      assert.strictEqual(tree.children[0].type, `paragraph`);
+      const [img] = tree.children[0].children;
+      assert.strictEqual(img.attributes.src, `https://example.com/img.jpg`);
     });
 
     it(`should parse an image among other elements`, async () => {
@@ -672,68 +678,85 @@ describe(`DFAParser`, () => {
       const tree = await parser.parse(markdown);
       assert.strictEqual(tree.children.length, 3);
       assert.strictEqual(tree.children[0].type, `heading1`);
-      assert.strictEqual(tree.children[1].type, `image`);
+      assert.strictEqual(tree.children[1].type, `paragraph`);
+      assert.strictEqual(tree.children[1].children[0].type, `inline-image`);
       assert.strictEqual(tree.children[2].type, `paragraph`);
     });
 
     it(`should parse an HTML img tag with src, alt and style`, async () => {
       const tree = await parser.parse(`<img src="photo.png" alt="A photo" style="zoom: 80%;" />`);
       assert.strictEqual(tree.children.length, 1);
-      assert.strictEqual(tree.children[0].type, `image`);
-      assert.strictEqual(tree.children[0].attributes.url, `photo.png`);
-      assert.strictEqual(tree.children[0].attributes.alt, `A photo`);
-      assert.strictEqual(tree.children[0].attributes.style, `zoom: 80%;`);
+      assert.strictEqual(tree.children[0].type, `paragraph`);
+      const [img] = tree.children[0].children;
+      assert.strictEqual(img.attributes.tag, `img`);
+      assert.deepStrictEqual(img.attributes.attrs, {
+        src: `photo.png`,
+        alt: `A photo`,
+        style: `zoom: 80%;`,
+      });
     });
 
     it(`should parse an HTML img tag without style`, async () => {
       const tree = await parser.parse(`<img src="pic.jpg" alt="test" />`);
       assert.strictEqual(tree.children.length, 1);
-      assert.strictEqual(tree.children[0].type, `image`);
-      assert.strictEqual(tree.children[0].attributes.url, `pic.jpg`);
-      assert.strictEqual(tree.children[0].attributes.alt, `test`);
-      assert.strictEqual(tree.children[0].attributes.style, undefined);
+      assert.strictEqual(tree.children[0].type, `paragraph`);
+      const [img] = tree.children[0].children;
+      assert.deepStrictEqual(img.attributes.attrs, { src: `pic.jpg`, alt: `test` });
     });
 
     it(`should parse an HTML img tag without alt`, async () => {
       const tree = await parser.parse(`<img src="pic.jpg" style="display: block;" />`);
-      assert.strictEqual(tree.children[0].type, `image`);
-      assert.strictEqual(tree.children[0].attributes.url, `pic.jpg`);
-      assert.strictEqual(tree.children[0].attributes.alt, ``);
-      assert.strictEqual(tree.children[0].attributes.style, `display: block;`);
+      assert.strictEqual(tree.children[0].type, `paragraph`);
+      const [img] = tree.children[0].children;
+      assert.deepStrictEqual(img.attributes.attrs, { src: `pic.jpg`, style: `display: block;` });
     });
 
     it(`should parse a non-self-closing HTML img tag`, async () => {
       const tree = await parser.parse(`<img src="pic.jpg" alt="test">`);
-      assert.strictEqual(tree.children[0].type, `image`);
-      assert.strictEqual(tree.children[0].attributes.url, `pic.jpg`);
-      assert.strictEqual(tree.children[0].attributes.alt, `test`);
+      assert.strictEqual(tree.children[0].type, `paragraph`);
+      const [img] = tree.children[0].children;
+      assert.deepStrictEqual(img.attributes.attrs, { src: `pic.jpg`, alt: `test` });
     });
 
-    it(`should serialize an image without style as markdown syntax`, async () => {
-      const tree = await parser.parse(`<img src="pic.jpg" alt="test" />`);
-      assert.strictEqual(tree.children[0].toMarkdown(), `![test](pic.jpg)`);
+    it(`should keep an HTML img tag as written`, async () => {
+      const html = `<img src="pic.jpg" alt="test" />`;
+      const tree = await parser.parse(html);
+      assert.strictEqual(tree.children[0].toMarkdown(), html);
     });
 
     it(`should parse an HTML img tag with a class`, async () => {
       const tree = await parser.parse(`<img src="pic.jpg" alt="test" class="wide framed" />`);
       assert.strictEqual(tree.children.length, 1);
-      assert.strictEqual(tree.children[0].type, `image`);
-      assert.strictEqual(tree.children[0].attributes.url, `pic.jpg`);
-      assert.strictEqual(tree.children[0].attributes.alt, `test`);
-      assert.strictEqual(tree.children[0].attributes.className, `wide framed`);
-      assert.strictEqual(tree.children[0].attributes.style, undefined);
+      assert.strictEqual(tree.children[0].type, `paragraph`);
+      const [img] = tree.children[0].children;
+      assert.deepStrictEqual(img.attributes.attrs, {
+        src: `pic.jpg`,
+        alt: `test`,
+        class: `wide framed`,
+      });
     });
 
     it(`should parse an HTML img tag with both class and style`, async () => {
       const tree = await parser.parse(`<img src="pic.jpg" class="wide" style="zoom: 80%;" />`);
-      assert.strictEqual(tree.children[0].type, `image`);
-      assert.strictEqual(tree.children[0].attributes.className, `wide`);
-      assert.strictEqual(tree.children[0].attributes.style, `zoom: 80%;`);
+      const [img] = tree.children[0].children;
+      assert.deepStrictEqual(img.attributes.attrs, {
+        src: `pic.jpg`,
+        class: `wide`,
+        style: `zoom: 80%;`,
+      });
     });
 
-    it(`should parse an HTML img tag without class`, async () => {
-      const tree = await parser.parse(`<img src="pic.jpg" alt="test" style="zoom: 80%;" />`);
-      assert.strictEqual(tree.children[0].attributes.className, undefined);
+    it(`should parse several images on one line as one paragraph`, async () => {
+      const md = `![a](a.png) <img src="b.png"> ![c](c.png)`;
+      const tree = await parser.parse(md);
+      assert.strictEqual(tree.children.length, 1);
+      assert.strictEqual(tree.children[0].type, `paragraph`);
+      const images = tree.children[0].children.filter((child) => child.type !== `text`);
+      assert.deepStrictEqual(
+        images.map((child) => child.attributes.src ?? child.attributes.attrs?.src),
+        [`a.png`, `b.png`, `c.png`],
+      );
+      assert.strictEqual(tree.toMarkdown(), md);
     });
 
     it(`should serialize an image with a class as an HTML img tag`, async () => {
@@ -746,6 +769,41 @@ describe(`DFAParser`, () => {
       const html = `<img src="pic.jpg" alt="test" class="wide" style="zoom: 80%;" />`;
       const tree = await parser.parse(html);
       assert.strictEqual(tree.children[0].toMarkdown(), html);
+    });
+
+    it(`should make an indented line of img tags under a nested list item part of that item`, async () => {
+      const images = Array.from(
+        { length: 9 },
+        (_, n) => `<img style="border: 1px solid grey" src="./tiles/${n}.jpg">`,
+      ).join(` `);
+      const md = `- suited tiles 1 through 9\n  1. bamboo, where 1 is a bird:\n  ${images}\n  1. characters:`;
+      const tree = await parser.parse(md);
+      assert.deepStrictEqual(
+        tree.children.map((node) => [node.type, node.attributes.indent]),
+        [
+          [`list-item`, 0],
+          [`list-item`, 1],
+          [`list-item`, 1],
+        ],
+      );
+      assert.strictEqual(tree.children[1].content, `bamboo, where 1 is a bird:\n${images}`);
+      const imgs = tree.children[1].children.filter((child) => child.attributes.tag === `img`);
+      assert.strictEqual(imgs.length, 9);
+      imgs.forEach((img, n) => {
+        assert.deepStrictEqual(img.attributes.attrs, {
+          style: `border: 1px solid grey`,
+          src: `./tiles/${n}.jpg`,
+        });
+      });
+      assert.strictEqual(tree.toMarkdown(), md);
+    });
+
+    it(`should keep an unindented line under a list item a paragraph of its own`, async () => {
+      const tree = await parser.parse(`- item\ntext`);
+      assert.deepStrictEqual(
+        tree.children.map((node) => node.type),
+        [`list-item`, `paragraph`],
+      );
     });
   });
 
@@ -787,6 +845,57 @@ describe(`DFAParser`, () => {
       assert.strictEqual(children[0].content, `Title`);
       assert.strictEqual(children[1].type, `paragraph`);
       assert.strictEqual(children[1].content, `Paragraph`);
+    });
+
+    it(`should keep the content of an HTML element with no empty line above it as the element's own HTML`, async () => {
+      const content = `<img src="a.png" style="border: 1px solid grey">\n<img src="b.png"><br>\n<img src="c.png"><br>\n`;
+      const md = `<div>${content}</div>`;
+      const tree = await parser.parse(md);
+      assert.strictEqual(tree.children.length, 1);
+      const block = tree.children[0];
+      assert.strictEqual(block.type, `html-block`);
+      assert.strictEqual(block.attributes.tagName, `div`);
+      assert.strictEqual(block.children.length, 1);
+      assert.strictEqual(block.children[0].type, `paragraph`);
+      assert.strictEqual(block.children[0].attributes.bareText, true);
+      assert.strictEqual(block.children[0].content, content);
+      assert.strictEqual(tree.toMarkdown(), md);
+    });
+
+    it(`should keep the lines of an HTML element written under its opening tag as the element's own HTML`, async () => {
+      const md = `<div>\n<img src="a.png">\n<img src="b.png">\n</div>`;
+      const tree = await parser.parse(md);
+      const block = tree.children[0];
+      assert.strictEqual(block.children.length, 1);
+      assert.strictEqual(block.children[0].attributes.bareText, true);
+      assert.strictEqual(block.children[0].content, `\n<img src="a.png">\n<img src="b.png">\n`);
+      assert.strictEqual(tree.toMarkdown(), md);
+    });
+
+    it(`should keep the content of an HTML element with only empty lines after it as the element's own HTML`, async () => {
+      const md = `<div><img src="a.png">\n\n</div>`;
+      const tree = await parser.parse(md);
+      const block = tree.children[0];
+      assert.strictEqual(block.children.length, 1);
+      assert.strictEqual(block.children[0].attributes.bareText, true);
+      assert.strictEqual(block.children[0].content, `<img src="a.png">\n\n`);
+      assert.strictEqual(tree.toMarkdown(), md);
+    });
+
+    it(`should keep the HTML before an empty line in an HTML element as its own HTML, and parse the text after it as markdown`, async () => {
+      const md = `<div><img src="a.png">\n<img src="b.png">\n\n# Title\n\nParagraph\n\n</div>`;
+      const tree = await parser.parse(md);
+      const block = tree.children[0];
+      assert.strictEqual(block.type, `html-block`);
+      assert.strictEqual(block.attributes.html, `<img src="a.png">\n<img src="b.png">`);
+      assert.deepStrictEqual(
+        block.children.map((child) => [child.type, child.content]),
+        [
+          [`heading1`, `Title`],
+          [`paragraph`, `Paragraph`],
+        ],
+      );
+      assert.strictEqual(tree.toMarkdown(), md);
     });
 
     it(`should parse a custom element with a hyphenated tag name`, async () => {
@@ -1202,6 +1311,30 @@ code
       const md = `<summary>Some text</summary>`;
       const tree = await parser.parse(md);
       assert.strictEqual(tree.toMarkdown(), md);
+    });
+
+    it(`should keep a line written directly under a list item directly under it`, async () => {
+      const md = `- suited tiles\n  1. bamboo:\n  <img src="a.jpg"> <img src="b.jpg">`;
+      const tree = await parser.parse(md);
+      assert.strictEqual(tree.toMarkdown(), md);
+    });
+
+    it(`should keep a paragraph written directly under a heading directly under it`, async () => {
+      const md = `# Title\ntext under the title`;
+      const tree = await parser.parse(md);
+      assert.strictEqual(tree.toMarkdown(), md);
+    });
+
+    it(`should keep the blank line between a list item and the paragraph after it`, async () => {
+      const md = `- item\n\ntext after the list`;
+      const tree = await parser.parse(md);
+      assert.strictEqual(tree.toMarkdown(), md);
+    });
+
+    it(`should keep a block written directly under another directly under it when its type changes`, async () => {
+      const tree = await parser.parse(`# Title\ntext`);
+      tree.changeNodeType(tree.children[1], `heading2`);
+      assert.strictEqual(tree.toMarkdown(), `# Title\n## text`);
     });
   });
 });

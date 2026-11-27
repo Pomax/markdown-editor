@@ -59,11 +59,10 @@ export class EditOperations extends EditOperationsData {
    * If removing the node would leave the document empty, a fresh empty
    * paragraph is inserted instead.
    *
-   * @param {{ before: string, hints: { updated?: string[], added?: string[], removed?: string[] }, keep?: boolean }} result
+   * @param {{ before: string, hints: { updated?: string[], added?: string[], removed?: string[] } }} result
    *     The result object from `deleteSelectedRange()`, mutated in place.
    */
   cleanupEmptyNodeAfterDelete(result) {
-    if (result.keep) return;
     const node = this.editor.getCurrentBlockNode();
     if (!node || !this.editor.syntaxTree) return;
 
@@ -117,6 +116,17 @@ export class EditOperations extends EditOperationsData {
         offset: 0,
       };
     }
+  }
+
+  /**
+   * Gives a block whose line was re-parsed the attribute the line's
+   * markdown does not hold: whether it is bare text inside an HTML
+   * container.
+   * @param {SyntaxNode} node
+   * @param {NodeAttributes} previous - The block's attributes before the re-parse.
+   */
+  keepLayoutAttributes(node, previous) {
+    if (previous.bareText) node.attributes.bareText = true;
   }
 
   /**

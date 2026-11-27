@@ -61,6 +61,18 @@
     }
 }
 
+/* An HTML element's own content. */
+[data-html-block-id],
+[data-html-block-id] [data-node-id] {
+    white-space: normal;
+}
+
+/* The elements of a block's inline content, such as images. */
+:is(p, h1, h2, h3, h4, h5, h6, li, [data-html-block-id])[data-node-id] [data-node-id]:not(li) {
+    margin-bottom: 0;
+    min-height: 0;
+}
+
 .md-paragraph {
     margin: calc(var(--spacing-md) / 2) 0;
 }

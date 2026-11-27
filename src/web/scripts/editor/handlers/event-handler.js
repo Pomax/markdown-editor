@@ -127,19 +127,9 @@ export class EventHandler extends EventHandlerData {
     // to a neighbouring node instead.
     const target = /** @type {HTMLElement} */ (event.target);
     if (this.editor.viewMode === `writing` && target.tagName === `IMG`) {
-      // Walk up to find the nearest data-node-id
-      let el = /** @type {HTMLElement | undefined} */ (target.parentElement);
-      while (el && el !== this.editor.container) {
-        if (el.dataset?.nodeId) break;
-        el = el.parentElement ?? undefined;
-      }
-      const nodeId = el?.dataset?.nodeId;
+      const nodeId = target.dataset.nodeId;
       const node = nodeId ? (this.editor.syntaxTree?.findNodeById(nodeId) ?? undefined) : undefined;
-      if (
-        node?.type === `image` ||
-        node?.type === `linked-image` ||
-        node?.type === `inline-image`
-      ) {
+      if (node && this.editor.imageHelper.isImageNode(node)) {
         event.preventDefault();
         this.editor.imageHelper.openImageModalForNode(node);
         return;
@@ -376,8 +366,7 @@ export class EventHandler extends EventHandlerData {
       ? await this.editor.imageHelper.toRelativeImagePath(fileUrl)
       : fileUrl;
 
-    const imageNode = new SyntaxNode(`image`, alt);
-    imageNode.attributes = { alt, url: src };
+    const imageNode = new SyntaxNode(`paragraph`, SyntaxNode.imageMarkup({ alt, src }));
 
     if (!currentNode) {
       // No cursor node — append to the tree

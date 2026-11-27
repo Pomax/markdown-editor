@@ -3,6 +3,19 @@
 import { SyntaxNode } from '../../../../parsers/old/syntax-node.js';
 
 /**
+ * The text before and after a split of a list item's content, without the
+ * line break between them when the split is at one.
+ * @param {string} before
+ * @param {string} after
+ * @returns {[string, string]}
+ */
+function splitAtLineBreak(before, after) {
+  if (after.startsWith(`\n`)) return [before, after.slice(1)];
+  if (before.endsWith(`\n`)) return [before.slice(0, -1), after];
+  return [before, after];
+}
+
+/**
  * Handles the Enter key — splits the current node at the cursor.
  * @param {EditOperations} ops
  */
@@ -125,10 +138,12 @@ export function handleEnterKey(ops) {
     }
 
     // Split: current item keeps text before cursor, new item gets text
-    // after cursor.  At the start of the item, the new item goes above it,
-    // empty, moving the item down.
+    // after cursor, without the line break between them when the cursor is
+    // at one.  At the start of the item, the new item goes above it, empty,
+    // moving the item down.
     const atStart = contentBefore === ``;
-    if (!atStart) node.content = contentBefore;
+    const [itemText, newItemText] = splitAtLineBreak(contentBefore, contentAfter);
+    if (!atStart) node.content = itemText;
     /** @type {NodeAttributes} */
     const newAttrs = {
       ordered: node.attributes.ordered,
@@ -137,7 +152,7 @@ export function handleEnterKey(ops) {
     if (typeof node.attributes.checked === `boolean`) {
       newAttrs.checked = false;
     }
-    const newItem = new SyntaxNode(`list-item`, atStart ? `` : contentAfter);
+    const newItem = new SyntaxNode(`list-item`, atStart ? `` : newItemText);
     newItem.attributes = newAttrs;
     const siblings = ops.editor.getSiblings(node);
     const idx = siblings.indexOf(node);

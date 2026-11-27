@@ -112,7 +112,19 @@ const RAW_CONTENT_TAGS = new Set([`script`, `style`, `textarea`]);
 // Inline-only HTML tags (never treated as block-level)
 
 /** @type {Set<string>} */
-const INLINE_ONLY_TAGS = new Set([`strong`, `em`, `del`, `s`, `sub`, `sup`, `mark`, `u`, `b`, `i`]);
+const INLINE_ONLY_TAGS = new Set([
+  `strong`,
+  `em`,
+  `del`,
+  `s`,
+  `sub`,
+  `sup`,
+  `mark`,
+  `u`,
+  `b`,
+  `i`,
+  `img`,
+]);
 
 /**
  * Parses markdown text into a syntax tree using a token-driven DFA.
@@ -136,8 +148,14 @@ class DFAParser {
         continue;
       }
 
+      const start = ctx.pos;
       const node = await this.parseBlock(ctx);
       if (node) {
+        const previous = tree.children[tree.children.length - 1];
+        const listItems = previous?.type === `list-item` && node.type === `list-item`;
+        if (previous && !listItems && !this.followsBlankLine(ctx.tokens, start)) {
+          node.noBlankLineBefore = true;
+        }
         tree.appendChild(node);
       }
     }
@@ -202,15 +220,6 @@ class DFAParser {
       return this.parseHorizontalRule(ctx);
     }
 
-    // HTML img tag: <img ...> (possibly indented)
-    if (tok.type === `LT` && this.isHtmlImgTag(ctx)) {
-      return this.parseHtmlImage(ctx);
-    }
-    if ((tok.type === `SPACE` || tok.type === `TAB`) && this.isIndentedHtmlImgTag(ctx)) {
-      this.skipWhitespace(ctx);
-      return this.parseHtmlImage(ctx);
-    }
-
     // HTML block: <tagname...> (possibly indented)
     if (tok.type === `LT` && this.isHtmlBlockStart(ctx)) {
       return await this.parseHtmlBlock(ctx);
@@ -223,22 +232,6 @@ class DFAParser {
     // Table: starts with PIPE
     if (tok.type === `PIPE`) {
       return this.parseTable(ctx);
-    }
-
-    // Linked image: [![alt](src)](href)
-    if (tok.type === `LBRACKET` && this.lookType(ctx, 1) === `BANG`) {
-      const saved = ctx.pos;
-      const node = this.tryParseLinkedImage(ctx);
-      if (node) return node;
-      ctx.pos = saved;
-    }
-
-    // Image: ![alt](src)
-    if (tok.type === `BANG` && this.lookType(ctx, 1) === `LBRACKET`) {
-      const saved = ctx.pos;
-      const node = this.tryParseImage(ctx);
-      if (node) return node;
-      ctx.pos = saved;
     }
 
     // Default: paragraph
@@ -533,10 +526,11 @@ class DFAParser {
       ctx.pos++;
     }
 
-    const content = this.consumeToEndOfLine(ctx);
+    const { content, lineIndent } = this.consumeListItemLines(ctx);
 
     const node = new SyntaxNode(`list-item`, content);
     node.attributes = { ordered: false, indent };
+    node.lineIndent = lineIndent;
 
     // Detect checklist syntax: [ ] or [x]/[X] at the start of content
     if (content.startsWith(`[ ] `)) {
@@ -548,7 +542,7 @@ class DFAParser {
     }
 
     node.startLine = startLine;
-    node.endLine = startLine;
+    node.endLine = startLine + content.split(`\n`).length - 1;
     return node;
   }
 
@@ -610,13 +604,57 @@ class DFAParser {
       ctx.pos++;
     }
 
-    const content = this.consumeToEndOfLine(ctx);
+    const { content, lineIndent } = this.consumeListItemLines(ctx);
 
     const node = new SyntaxNode(`list-item`, content);
     node.attributes = { ordered: true, indent };
+    node.lineIndent = lineIndent;
     node.startLine = startLine;
-    node.endLine = startLine;
+    node.endLine = startLine + content.split(`\n`).length - 1;
     return node;
+  }
+
+  /**
+   * Consumes a list item's first line and each line under it that
+   * continues the item, and returns them joined by newlines, without the
+   * indentation before each line under the first, and that indentation as
+   * the first of those lines has it.
+   * @param {{tokens: DFAToken[], pos: number, line: number}} ctx
+   * @returns {{ content: string, lineIndent: string }}
+   */
+  consumeListItemLines(ctx) {
+    let content = this.consumeToEndOfLine(ctx);
+    let lineIndent = ``;
+    while (this.isListItemContinuation(ctx)) {
+      let indent = ``;
+      while (ctx.tokens[ctx.pos].type === `SPACE` || ctx.tokens[ctx.pos].type === `TAB`) {
+        indent += ctx.tokens[ctx.pos].value;
+        ctx.pos++;
+      }
+      if (!lineIndent) lineIndent = indent;
+      content += `\n${this.consumeToEndOfLine(ctx)}`;
+    }
+    return { content, lineIndent };
+  }
+
+  /**
+   * Whether the line at the current position continues the list item
+   * above it: it is indented, holds more than whitespace, and starts no
+   * block of its own.
+   * @param {{tokens: DFAToken[], pos: number}} ctx
+   * @returns {boolean}
+   */
+  isListItemContinuation(ctx) {
+    let i = ctx.pos;
+    while (
+      i < ctx.tokens.length &&
+      (ctx.tokens[i].type === `SPACE` || ctx.tokens[i].type === `TAB`)
+    ) {
+      i++;
+    }
+    if (i === ctx.pos || i >= ctx.tokens.length) return false;
+    if (ctx.tokens[i].type === `NEWLINE` || ctx.tokens[i].type === `EOF`) return false;
+    return !this.isBlockStart(ctx) && !this.isIndentedHtmlBlockStart(ctx);
   }
 
   // Horizontal rule
@@ -663,272 +701,6 @@ class DFAParser {
     return node;
   }
 
-  // Images
-
-  /**
-   * Tries to parse ![alt](src). Returns null if it doesn't match.
-   * @param {{tokens: DFAToken[], pos: number, line: number}} ctx
-   * @returns {SyntaxNode|null}
-   */
-  tryParseImage(ctx) {
-    const startLine = ctx.line;
-
-    // Expect BANG LBRACKET
-    if (ctx.tokens[ctx.pos].type !== `BANG`) return null;
-    ctx.pos++;
-    if (ctx.pos >= ctx.tokens.length || ctx.tokens[ctx.pos].type !== `LBRACKET`) return null;
-    ctx.pos++;
-
-    // Collect alt text until RBRACKET
-    let alt = ``;
-    while (
-      ctx.pos < ctx.tokens.length &&
-      ctx.tokens[ctx.pos].type !== `RBRACKET` &&
-      ctx.tokens[ctx.pos].type !== `NEWLINE` &&
-      ctx.tokens[ctx.pos].type !== `EOF`
-    ) {
-      alt += ctx.tokens[ctx.pos].value;
-      ctx.pos++;
-    }
-    if (ctx.pos >= ctx.tokens.length || ctx.tokens[ctx.pos].type !== `RBRACKET`) return null;
-    ctx.pos++; // skip ]
-
-    // Expect LPAREN
-    if (ctx.pos >= ctx.tokens.length || ctx.tokens[ctx.pos].type !== `LPAREN`) return null;
-    ctx.pos++;
-
-    // Collect src until RPAREN
-    let src = ``;
-    while (
-      ctx.pos < ctx.tokens.length &&
-      ctx.tokens[ctx.pos].type !== `RPAREN` &&
-      ctx.tokens[ctx.pos].type !== `NEWLINE` &&
-      ctx.tokens[ctx.pos].type !== `EOF`
-    ) {
-      src += ctx.tokens[ctx.pos].value;
-      ctx.pos++;
-    }
-    if (ctx.pos >= ctx.tokens.length || ctx.tokens[ctx.pos].type !== `RPAREN`) return null;
-    ctx.pos++; // skip )
-
-    // Must be end of line for a block-level image
-    if (
-      ctx.pos < ctx.tokens.length &&
-      ctx.tokens[ctx.pos].type !== `NEWLINE` &&
-      ctx.tokens[ctx.pos].type !== `EOF`
-    ) {
-      return null;
-    }
-    // Skip newline
-    if (ctx.pos < ctx.tokens.length && ctx.tokens[ctx.pos].type === `NEWLINE`) {
-      ctx.line++;
-      ctx.pos++;
-    }
-
-    const node = new SyntaxNode(`image`, alt);
-    node.attributes = { alt, url: src };
-    node.startLine = startLine;
-    node.endLine = startLine;
-    return node;
-  }
-
-  /**
-   * Tries to parse [![alt](src)](href). Returns null if no match.
-   * @param {{tokens: DFAToken[], pos: number, line: number}} ctx
-   * @returns {SyntaxNode|null}
-   */
-  tryParseLinkedImage(ctx) {
-    const startLine = ctx.line;
-
-    // Expect [ ! [
-    if (ctx.tokens[ctx.pos].type !== `LBRACKET`) return null;
-    ctx.pos++;
-    if (ctx.pos >= ctx.tokens.length || ctx.tokens[ctx.pos].type !== `BANG`) return null;
-    ctx.pos++;
-    if (ctx.pos >= ctx.tokens.length || ctx.tokens[ctx.pos].type !== `LBRACKET`) return null;
-    ctx.pos++;
-
-    // Collect alt until ]
-    let alt = ``;
-    while (
-      ctx.pos < ctx.tokens.length &&
-      ctx.tokens[ctx.pos].type !== `RBRACKET` &&
-      ctx.tokens[ctx.pos].type !== `NEWLINE` &&
-      ctx.tokens[ctx.pos].type !== `EOF`
-    ) {
-      alt += ctx.tokens[ctx.pos].value;
-      ctx.pos++;
-    }
-    if (ctx.pos >= ctx.tokens.length || ctx.tokens[ctx.pos].type !== `RBRACKET`) return null;
-    ctx.pos++; // ]
-
-    // Expect (
-    if (ctx.pos >= ctx.tokens.length || ctx.tokens[ctx.pos].type !== `LPAREN`) return null;
-    ctx.pos++;
-
-    // Collect src until )
-    let src = ``;
-    while (
-      ctx.pos < ctx.tokens.length &&
-      ctx.tokens[ctx.pos].type !== `RPAREN` &&
-      ctx.tokens[ctx.pos].type !== `NEWLINE` &&
-      ctx.tokens[ctx.pos].type !== `EOF`
-    ) {
-      src += ctx.tokens[ctx.pos].value;
-      ctx.pos++;
-    }
-    if (ctx.pos >= ctx.tokens.length || ctx.tokens[ctx.pos].type !== `RPAREN`) return null;
-    ctx.pos++; // )
-
-    // Expect ] (
-    if (ctx.pos >= ctx.tokens.length || ctx.tokens[ctx.pos].type !== `RBRACKET`) return null;
-    ctx.pos++;
-    if (ctx.pos >= ctx.tokens.length || ctx.tokens[ctx.pos].type !== `LPAREN`) return null;
-    ctx.pos++;
-
-    // Collect href until )
-    let href = ``;
-    while (
-      ctx.pos < ctx.tokens.length &&
-      ctx.tokens[ctx.pos].type !== `RPAREN` &&
-      ctx.tokens[ctx.pos].type !== `NEWLINE` &&
-      ctx.tokens[ctx.pos].type !== `EOF`
-    ) {
-      href += ctx.tokens[ctx.pos].value;
-      ctx.pos++;
-    }
-    if (ctx.pos >= ctx.tokens.length || ctx.tokens[ctx.pos].type !== `RPAREN`) return null;
-    ctx.pos++; // )
-
-    // Must be end of line for block-level
-    if (
-      ctx.pos < ctx.tokens.length &&
-      ctx.tokens[ctx.pos].type !== `NEWLINE` &&
-      ctx.tokens[ctx.pos].type !== `EOF`
-    ) {
-      return null;
-    }
-    if (ctx.pos < ctx.tokens.length && ctx.tokens[ctx.pos].type === `NEWLINE`) {
-      ctx.line++;
-      ctx.pos++;
-    }
-
-    const node = new SyntaxNode(`image`, alt);
-    node.attributes = { alt, url: src, href };
-    node.startLine = startLine;
-    node.endLine = startLine;
-    return node;
-  }
-
-  // HTML image
-
-  /**
-   * Checks if current position is an <img ...> tag.
-   * @param {{tokens: DFAToken[], pos: number}} ctx
-   * @returns {boolean}
-   */
-  isHtmlImgTag(ctx) {
-    // LT then "img" (case-insensitive)
-    const after = this.peekTextAfterLT(ctx);
-    if (!after) return false;
-    return after.toLowerCase() === `img`;
-  }
-
-  /**
-   * @param {{tokens: DFAToken[], pos: number, line: number}} ctx
-   * @returns {SyntaxNode}
-   */
-  parseHtmlImage(ctx) {
-    const startLine = ctx.line;
-
-    // Consume everything until GT (the closing >)
-    let raw = ``;
-    while (
-      ctx.pos < ctx.tokens.length &&
-      ctx.tokens[ctx.pos].type !== `NEWLINE` &&
-      ctx.tokens[ctx.pos].type !== `EOF`
-    ) {
-      raw += ctx.tokens[ctx.pos].value;
-      if (ctx.tokens[ctx.pos].type === `GT` && raw.length > 1) {
-        ctx.pos++;
-        break;
-      }
-      ctx.pos++;
-    }
-
-    // Skip newline
-    if (ctx.pos < ctx.tokens.length && ctx.tokens[ctx.pos].type === `NEWLINE`) {
-      ctx.line++;
-      ctx.pos++;
-    }
-
-    // Extract attributes by scanning the raw string character by character
-    const src = this.extractAttr(raw, `src`);
-    const alt = this.extractAttr(raw, `alt`);
-    const style = this.extractAttr(raw, `style`);
-    const className = this.extractAttr(raw, `class`);
-
-    const node = new SyntaxNode(`image`, alt);
-    node.attributes = { alt, url: src };
-    if (style) {
-      node.attributes.style = style;
-    }
-    if (className) {
-      node.attributes.className = className;
-    }
-    node.startLine = startLine;
-    node.endLine = startLine;
-    return node;
-  }
-
-  /**
-   * Extracts an attribute value from an HTML tag string without regex.
-   * Scans for `name="value"` or `name='value'` patterns.
-   * @param {string} raw
-   * @param {string} name
-   * @returns {string}
-   */
-  extractAttr(raw, name) {
-    const lower = raw.toLowerCase();
-    const search = name.toLowerCase();
-    let i = 0;
-
-    while (i < lower.length) {
-      const idx = lower.indexOf(search, i);
-      if (idx === -1) return ``;
-
-      // Check this is actually an attribute name boundary
-      let j = idx + search.length;
-
-      // Skip whitespace around =
-      while (j < lower.length && (lower[j] === ` ` || lower[j] === `\t`)) j++;
-      if (j >= lower.length || lower[j] !== `=`) {
-        i = idx + 1;
-        continue;
-      }
-      j++; // skip =
-      while (j < lower.length && (lower[j] === ` ` || lower[j] === `\t`)) j++;
-
-      // Expect quote
-      if (j >= lower.length) return ``;
-      const quote = raw[j];
-      if (quote !== `"` && quote !== `'`) {
-        i = idx + 1;
-        continue;
-      }
-      j++; // skip opening quote
-
-      // Collect until closing quote
-      let value = ``;
-      while (j < raw.length && raw[j] !== quote) {
-        value += raw[j];
-        j++;
-      }
-      return value;
-    }
-    return ``;
-  }
-
   // HTML block
 
   /**
@@ -970,27 +742,6 @@ class DFAParser {
     if (HTML_BLOCK_TAGS.has(lower) || this.isValidCustomElement(lower)) return true;
     // Build a temporary ctx at the LT position for the unknown-tag check
     return this.isUnknownHtmlTag({ tokens: ctx.tokens, pos: i }, lower);
-  }
-
-  /**
-   * Checks if current position has leading whitespace followed by
-   * an HTML img tag.
-   * @param {{tokens: DFAToken[], pos: number}} ctx
-   * @returns {boolean}
-   */
-  isIndentedHtmlImgTag(ctx) {
-    let i = ctx.pos;
-    while (
-      i < ctx.tokens.length &&
-      (ctx.tokens[i].type === `SPACE` || ctx.tokens[i].type === `TAB`)
-    ) {
-      i++;
-    }
-    if (i >= ctx.tokens.length || i === ctx.pos) return false;
-    if (ctx.tokens[i].type !== `LT`) return false;
-    const next = i + 1;
-    if (next >= ctx.tokens.length || ctx.tokens[next].type !== `TEXT`) return false;
-    return ctx.tokens[next].value.toLowerCase() === `img`;
   }
 
   /**
@@ -1266,7 +1017,9 @@ class DFAParser {
     }
 
     // Skip newline after opening tag
+    let ownHtml = ``;
     if (ctx.pos < ctx.tokens.length && ctx.tokens[ctx.pos].type === `NEWLINE`) {
+      ownHtml = `\n`;
       ctx.line++;
       ctx.pos++;
     }
@@ -1290,6 +1043,35 @@ class DFAParser {
       }
       ctx.pos++;
     }
+    ownHtml += bodyMarkdown;
+
+    // Text with an empty line above it is markdown, and what comes before
+    // it the element's own HTML.
+    const markdownStart = lowerTagName === `details` ? null : /\n[ \t]*\n\s*\S/.exec(ownHtml);
+    if (lowerTagName !== `details` && !markdownStart) {
+      const node = new SyntaxNode(`html-block`, ``);
+      node.attributes = { tagName: lowerTagName, openingTag, closingTag };
+      node.startLine = startLine;
+      node.endLine = ctx.line;
+      const child = new SyntaxNode(`paragraph`, ownHtml);
+      child.attributes = { bareText: true };
+      child.startLine = startLine;
+      child.endLine = ctx.line;
+      node.appendChild(child);
+      if (ctx.pos < ctx.tokens.length && ctx.tokens[ctx.pos].type === `NEWLINE`) {
+        ctx.line++;
+        ctx.pos++;
+      }
+      return node;
+    }
+    const htmlEnd = markdownStart?.index ?? 0;
+    const html = ownHtml.slice(0, htmlEnd).trim() ? ownHtml.slice(0, htmlEnd) : ``;
+    let bodyStartLine = startLine + 1;
+    if (html) {
+      bodyMarkdown = ownHtml.slice(htmlEnd);
+      const before = ownHtml.slice(0, ownHtml.length - bodyMarkdown.trimStart().length);
+      bodyStartLine = startLine + before.split(`\n`).length - 1;
+    }
 
     // Remove leading/trailing newlines from body
     while (bodyMarkdown.startsWith(`\n`)) bodyMarkdown = bodyMarkdown.slice(1);
@@ -1310,13 +1092,13 @@ class DFAParser {
       openingTag,
       closingTag,
     };
+    if (html) node.attributes.html = html;
     node.startLine = startLine;
     node.endLine = endLine;
 
     // Re-parse the body as markdown to create child nodes
     if (bodyMarkdown.length > 0) {
       const bodyTree = await parser.parse(bodyMarkdown);
-      const bodyStartLine = startLine + 1;
       for (const child of bodyTree.children) {
         this.adjustLineNumbers(child, bodyStartLine);
         node.appendChild(child);
@@ -1567,6 +1349,18 @@ class DFAParser {
   }
 
   /**
+   * Whether the line before the line a block starts on is empty.
+   * @param {DFAToken[]} tokens
+   * @param {number} start - The index of the block's first token.
+   * @returns {boolean}
+   */
+  followsBlankLine(tokens, start) {
+    return (
+      start >= 2 && tokens[start - 1].type === `NEWLINE` && tokens[start - 2].type === `NEWLINE`
+    );
+  }
+
+  /**
    * Consumes tokens until NEWLINE or EOF and returns the collected text.
    * The NEWLINE itself is consumed and ctx.line is incremented.
    * @param {{tokens: DFAToken[], pos: number, line: number}} ctx
@@ -1626,16 +1420,10 @@ class DFAParser {
     if (this.isHorizontalRule(ctx)) return true;
 
     // HTML block
-    if (t === `LT` && (this.isHtmlBlockStart(ctx) || this.isHtmlImgTag(ctx))) return true;
+    if (t === `LT` && this.isHtmlBlockStart(ctx)) return true;
 
     // Table
     if (t === `PIPE`) return true;
-
-    // Image
-    if (t === `BANG` && this.lookType(ctx, 1) === `LBRACKET`) return true;
-
-    // Linked image
-    if (t === `LBRACKET` && this.lookType(ctx, 1) === `BANG`) return true;
 
     return false;
   }

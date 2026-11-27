@@ -3,9 +3,10 @@
  * mouse and keyboard is shown: Ctrl+Shift+I opens the dialog, a click on
  * Browse picks the image (the test build answers the file dialog from
  * its stub), a click on Insert puts it in the document, and the image
- * the editor shows has loaded. The line of an image that does not load,
- * reached with the right arrow key from the end of the line above it and
- * selected with Shift+Home, is an empty paragraph after Delete.
+ * the editor shows has loaded. The paragraph holding an image that does
+ * not load, reached with the right arrow key from the end of the line
+ * above it and selected with Shift+Home, is removed by Delete, as a line
+ * of text is.
  */
 
 import fs from 'node:fs';
@@ -56,7 +57,7 @@ test(`an image picked with Browse and put in with Insert is shown`, async ({}, t
     .toBeGreaterThan(0);
 });
 
-test(`the line of an image that does not load, selected with Shift+Home, is an empty paragraph after Delete`, async () => {
+test(`the paragraph holding an image that does not load, selected with Shift+Home, is removed by Delete`, async () => {
   await setSource2View(page);
   await loadContent(page, `text\n\n![A screenshot of the editor](./nonsensefilename12345.png)\n\n`);
   await setWritingView(page);
@@ -69,7 +70,7 @@ test(`the line of an image that does not load, selected with Shift+Home, is an e
   await expect
     .poll(() =>
       page.evaluate(() => {
-        const line = document.querySelector(`#editor .md-image`);
+        const line = document.querySelector(`#editor p.md-paragraph:has(img)`);
         const selection = window.getSelection();
         return !!line && !!selection?.isCollapsed && line.contains(selection.anchorNode);
       }),
@@ -79,7 +80,7 @@ test(`the line of an image that does not load, selected with Shift+Home, is an e
   await expect
     .poll(() =>
       page.evaluate(() => {
-        const line = document.querySelector(`#editor .md-image`);
+        const line = document.querySelector(`#editor p.md-paragraph:has(img)`);
         const img = line?.querySelector(`img`);
         const selection = window.getSelection();
         if (!line || !img || !selection || selection.rangeCount === 0) return false;
@@ -93,12 +94,5 @@ test(`the line of an image that does not load, selected with Shift+Home, is an e
     )
     .toBe(true);
   runner(`keys`, app.pid, `Delete`);
-  await expect
-    .poll(() =>
-      page.evaluate(() => {
-        const line = /** @type {any} */ (window).__editor.syntaxTree.children[1];
-        return { type: line?.type, content: line?.content };
-      }),
-    )
-    .toEqual({ type: `paragraph`, content: `` });
+  await expect.poll(() => page.evaluate(() => window.editorAPI?.getContent())).toBe(`text`);
 });

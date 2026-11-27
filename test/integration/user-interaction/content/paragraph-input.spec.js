@@ -1,7 +1,8 @@
 /**
  * @fileoverview Integration tests for Enter and Backspace at the start of
- * a paragraph, and for removing an empty paragraph above a block with
- * Delete or Backspace, in the writing view.
+ * a paragraph, for removing an empty paragraph above a block with Delete
+ * or Backspace, and for typing in a paragraph written directly under the
+ * block before it, in the writing view.
  */
 
 import { expect, test } from '@playwright/test';
@@ -162,6 +163,17 @@ for (const { name, markdown, click, typed } of blocks) {
     await expect.poll(content).toBe(around(typed));
   });
 }
+
+test(`typing, Backspace and Delete in a paragraph written directly under a list item keep it directly under the item`, async () => {
+  await loadContent(page, `- tiles\ntext`);
+  await clickWritingViewBetween(page, `te`, `xt`);
+  await page.keyboard.type(`x`);
+  await expect.poll(content).toBe(`- tiles\ntexxt`);
+  await page.keyboard.press(`Backspace`);
+  await expect.poll(content).toBe(`- tiles\ntext`);
+  await page.keyboard.press(`Delete`);
+  await expect.poll(content).toBe(`- tiles\ntet`);
+});
 
 test(`Delete in an empty list item above a heading removes that item and keeps the heading`, async () => {
   await loadContent(page, `- one\n\n# Title`);

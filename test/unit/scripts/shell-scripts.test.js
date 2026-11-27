@@ -8,13 +8,14 @@
  * image in dist/macos, with stub `uname`, `hdiutil` and `defaults`
  * commands standing in for macOS's, so both run on any platform with
  * bash. A stub records the folder it ran in, its own name or path and its
- * arguments, and exits with the code the test asks for. Windows has no
+ * arguments, and exits with the code the test asks for, after the time the
+ * test asks it to run for. Windows has no
  * bash to run the scripts with, so they are skipped there, and run.sh's
  * Linux tests are skipped where there is no `dpkg-deb`.
  */
 
 import assert from 'node:assert';
-import { spawnSync } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import {
   chmodSync,
   copyFileSync,
@@ -37,12 +38,20 @@ const stubLog = join(stubDir, `log.txt`);
 
 /**
  * A stub command: writes the folder it runs in, its own name and each of
- * its arguments to $STUB_LOG, one per line, and exits with $STUB_EXIT.
+ * its arguments to $STUB_LOG, one per line, and exits with $STUB_EXIT, or,
+ * when $STUB_SLEEP is set, writes its process id to a `running` file next
+ * to itself and runs for that many seconds, ignoring the signals
+ * $STUB_IGNORE names.
  * @type {string}
  */
 const STUB = [
   `#!/bin/sh`,
   `printf '%s\\n' "$(pwd -P)" "$(basename "$0")" "$@" > "$STUB_LOG"`,
+  `if [ -n "$STUB_SLEEP" ]; then`,
+  `  if [ -n "$STUB_IGNORE" ]; then trap '' $STUB_IGNORE; fi`,
+  `  echo $$ > "$(dirname "$0")/running"`,
+  `  exec sleep "$STUB_SLEEP"`,
+  `fi`,
   `exit "$STUB_EXIT"`,
   ``,
 ].join(`\n`);
@@ -239,14 +248,13 @@ describe(`shell scripts`, { skip: process.platform === `win32` }, () => {
     /**
      * Stubs for the macOS commands run.sh uses: `uname` says Darwin,
      * `hdiutil attach` puts an app whose executable is the app stub at the
-     * mount point and `hdiutil detach` takes it away again, each logging
-     * its arguments, `defaults` names the app's executable, and `mktemp`
-     * makes its folder in TMPDIR, which the macOS `mktemp` does not use.
+     * mount point and `hdiutil detach` takes it away again, or fails as
+     * busy while that app is running, each logging its arguments, and
+     * `defaults` names the app's executable.
      * @type {Record<string, string>}
      */
     const MAC_STUBS = {
       uname: `#!/bin/sh\necho Darwin\n`,
-      mktemp: `#!/bin/sh\nexec /usr/bin/mktemp -d "$TMPDIR/tmp.XXXXXX"\n`,
       hdiutil: [
         `#!/bin/sh`,
         `echo "$*" >> "$HDIUTIL_LOG"`,
@@ -260,6 +268,12 @@ describe(`shell scripts`, { skip: process.platform === `win32` }, () => {
         `  mkdir -p "$point/Markdown Editor.app/Contents/MacOS"`,
         `  cp "$APP_STUB" "$point/Markdown Editor.app/Contents/MacOS/Markdown Editor"`,
         `else`,
+        `  running="$last/Markdown Editor.app/Contents/MacOS/running"`,
+        `  if [ -f "$running" ] && kill -0 "$(cat "$running")" 2>/dev/null; then`,
+        `    echo busy >> "$HDIUTIL_LOG"`,
+        `    echo "hdiutil: couldn't unmount - Resource busy" >&2`,
+        `    exit 16`,
+        `  fi`,
         `  rm -rf "$last/Markdown Editor.app"`,
         `fi`,
         ``,
@@ -331,6 +345,79 @@ describe(`shell scripts`, { skip: process.platform === `win32` }, () => {
       const calls = readFileSync(hdiutilLog, `utf-8`).split(`\n`);
       assert.match(calls[1], /^detach /);
       assert.ok(!existsSync(dirname(dirname(dirname(dirname(app))))), app);
+    });
+
+    /**
+     * Starts the copy of run.sh in callerDir with the macOS stubs first on
+     * the PATH and an app that runs until it is stopped, sends the run's
+     * process group a signal once the app is running, and waits for the
+     * run to end.
+     * @param {NodeJS.Signals} signal
+     * @param {string} [ignored] - The signals the app ignores, as `trap` names them.
+     * @returns {Promise<number>} The app's process id.
+     */
+    const stopRunWith = async (signal, ignored = ``) => {
+      rmSync(stubLog, { force: true });
+      rmSync(hdiutilLog, { force: true });
+      const run = spawn(join(project, `scripts`, `run.sh`), [], {
+        cwd: callerDir,
+        detached: true,
+        stdio: `ignore`,
+        env: {
+          ...process.env,
+          PATH: `${macStubs}${delimiter}${process.env.PATH}`,
+          TMPDIR: mountDir,
+          STUB_LOG: stubLog,
+          STUB_EXIT: `0`,
+          STUB_SLEEP: `30`,
+          STUB_IGNORE: ignored,
+          APP_STUB: appStub,
+          HDIUTIL_LOG: hdiutilLog,
+        },
+      });
+      const ended = new Promise((resolve) => run.on(`exit`, resolve));
+      const wait = () => new Promise((resolve) => setTimeout(resolve, 20));
+      while (!existsSync(stubLog)) await wait();
+      const running = join(dirname(readFileSync(stubLog, `utf-8`).split(`\n`)[1]), `running`);
+      while (!existsSync(running) || !readFileSync(running, `utf-8`).trim()) await wait();
+      const app = Number(readFileSync(running, `utf-8`));
+      process.kill(-(run.pid ?? 0), signal);
+      await ended;
+      return app;
+    };
+
+    for (const signal of /** @type {NodeJS.Signals[]} */ ([`SIGHUP`, `SIGINT`, `SIGTERM`])) {
+      it(`a run stopped by ${signal} unmounts the image and leaves no mount point behind`, async () => {
+        await stopRunWith(signal);
+        const app = readFileSync(stubLog, `utf-8`).split(`\n`)[1];
+        const calls = readFileSync(hdiutilLog, `utf-8`).split(`\n`);
+        assert.ok(
+          calls.some((call) => call.startsWith(`detach `)),
+          calls.join(`\n`),
+        );
+        assert.ok(!existsSync(dirname(dirname(dirname(dirname(app))))), app);
+      });
+    }
+
+    it(`a run stopped by SIGHUP while its app keeps running stops the app and unmounts the image`, async () => {
+      const app = await stopRunWith(`SIGHUP`, `HUP`);
+      const running = spawnSync(`kill`, [`-0`, String(app)]).status === 0;
+      if (running) process.kill(app, `SIGKILL`);
+      assert.strictEqual(running, false, `the app is still running`);
+      const calls = readFileSync(hdiutilLog, `utf-8`).split(`\n`);
+      assert.ok(!calls.includes(`busy`), calls.join(`\n`));
+    });
+
+    it(`unmounts what a run that was never cleaned up left mounted, and removes its mount point, before mounting the image`, () => {
+      const leftover = join(mountDir, `markdown-editor-run.left`);
+      mkdirSync(join(leftover, `Markdown Editor.app`), { recursive: true });
+      const result = runApp([]);
+      assert.strictEqual(result.status, 0, result.stderr);
+      const [first, second] = readFileSync(hdiutilLog, `utf-8`).split(`\n`);
+      assert.match(first, /^detach /);
+      assert.ok(first.endsWith(leftover), first);
+      assert.match(second, /^attach /);
+      assert.ok(!existsSync(leftover), leftover);
     });
 
     it(`fails, naming build.sh, when dist/macos has no disk image`, () => {

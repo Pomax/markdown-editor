@@ -181,18 +181,9 @@
     }
 }
 
-.md-image {
-    margin: var(--spacing-md) 0;
-
-    a {
-        display: inline-block;
-    }
-}
-
 #editor img {
     max-width: 100%;
     height: auto;
-    display: block;
 }
 
 figcaption {

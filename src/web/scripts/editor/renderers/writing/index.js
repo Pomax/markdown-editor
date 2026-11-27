@@ -360,7 +360,7 @@ export class WritingRenderer extends WritingRendererData {
 
     // 1. Remove DOM elements for deleted nodes.
     for (const nodeId of removed) {
-      const el = container.querySelector(`[data-node-id="${nodeId}"]`);
+      const el = this.elementOf(container, nodeId);
       if (!el) continue;
       const blockParent = this.blockParentOf(el);
       const top = this.topLevelBlockOf(el, blockParent);
@@ -381,7 +381,7 @@ export class WritingRenderer extends WritingRendererData {
     // 2. Re-render existing nodes in-place.
     for (const nodeId of updated) {
       const node = tree.findNodeById(nodeId);
-      const existing = container.querySelector(`[data-node-id="${nodeId}"]`);
+      const existing = this.elementOf(container, nodeId);
       if (!node || !existing) continue;
       const isListItem = node.type === `list-item`;
       const wasListItem = existing.tagName === `LI`;
@@ -422,7 +422,7 @@ export class WritingRenderer extends WritingRendererData {
       // Insert after the previous sibling's DOM element.
       if (idx > 0) {
         const prevSibling = siblings[idx - 1];
-        const prevEl = container.querySelector(`[data-node-id="${prevSibling.id}"]`);
+        const prevEl = this.elementOf(container, prevSibling.id);
         if (prevEl) {
           prevEl.after(element);
           continue;
@@ -495,11 +495,11 @@ export class WritingRenderer extends WritingRendererData {
       /** @type {HTMLElement | undefined} */
       let blockParent;
       for (let i = lo; i <= hi && !blockParent; i++) {
-        const el = container.querySelector(`[data-node-id="${siblings[i].id}"]`);
+        const el = this.elementOf(container, siblings[i].id);
         if (el) blockParent = this.blockParentOf(el);
       }
       if (!blockParent && lo > 0) {
-        const prevEl = container.querySelector(`[data-node-id="${siblings[lo - 1].id}"]`);
+        const prevEl = this.elementOf(container, siblings[lo - 1].id);
         if (prevEl) blockParent = this.blockParentOf(prevEl);
       }
       if (!blockParent) {
@@ -511,13 +511,12 @@ export class WritingRenderer extends WritingRendererData {
       }
 
       for (let i = lo; i <= hi; i++) {
-        const el = container.querySelector(`[data-node-id="${siblings[i].id}"]`);
+        const el = this.elementOf(container, siblings[i].id);
         if (el?.isConnected) this.topLevelBlockOf(el, blockParent).remove();
       }
 
       const fresh = this.renderBlockSequence(siblings.slice(lo, hi + 1), currentNodeId);
-      const prevEl =
-        lo > 0 ? container.querySelector(`[data-node-id="${siblings[lo - 1].id}"]`) : undefined;
+      const prevEl = lo > 0 ? this.elementOf(container, siblings[lo - 1].id) : undefined;
       if (prevEl) {
         this.topLevelBlockOf(prevEl, blockParent).after(...fresh);
       } else {
@@ -567,7 +566,7 @@ export class WritingRenderer extends WritingRendererData {
     const node = tree.findNodeById(nodeId);
     if (!node) return;
 
-    const existing = container.querySelector(`[data-node-id="${nodeId}"]`);
+    const existing = this.elementOf(container, nodeId);
     if (!existing) return;
 
     const updated = this.renderNode(node, isFocused);
@@ -622,6 +621,9 @@ export class WritingRenderer extends WritingRendererData {
    * @returns {HTMLElement | undefined}
    */
   renderNode(node, isFocused) {
+    const ownHtml = this.ownHtmlContent(node);
+    if (ownHtml) return this.renderOwnHtml(ownHtml);
+
     const element = document.createElement(this.blockTagName(node));
     element.className = node.type === `html-block` ? `html-element` : `md-${node.type}`;
     element.dataset.nodeId = node.id;
@@ -657,10 +659,6 @@ export class WritingRenderer extends WritingRendererData {
       case `horizontal-rule`:
         return this.renderHorizontalRule(node, element);
 
-      case `image`:
-      case `linked-image`:
-        return this.renderImage(node, element);
-
       case `table`:
         return this.renderTable(node, element);
 
@@ -670,6 +668,58 @@ export class WritingRenderer extends WritingRendererData {
       default:
         return this.renderParagraph(node, element, isFocused);
     }
+  }
+
+  /**
+   * The bare-text node holding an HTML element's own content, when `node`
+   * is that element's html-block or that node. The summary of a
+   * `<details>` is rendered by the disclosure widget instead.
+   * @param {SyntaxNode} node
+   * @returns {SyntaxNode | undefined}
+   */
+  ownHtmlContent(node) {
+    const content = node.type === `html-block` ? node.children[0] : node;
+    const block = content?.parent;
+    if (
+      content?.type !== `paragraph` ||
+      !content.attributes.bareText ||
+      block?.type !== `html-block` ||
+      block.children.length !== 1 ||
+      [`summary`, `details`].includes(block.attributes.tagName ?? ``)
+    ) {
+      return undefined;
+    }
+    return content;
+  }
+
+  /**
+   * Renders an HTML element as written, holding its own content, with the
+   * content node's id and the html-block's id.
+   * @param {SyntaxNode} content - The bare-text node holding the element's content.
+   * @returns {HTMLElement}
+   */
+  renderOwnHtml(content) {
+    const block = /** @type {SyntaxNode} */ (content.parent);
+    const attrs = /** @type {NodeAttributes} */ (block.attributes);
+    const element = document.createElement(attrs.tagName || `div`);
+    this.applyHtmlAttributes(element, attrs.openingTag || ``);
+    if (element instanceof HTMLIFrameElement) this.sandboxSameOriginFrame(element);
+    element.dataset.nodeId = content.id;
+    element.dataset.htmlBlockId = block.id;
+    if (content.id === this.editor.getFocusedNodeId()) element.dataset.hasFocus = ``;
+    if (content.content) this.renderInlineContent(content, element);
+    return element;
+  }
+
+  /**
+   * The element rendered for a node: the element with its id, or the HTML
+   * element an html-block's own content is rendered as.
+   * @param {ParentNode} container
+   * @param {string} nodeId
+   * @returns {Element | null}
+   */
+  elementOf(container, nodeId) {
+    return container.querySelector(`[data-node-id="${nodeId}"], [data-html-block-id="${nodeId}"]`);
   }
 
   /**
@@ -889,41 +939,6 @@ export class WritingRenderer extends WritingRendererData {
   }
 
   /**
-   * Renders an image node.
-   * @param {SyntaxNode} node
-   * @param {HTMLElement} element
-   * @returns {HTMLElement}
-   */
-  renderImage(node, element) {
-    const attrs = /** @type {NodeAttributes} */ (node.attributes);
-    const alt = attrs.alt ?? node.content;
-    const src = attrs.url ?? ``;
-
-    // Always show rendered image (WYSIWYG)
-    const img = document.createElement(`img`);
-    img.src = this.displaySrc(this.resolveImageSrc(src));
-    img.alt = alt;
-    img.title = alt;
-    if (attrs.style) {
-      img.setAttribute(`style`, attrs.style);
-    }
-    if (attrs.className) {
-      img.setAttribute(`class`, attrs.className);
-    }
-
-    if (attrs.href) {
-      const link = document.createElement(`a`);
-      link.href = attrs.href;
-      link.appendChild(img);
-      element.appendChild(link);
-    } else {
-      element.appendChild(img);
-    }
-
-    return element;
-  }
-
-  /**
    * Renders a horizontal rule node.
    * @param {SyntaxNode} node
    * @param {HTMLElement} element
@@ -986,9 +1001,9 @@ export class WritingRenderer extends WritingRendererData {
   /**
    * Renders an HTML block container node.
    *
-   * The container's tag (e.g. `<div>`, `<details>`) is rendered as an
-   * actual HTML element and the child nodes are rendered inside it as
-   * normal markdown nodes.
+   * The container's tag (e.g. `<div>`, `<section>`) is rendered as that
+   * HTML element, with the node's data attributes, and the child nodes
+   * are rendered inside it as normal markdown nodes.
    *
    * For `<details>` blocks the element is rendered open by default so
    * the user can see and edit the content.  A self-closed `<summary>`
@@ -996,7 +1011,7 @@ export class WritingRenderer extends WritingRendererData {
    * inline content.
    *
    * @param {SyntaxNode} node
-   * @param {HTMLElement} element - The wrapper div with data-node-id
+   * @param {HTMLElement} element - The div rendered for the node, holding its data attributes
    * @param {boolean} isFocused
    * @returns {HTMLElement}
    */
@@ -1043,6 +1058,9 @@ export class WritingRenderer extends WritingRendererData {
     // Copy attributes from the opening tag onto the semantic element
     this.applyHtmlAttributes(container, attrs.openingTag || ``);
     if (container instanceof HTMLIFrameElement) this.sandboxSameOriginFrame(container);
+    Object.assign(container.dataset, element.dataset);
+
+    if (attrs.html) container.appendChild(this.literalHtml(attrs.html));
 
     // Determine which child (if any) is focused
     const currentNodeId = this.editor.getFocusedNodeId();
@@ -1052,12 +1070,35 @@ export class WritingRenderer extends WritingRendererData {
     }
 
     // If no children, add a placeholder so the element is visible
-    if (node.children.length === 0) {
+    if (node.children.length === 0 && !attrs.html) {
       container.appendChild(document.createElement(`br`));
     }
 
-    element.appendChild(container);
-    return element;
+    return container;
+  }
+
+  /**
+   * The nodes an HTML fragment parses to, with the sources of its images
+   * and media given as the renderer gives them to the elements it makes.
+   * @param {string} html
+   * @returns {DocumentFragment}
+   */
+  literalHtml(html) {
+    const template = document.createElement(`template`);
+    template.innerHTML = html;
+    for (const img of template.content.querySelectorAll(`img[src]`)) {
+      img.setAttribute(`src`, this.displaySrc(this.resolveImageSrc(img.getAttribute(`src`) ?? ``)));
+    }
+    for (const media of template.content.querySelectorAll(`video, audio`)) {
+      for (const name of [`src`, `poster`]) {
+        const value = media.getAttribute(name);
+        if (value !== null) media.setAttribute(name, this.displaySrc(value));
+      }
+    }
+    for (const frame of template.content.querySelectorAll(`iframe`)) {
+      this.sandboxSameOriginFrame(frame);
+    }
+    return template.content;
   }
 
   /**
@@ -1346,9 +1387,10 @@ export class WritingRenderer extends WritingRendererData {
           break;
         }
         default: {
-          // HTML inline tags (sub, sup, mark, u, etc.)
+          // HTML inline tags (sub, sup, mark, u, img, etc.)
           if (child.attributes.tag) {
             const el = document.createElement(child.attributes.tag);
+            this.setInlineAttributes(el, child.attributes.attrs);
             el.dataset.nodeId = child.id;
             this.renderSyntaxNodeChildren(child.children, el);
             container.appendChild(el);
@@ -1357,6 +1399,21 @@ export class WritingRenderer extends WritingRendererData {
           break;
         }
       }
+    }
+  }
+
+  /**
+   * Gives an inline HTML element the attributes its tag was written with.
+   * The `src` of an `<img>` goes through `resolveImageSrc` and `displaySrc`,
+   * as the source of a markdown image does.
+   * @param {HTMLElement} el
+   * @param {Record<string, string> | undefined} attrs
+   */
+  setInlineAttributes(el, attrs) {
+    if (!attrs) return;
+    for (const [name, value] of Object.entries(attrs)) {
+      const source = el instanceof HTMLImageElement && name === `src`;
+      el.setAttribute(name, source ? this.displaySrc(this.resolveImageSrc(value)) : value);
     }
   }
 
@@ -1429,11 +1486,7 @@ export class WritingRenderer extends WritingRendererData {
           // HTML inline tags (sub, sup, mark, span, br, etc.)
           if (seg.tag) {
             const el = document.createElement(seg.tag);
-            if (seg.attrs) {
-              for (const [key, value] of Object.entries(seg.attrs)) {
-                el.setAttribute(key, value);
-              }
-            }
+            this.setInlineAttributes(el, seg.attrs);
             this.appendSegments(seg.children ?? [], el);
             container.appendChild(el);
             container.appendChild(document.createTextNode(``));

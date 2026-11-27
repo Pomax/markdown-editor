@@ -10,13 +10,13 @@
  * check what was recorded, that nothing is recorded where the page
  * prevented the event or over the UI, that Copy, Cut and Paste send the
  * same keystrokes as the Edit items, and that Inspect Element opens
- * DevTools: on the element under the pointer on Windows, where WebView2
- * can inspect a point, and with no element chosen elsewhere.
+ * DevTools: on the image under the pointer on Windows and macOS, and with
+ * no element chosen on Linux.
  */
 
 import process from 'node:process';
 import { expect, test } from '@playwright/test';
-import { closeApp, launchApp, loadContent } from '../../test-utils.js';
+import { FIXTURE_IMAGE, closeApp, launchApp, loadContent } from '../../test-utils.js';
 
 /**
  * The items of the context menu, as the test hooks describe them.
@@ -38,7 +38,7 @@ let page;
 
 test.beforeAll(async () => {
   ({ app, page } = await launchApp());
-  await loadContent(page, `# Heading\n\nSome text to right-click on.`);
+  await loadContent(page, `# Heading\n\nSome text to right-click on.\n\n![tile](${FIXTURE_IMAGE})`);
 });
 
 test.afterAll(async () => {
@@ -200,10 +200,13 @@ test(`Copy, Cut and Paste send the same keystrokes as the Edit items`, async () 
   expect(context).toEqual(edit);
 });
 
-test(`Inspect Element opens DevTools on the element under the pointer`, async () => {
-  test.skip(process.platform !== `win32`, `only WebView2 can inspect the element at a point`);
+test(`Inspect Element opens DevTools on the image under the pointer`, async () => {
+  test.skip(process.platform === `linux`, `the app inspects a point on Windows and macOS only`);
   expect(await app.isDevtoolsOpen()).toBe(false);
-  await openContextMenu();
+  const count = await recordedCount();
+  const image = await middleOf(`#editor img`);
+  await page.mouse.click(image.x, image.y, { button: `right` });
+  await expect.poll(recordedCount).toBe(count + 1);
   const { x, y } = (await app.contextMenus()).at(-1);
   await page.evaluate(() => {
     const own = /** @type {any} */ (window);
@@ -212,6 +215,9 @@ test(`Inspect Element opens DevTools on the element under the pointer`, async ()
       (event) => {
         if (!own.__inspectNextContextMenu) return;
         own.__inspected = event.target;
+        own.__inspectedAt = { x: event.clientX, y: event.clientY };
+        own.__inspectedAtPoint =
+          document.elementFromPoint(event.clientX, event.clientY) === event.target;
         // Takes focus from the page, as DevTools opening in the app does.
         setTimeout(() => /** @type {HTMLElement} */ (document.activeElement)?.blur());
       },
@@ -223,21 +229,20 @@ test(`Inspect Element opens DevTools on the element under the pointer`, async ()
   await expect.poll(() => app.isDevtoolsOpen()).toBe(true);
   await page.waitForTimeout(500);
   expect(
-    await page.evaluate(
-      ({ x, y }) => {
-        const inspected = /** @type {any} */ (window).__inspected;
-        return {
-          connected: inspected?.isConnected,
-          atPoint: document.elementFromPoint(x, y) === inspected,
-        };
-      },
-      { x, y },
-    ),
-  ).toEqual({ connected: true, atPoint: true });
+    await page.evaluate(() => {
+      const own = /** @type {any} */ (window);
+      return {
+        tag: own.__inspected?.tagName,
+        connected: own.__inspected?.isConnected,
+        atPoint: own.__inspectedAtPoint,
+        at: own.__inspectedAt,
+      };
+    }),
+  ).toEqual({ tag: `IMG`, connected: true, atPoint: true, at: { x, y } });
 });
 
 test(`Inspect Element opens DevTools where the webview cannot inspect a point`, async () => {
-  test.skip(process.platform === `win32`, `WebView2 inspects the element at the point`);
+  test.skip(process.platform !== `linux`, `Windows and macOS inspect the element at the point`);
   expect(await app.isDevtoolsOpen()).toBe(false);
   await openContextMenu();
   expect(await app.contextMenu.click(`Inspect Element`)).toBe(true);

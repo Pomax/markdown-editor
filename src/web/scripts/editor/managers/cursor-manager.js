@@ -372,7 +372,7 @@ export class CursorManager extends CursorManagerData {
     // so we must convert the raw tree offset to a rendered offset.
     // Only applies to node types that render inline formatting (paragraph,
     // heading, list-item).  Other types (table, code-block,
-    // image, horizontal-rule) don't use inline markup rendering.
+    // horizontal-rule) don't use inline markup rendering.
     let cursorOffset = this.editor.syntaxTree.treeCursor.offset;
     if (this.editor.viewMode === `writing`) {
       const node = this.editor.getCurrentBlockNode();

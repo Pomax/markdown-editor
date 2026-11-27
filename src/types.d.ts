@@ -237,6 +237,8 @@ interface NodeAttributes {
     src?: string;
     /** HTML tag name (for inline HTML element nodes). */
     tag?: string;
+    /** HTML attributes (for inline HTML element nodes). */
+    attrs?: Record<string, string>;
     /** Inline CSS style string for HTML images. */
     style?: string;
     /** Space-separated CSS class names for HTML images. */
@@ -253,6 +255,8 @@ interface NodeAttributes {
     checked?: boolean;
     /** Whether this node represents bare text inside an HTML container. */
     bareText?: boolean;
+    /** The HTML an HTML container holds before the markdown in it. */
+    html?: string;
     /** Runtime-only toggle for fake details collapse state (not serialised). */
     detailsOpen?: boolean;
 }

@@ -6,8 +6,28 @@
 /// <reference path="../../../../../types.d.ts" />
 
 import { SyntaxNode } from '../../../../../parsers/old/syntax-node.js';
+import { tokenizeInline } from '../../../../../parsers/old/inline-tokenizer.js';
 import { ImageModal } from './image-modal.js';
 import { ImageHelperData } from '../../types.js';
+
+/**
+ * An image in a block's markdown: where its markup starts and ends (a link
+ * around nothing but the image included), where its source is, the
+ * attributes of the `<img>` tag it was written as, and what the image
+ * modal shows for it.
+ * @typedef {{ start: number, end: number, srcStart: number, srcEnd: number, written: Record<string, string>, data: Partial<ImageData> }} ImageSpan
+ */
+
+/**
+ * The offset into an `<img>` tag of the value of its `src` attribute, or
+ * the tag's length when it has none.
+ * @param {string} raw
+ * @returns {number}
+ */
+function htmlSrcOffset(raw) {
+  const match = /\ssrc\s*=\s*["']?/i.exec(raw);
+  return match ? match.index + match[0].length : raw.length;
+}
 
 /**
  * Manages image-related operations for the editor.
@@ -40,9 +60,10 @@ export class ImageHelper extends ImageHelperData {
   }
 
   /**
-   * Walks every image node in the syntax tree and rewrites absolute paths
-   * that are downstream-relative to the current document to their minimal
-   * relative form.  Only runs when `editor.ensureLocalPaths` is true and the
+   * Walks every image in the syntax tree's top-level blocks and rewrites
+   * absolute paths that are downstream-relative to the current document to
+   * their minimal relative form, changing nothing in the image's markup but
+   * its source.  Only runs when `editor.ensureLocalPaths` is true and the
    * document has been saved to disk.
    *
    * @returns {Promise<string[]>} IDs of nodes whose paths were rewritten.
@@ -54,14 +75,19 @@ export class ImageHelper extends ImageHelperData {
       return changedIds;
 
     for (const node of this.editor.syntaxTree.children) {
-      if (node.type !== `image` && node.type !== `linked-image`) continue;
+      if (!this.editor.cursorManager.hasInlineFormatting(node.type)) continue;
 
-      const url = node.attributes.url;
-      if (!url) continue;
-
-      const rewritten = await this.toRelativeImagePath(url);
-      if (rewritten !== url) {
-        node.attributes.url = rewritten;
+      let content = node.content;
+      for (const span of this.imageSpans(content).reverse()) {
+        const src = span.data.src;
+        if (!src) continue;
+        const rewritten = await this.toRelativeImagePath(src);
+        if (rewritten !== src) {
+          content = content.slice(0, span.srcStart) + rewritten + content.slice(span.srcEnd);
+        }
+      }
+      if (content !== node.content) {
+        node.content = content;
         changedIds.push(node.id);
       }
     }
@@ -69,7 +95,8 @@ export class ImageHelper extends ImageHelperData {
   }
 
   /**
-   * Inserts a new image node or updates the existing image node at the cursor.
+   * Updates the image at the cursor, or inserts a paragraph holding a new
+   * image when the cursor is on none.
    * @param {string} alt - Alt text
    * @param {string} src - Image source path or URL
    * @param {string} href - Optional link URL (empty string for no link)
@@ -79,63 +106,147 @@ export class ImageHelper extends ImageHelperData {
   insertOrUpdateImage(alt, src, href, style = ``, className = ``) {
     if (!this.editor.syntaxTree) return;
 
-    const before = this.editor.syntaxTree.toMarkdown();
-    const currentNode = this.editor.getCurrentBlockNode();
-    let renderHints;
-
-    if (currentNode?.type === `image`) {
-      // Update existing image node
-      currentNode.content = alt;
-      currentNode.attributes = { alt, url: src };
-      if (href) {
-        currentNode.attributes.href = href;
-      }
-      if (style) {
-        currentNode.attributes.style = style;
-      }
-      if (className) {
-        currentNode.attributes.className = className;
-      }
-      this.editor.syntaxTree.treeCursor = { nodeId: currentNode.id, offset: alt.length };
-      renderHints = { updated: [currentNode.id] };
-    } else {
-      // Insert a new image node
-      const imageNode = new SyntaxNode(`image`, alt);
-      imageNode.attributes = { alt, url: src };
-      if (href) {
-        imageNode.attributes.href = href;
-      }
-      if (style) {
-        imageNode.attributes.style = style;
-      }
-      if (className) {
-        imageNode.attributes.className = className;
-      }
-
-      if (currentNode) {
-        const siblings = this.editor.getSiblings(currentNode);
-        const idx = siblings.indexOf(currentNode);
-        // If the current node is an empty paragraph, replace it
-        if (currentNode.type === `paragraph` && currentNode.content === ``) {
-          siblings.splice(idx, 1, imageNode);
-          imageNode.parent = currentNode.parent;
-          currentNode.parent = undefined;
-          renderHints = { added: [imageNode.id], removed: [currentNode.id] };
-        } else {
-          // Insert after current node
-          siblings.splice(idx + 1, 0, imageNode);
-          imageNode.parent = currentNode.parent;
-          renderHints = { added: [imageNode.id] };
-        }
-      } else {
-        this.editor.syntaxTree.appendChild(imageNode);
-        renderHints = { added: [imageNode.id] };
-      }
-
-      this.editor.syntaxTree.treeCursor = { nodeId: imageNode.id, offset: alt.length };
+    const target = this.imageAtCursor();
+    if (target) {
+      this.replaceImage(target.block, target.span, { alt, src, href, style, className });
+      return;
     }
 
+    const before = this.editor.syntaxTree.toMarkdown();
+    const currentNode = this.editor.getCurrentBlockNode();
+    const markup = SyntaxNode.imageMarkup({ alt, src, href, style, className });
+    const paragraph = new SyntaxNode(`paragraph`, markup);
+    let renderHints;
+
+    if (currentNode) {
+      const siblings = this.editor.getSiblings(currentNode);
+      const idx = siblings.indexOf(currentNode);
+      // If the current node is an empty paragraph, replace it
+      if (currentNode.type === `paragraph` && currentNode.content === ``) {
+        siblings.splice(idx, 1, paragraph);
+        paragraph.parent = currentNode.parent;
+        currentNode.parent = undefined;
+        renderHints = { added: [paragraph.id], removed: [currentNode.id] };
+      } else {
+        // Insert after current node
+        siblings.splice(idx + 1, 0, paragraph);
+        paragraph.parent = currentNode.parent;
+        renderHints = { added: [paragraph.id] };
+      }
+    } else {
+      this.editor.syntaxTree.appendChild(paragraph);
+      renderHints = { added: [paragraph.id] };
+    }
+
+    this.editor.syntaxTree.treeCursor = { nodeId: paragraph.id, offset: markup.length };
     this.editor.recordAndRender(before, renderHints);
+  }
+
+  /**
+   * Whether a node is an image: an `![alt](src)` or an `<img>` tag.
+   * @param {SyntaxNode} node
+   * @returns {boolean}
+   */
+  isImageNode(node) {
+    return node.type === `inline-image` || node.attributes.tag === `img`;
+  }
+
+  /**
+   * The image nodes inside a block, in document order.
+   * @param {SyntaxNode} block
+   * @returns {SyntaxNode[]}
+   */
+  imageNodesOf(block) {
+    /** @type {SyntaxNode[]} */
+    const found = [];
+    /** @param {SyntaxNode[]} nodes */
+    const walk = (nodes) => {
+      for (const node of nodes) {
+        if (this.isImageNode(node)) found.push(node);
+        walk(node.children);
+      }
+    };
+    walk(block.children);
+    return found;
+  }
+
+  /**
+   * Finds each image in a block's markdown, in the order of the block's
+   * image nodes.
+   * @param {string} content
+   * @returns {ImageSpan[]}
+   */
+  imageSpans(content) {
+    const tokens = tokenizeInline(content);
+    /** @type {number[]} */
+    const starts = [];
+    let pos = 0;
+    for (const token of tokens) {
+      starts.push(pos);
+      pos += token.raw.length;
+    }
+
+    /** @type {ImageSpan[]} */
+    const spans = [];
+    tokens.forEach((token, i) => {
+      const markdown = token.type === `image`;
+      if (!markdown && !(token.type === `html-void` && token.tag === `img`)) return;
+      const linked = tokens[i - 1]?.type === `link-open` && tokens[i + 1]?.type === `link-close`;
+      const first = linked ? i - 1 : i;
+      const last = linked ? i + 1 : i;
+      /** @type {Record<string, string>} */
+      const written = markdown ? {} : { ...token.attrs };
+      const src = (markdown ? token.src : written.src) ?? ``;
+      const srcStart =
+        starts[i] + (markdown ? (token.alt ?? ``).length + 4 : htmlSrcOffset(token.raw));
+      spans.push({
+        start: starts[first],
+        end: starts[last] + tokens[last].raw.length,
+        srcStart,
+        srcEnd: srcStart + src.length,
+        written,
+        data: {
+          alt: (markdown ? token.alt : written.alt) ?? ``,
+          src,
+          href: linked ? (tokens[i + 1].href ?? ``) : ``,
+          style: written.style ?? ``,
+          className: written.class ?? ``,
+        },
+      });
+    });
+    return spans;
+  }
+
+  /**
+   * The image at the cursor: the one whose markup the cursor is in, or at
+   * either end of, in a block with inline content.
+   * @returns {{ block: SyntaxNode, span: ImageSpan } | undefined}
+   */
+  imageAtCursor() {
+    const block = this.editor.getCurrentBlockNode();
+    const offset = this.editor.syntaxTree?.treeCursor?.offset;
+    if (!block || offset === undefined) return undefined;
+    if (!this.editor.cursorManager.hasInlineFormatting(block.type)) return undefined;
+    const span = this.imageSpans(block.content).find(
+      (candidate) => candidate.start <= offset && offset <= candidate.end,
+    );
+    return span ? { block, span } : undefined;
+  }
+
+  /**
+   * Puts an edited image in the place of an image in a block's markdown,
+   * with the cursor after it.
+   * @param {SyntaxNode} block
+   * @param {ImageSpan} span
+   * @param {Partial<ImageData>} data
+   */
+  replaceImage(block, span, data) {
+    if (!this.editor.syntaxTree) return;
+    const before = this.editor.syntaxTree.toMarkdown();
+    const markup = SyntaxNode.imageMarkup(data, span.written);
+    block.content = block.content.slice(0, span.start) + markup + block.content.slice(span.end);
+    this.editor.syntaxTree.treeCursor = { nodeId: block.id, offset: span.start + markup.length };
+    this.editor.recordAndRender(before, { updated: [block.id] });
   }
 
   /**
@@ -151,24 +262,17 @@ export class ImageHelper extends ImageHelperData {
   }
 
   /**
-   * Opens the image modal pre-filled with the given image node's data,
-   * and applies any edits back to the parse tree.
+   * Opens the image modal pre-filled with an image's data, and puts the
+   * edited image in its place in its block's markdown.
    * Used when clicking an image in writing mode.
-   * @param {SyntaxNode} node - The image node to edit
+   * @param {SyntaxNode} node - The image's node
    */
   async openImageModalForNode(node) {
-    const modal = this.getImageModal();
-    const isInline = node.type === `inline-image`;
+    const block = node.getBlockParent();
+    const span = this.imageSpans(block.content)[this.imageNodesOf(block).indexOf(node)];
+    if (!span) return;
 
-    const existing = {
-      alt: node.attributes.alt ?? node.content,
-      src: node.attributes.url ?? node.attributes.src ?? ``,
-      href: node.attributes.href ?? ``,
-      style: node.attributes.style ?? ``,
-      className: node.attributes.className ?? ``,
-    };
-
-    const result = await modal.open(existing);
+    const result = await this.getImageModal().open(span.data);
     if (!result) return;
 
     let src = result.src;
@@ -192,30 +296,7 @@ export class ImageHelper extends ImageHelperData {
       src = await this.toRelativeImagePath(src);
     }
 
-    // Update the node directly — after the modal closes the cursor
-    // may have moved, so we cannot rely on insertOrUpdateImage which
-    // reads getCurrentBlockNode().
-    if (!this.editor.syntaxTree) return;
-    const before = this.editor.syntaxTree.toMarkdown();
-    node.content = result.alt;
-    // Inline-image nodes store the path as `src`; block-level image
-    // nodes store it as `url`.
-    if (isInline) {
-      node.attributes = { alt: result.alt, src };
-    } else {
-      node.attributes = { alt: result.alt, url: src };
-    }
-    if (result.href) {
-      node.attributes.href = result.href;
-    }
-    if (result.style) {
-      node.attributes.style = result.style;
-    }
-    if (result.className) {
-      node.attributes.className = result.className;
-    }
-    this.editor.syntaxTree.treeCursor = { nodeId: node.id, offset: result.alt.length };
-    this.editor.recordAndRender(before, { updated: [node.id] });
+    this.replaceImage(block, span, { ...result, src });
   }
 
   /**
