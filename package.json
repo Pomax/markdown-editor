@@ -1,6 +1,6 @@
 {
   "name": "markdown-editor",
-  "version": "3.2.1",
+  "version": "3.2.2",
   "description": "A professional markdown editor with syntactic tree parsing and WYSIWYG editing",
   "type": "module",
   "scripts": {
