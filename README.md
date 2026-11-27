@@ -13,7 +13,7 @@ See the [release log](./RELEASE_LOG.md) for what's new in this version.
 This editor is released as a single executable. The current download links are:
 
 - Windows: [Markdown-Editor.exe](https://github.com/Pomax/Pomax-s-Markdown-Editor/releases/download/v3.2.1/Markdown-Editor.exe)
-- MacOS: [Markdown-Editor.dmg](https://github.com/Pomax/Pomax-s-Markdown-Editor/releases/download/v3.2.1/Markdown-Editor.dmg)
+- MacOS: [Markdown-Editor.dmg](https://github.com/Pomax/Pomax-s-Markdown-Editor/releases/download/v3.2.1/Markdown-Editor.dmg) (in traditional Apple nonsense, you'll need to hit up settings -> privacy and security -> open anyway if MacOS lies and pretends the .dmb is damaged. Apple is just _really fucking bad_ at operating systems)
 - Linux: [Markdown-Editor.deb](https://github.com/Pomax/Pomax-s-Markdown-Editor/releases/download/v3.2.1/Markdown-Editor.deb)
 
 Previous versions can be found over on the [Releases](https://github.com/Pomax/Pomax-s-Markdown-Editor/releases/latest) page.
