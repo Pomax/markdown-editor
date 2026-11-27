@@ -127,3 +127,16 @@ test(`removing ! in source2 view converts inline image to link`, async () => {
   const noImg = page.locator(`#editor [data-node-id].md-paragraph img`);
   await expect(noImg).toHaveCount(0);
 });
+
+test(`an image in a tab opened after the first is limited to the page width`, async () => {
+  await setWritingView(page);
+  await page.evaluate(() => document.dispatchEvent(new CustomEvent(`file:new`)));
+  const editor = page.locator(`.editor:not(#editor)`);
+  await expect(editor).toBeVisible();
+  await page.evaluate(async (content) => {
+    await window.editorAPI?.setContent(content);
+  }, `![photo](${FIXTURE_IMAGE})`);
+  const img = editor.locator(`img`);
+  await expect(img).toBeVisible();
+  await expect(img).toHaveCSS(`max-width`, `100%`);
+});
