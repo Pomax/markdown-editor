@@ -21,37 +21,14 @@ const config = {
  * time, in a run of their own after the other specs' run, as
  * scripts/test-integration.js runs them.
  */
-const SOLO_SPECS = [
-  `**/app/search.spec.js`,
-  `**/document/view-switching.spec.js`,
-  `**/content/inline-image.spec.js`,
-];
+const SOLO_SPECS = [`**/app/search.spec.js`, `**/document/view-switching.spec.js`, `**/content/inline-image.spec.js`];
 
 if (CI_RUN) {
-  let overrides = {
+  Object.assign(config, {
     retries: 1,
-  };
-  if (platform === `darwin`) {
-    overrides = {
-      timeout: 60_000,
-      workers: 2,
-    };
-  } else if (platform === `linux`) {
-    overrides = {
-      timeout: 30_000,
-      workers: 4,
-    };
-  } else if (platform === `win32`) {
-    overrides = {
-      timeout: 30_000,
-      workers: 2,
-    };
-  }
-  Object.assign(config, overrides);
-}
-
-if (platform === `linux` && process.env.TEST_ON_DESKTOP) {
-  Object.assign(config, { timeout: 240_000, workers: 1 });
+    workers: 1,
+    timeout: 30_000,
+  });
 }
 
 export default defineConfig({

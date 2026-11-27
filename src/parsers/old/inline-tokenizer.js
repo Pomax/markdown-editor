@@ -50,6 +50,22 @@ function findClosingAngle(input, start) {
 }
 
 /**
+ * Finds the ']' that closes the '[' before `start`, skipping over bracket
+ * pairs inside it, such as the alt text of an image in a link's text.
+ * @param {string} input
+ * @param {number} start - Position after the '['
+ * @returns {number} Index of the closing ']', or -1
+ */
+function findClosingBracket(input, start) {
+  let depth = 1;
+  for (let j = start; j < input.length; j++) {
+    if (input[j] === `[`) depth++;
+    else if (input[j] === `]` && --depth === 0) return j;
+  }
+  return -1;
+}
+
+/**
  * Parses HTML attribute key-value pairs from a string.
  * @param {string} str - e.g. 'src="x.png" alt="pic"'
  * @returns {Record<string, string>}
@@ -332,7 +348,7 @@ export function tokenizeInline(input) {
       const isImage = i > 0 && input[i - 1] === `!`;
 
       // Look ahead for ](href)
-      const closeBracket = input.indexOf(`]`, i + 1);
+      const closeBracket = findClosingBracket(input, i + 1);
       if (closeBracket !== -1 && input[closeBracket + 1] === `(`) {
         const closeParen = input.indexOf(`)`, closeBracket + 2);
         if (closeParen !== -1) {

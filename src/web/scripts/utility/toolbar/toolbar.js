@@ -147,7 +147,7 @@ export class Toolbar extends ToolbarData {
         icon: `🖼`,
         action: `image:insert`,
         shortcut: `Mod+Shift+I`,
-        applicableTo: [`paragraph`, `image`, `list-item`],
+        applicableTo: [`paragraph`, `list-item`],
       },
       {
         id: `table`,
@@ -504,7 +504,7 @@ export class Toolbar extends ToolbarData {
 
   /**
    * Handles the image button action.
-   * If the cursor is on an image node, opens the modal for editing.
+   * If the cursor is on an image, opens the modal for editing it.
    * Otherwise opens it for insertion.
    * @param {Formatter} formatter
    */
@@ -513,20 +513,7 @@ export class Toolbar extends ToolbarData {
 
     if (formatter.saveCursorPosition) formatter.saveCursorPosition();
 
-    // Check if cursor is on an image node
-    const currentNode = this.editor.getCurrentBlockNode();
-    /** @type {Partial<ImageData>|undefined} */
-    let existing;
-
-    if (currentNode?.type === `image`) {
-      existing = {
-        alt: currentNode.attributes.alt ?? currentNode.content,
-        src: currentNode.attributes.url ?? ``,
-        href: currentNode.attributes.href ?? ``,
-        style: currentNode.attributes.style ?? ``,
-        className: currentNode.attributes.className ?? ``,
-      };
-    }
+    const existing = this.editor.imageHelper.imageAtCursor()?.span.data;
 
     const result = await imageModal.open(existing);
     if (!result) return;

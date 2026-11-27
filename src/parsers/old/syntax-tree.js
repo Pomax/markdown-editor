@@ -179,6 +179,8 @@ export function updateMatchedNode(oldNode, newNode) {
   if (oldNode.endLine !== newNode.endLine) {
     oldNode.endLine = newNode.endLine;
   }
+  oldNode.noBlankLineBefore = newNode.noBlankLineBefore;
+  oldNode.lineIndent = newNode.lineIndent;
 
   if (oldNode.type === `html-block` || oldNode.type === `blockquote`) {
     if (newNode.children.length > 0) {

@@ -512,15 +512,11 @@ export class Editor extends EditorData {
         const marker = attributes?.ordered ? `1. ` : `- `;
         const checkbox =
           typeof attributes?.checked === `boolean` ? (attributes.checked ? `[x] ` : `[ ] `) : ``;
-        return `${indent}${marker}${checkbox}${content}`;
-      }
-      case `image`: {
-        const imgAlt = attributes?.alt ?? content;
-        const imgSrc = attributes?.url ?? ``;
-        if (attributes?.href) {
-          return `[![${imgAlt}](${imgSrc})](${attributes.href})`;
-        }
-        return `![${imgAlt}](${imgSrc})`;
+        const lines = SyntaxNode.indentLines(
+          content,
+          SyntaxNode.listLineIndent(attributes?.indent),
+        );
+        return `${indent}${marker}${checkbox}${lines}`;
       }
       default:
         return content;
@@ -555,8 +551,6 @@ export class Editor extends EditorData {
         const checkbox = typeof attributes?.checked === `boolean` ? `[ ] ` : ``;
         return indent.length + marker.length + checkbox.length;
       }
-      case `image`:
-        return 0;
       case `code-block`: {
         const ticks = `\``.repeat(attributes?.fenceCount || 3);
         const lang = attributes?.language || ``;
@@ -1040,7 +1034,7 @@ export class Editor extends EditorData {
       const updatedIds = [];
       for (const n of nodes) {
         if (n.isContainer()) continue;
-        if (n.type === `table` || n.type === `image` || n.type === `linked-image`) continue;
+        if (n.type === `table`) continue;
         applyKind(n, kind);
         updatedIds.push(n.id);
       }

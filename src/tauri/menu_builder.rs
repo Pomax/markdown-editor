@@ -1085,7 +1085,7 @@ fn handle_inspect(app: &AppHandle) {
         return;
     };
     let point = *CONTEXT_POINT.lock().expect("context point lock");
-    #[cfg(windows)]
+    #[cfg(any(windows, target_os = "macos"))]
     if let Some((x, y)) = point {
         crate::webview_settings::inspect_element(&window, x, y);
         return;

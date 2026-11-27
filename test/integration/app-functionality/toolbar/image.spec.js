@@ -1,7 +1,8 @@
 /**
  * @fileoverview Integration tests for the image modal dialog: the image
- * toolbar button opens it, inserting from it creates an image node, and
- * on an existing image it opens pre-filled with that image's data.
+ * toolbar button opens it, inserting from it creates a paragraph holding
+ * the image, and on an existing image it opens pre-filled with that
+ * image's data.
  */
 
 import { expect, test } from '@playwright/test';
@@ -45,7 +46,7 @@ test(`clicking image button opens the image modal`, async () => {
   await expect(dialog).not.toBeVisible();
 });
 
-test(`inserting an image via the modal creates an image node`, async () => {
+test(`inserting an image via the modal creates a paragraph holding the image`, async () => {
   // Click the image button
   const imageButton = page.locator(`[data-button-id="image"]`);
   await imageButton.click();
@@ -62,9 +63,9 @@ test(`inserting an image via the modal creates an image node`, async () => {
   await insertBtn.click();
   await expect(dialog).not.toBeVisible();
 
-  // Verify the image node was created in the editor
-  const imageNode = page.locator(`.md-image`);
-  await expect(imageNode).toBeVisible();
+  // Verify the image was put in a paragraph in the editor
+  const image = page.locator(`#editor p.md-paragraph img[alt="Test Image"]`);
+  await expect(image).toHaveCount(1);
 
   // Verify the markdown content includes the image syntax
   const content = await page.evaluate(() => window.editorAPI?.getContent());

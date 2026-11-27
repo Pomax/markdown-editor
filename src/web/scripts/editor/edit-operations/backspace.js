@@ -73,7 +73,7 @@ export async function handleBackspace(ops) {
     }
 
     // Re-parse to detect type changes
-    const wasBareText = !!node.attributes.bareText;
+    const previousAttributes = node.attributes;
     const fullLine = ops.editor.buildMarkdownLine(node.type, newContent, node.attributes);
     const parsed = await ops.editor.reparseLine(fullLine);
 
@@ -92,10 +92,7 @@ export async function handleBackspace(ops) {
       node.content = newContent;
     }
 
-    // Preserve the bareText flag (see insertTextAtCursor).
-    if (wasBareText) {
-      node.attributes.bareText = true;
-    }
+    ops.keepLayoutAttributes(node, previousAttributes);
 
     // Backspace removes one character before the cursor, so the
     // absolute position moves back by one (left is already trimmed).

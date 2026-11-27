@@ -75,7 +75,7 @@ export async function handleDelete(ops) {
     }
 
     // Re-parse to detect type changes
-    const wasBareText = !!node.attributes.bareText;
+    const previousAttributes = node.attributes;
     const fullLine = ops.editor.buildMarkdownLine(node.type, newContent, node.attributes);
     const parsed = await ops.editor.reparseLine(fullLine);
 
@@ -94,10 +94,7 @@ export async function handleDelete(ops) {
       node.content = newContent;
     }
 
-    // Preserve the bareText flag (see insertTextAtCursor).
-    if (wasBareText) {
-      node.attributes.bareText = true;
-    }
+    ops.keepLayoutAttributes(node, previousAttributes);
 
     // The absolute cursor position in the full markdown line doesn't
     // change on delete — only the character to the right is removed.

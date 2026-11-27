@@ -167,8 +167,157 @@ pub fn reload_ignoring_cache(window: &tauri::WebviewWindow) {
 
 /// The point of the page, in CSS pixels, an Inspect Element waits to be
 /// run at.
-#[cfg(windows)]
+#[cfg(any(windows, target_os = "macos"))]
 static INSPECT_AT: std::sync::Mutex<Option<(f64, f64)>> = std::sync::Mutex::new(None);
+
+/// Opens DevTools on the element at a point of the page. WKWebView has no
+/// call for this, but its own context menu's Inspect Element item does it
+/// for the point the menu was asked for. So the point is kept, the page is
+/// told to let its next right-click through, and once it has been told, a
+/// right-click at the point is sent to the webview;
+/// `context_menu_from_proposed_menu` then runs the Inspect Element item of
+/// the menu WebKit proposes for it.
+#[cfg(target_os = "macos")]
+pub fn inspect_element(window: &tauri::WebviewWindow, x: f64, y: f64) {
+    *INSPECT_AT.lock().expect("inspect lock") = Some((x, y));
+    let _ = window.with_webview(move |webview| {
+        use objc2::msg_send;
+        use objc2::rc::Retained;
+        use objc2::runtime::AnyObject;
+        use objc2_foundation::NSString;
+        // Safe: Tauri hands out the live WKWebView, and runs this on the
+        // main thread, where it is used. The block keeps its own reference
+        // to the webview.
+        unsafe {
+            let Some(view) = Retained::retain(webview.inner().cast::<AnyObject>()) else {
+                return;
+            };
+            let script =
+                NSString::from_str("window.__inspectNextContextMenu = true; window.innerHeight");
+            let target = view.clone();
+            let then =
+                block2::RcBlock::new(move |value: *mut AnyObject, _error: *mut AnyObject| {
+                    let page_height: f64 = match value.as_ref() {
+                        Some(value) => msg_send![value, doubleValue],
+                        None => 0.0,
+                    };
+                    right_click(&target, x, y, page_height);
+                });
+            let _: () = msg_send![&*view, evaluateJavaScript: &*script, completionHandler: &*then];
+        }
+    });
+}
+
+/// Sends a right mouse button press and release to a WKWebView at a point
+/// of its page, in CSS pixels. The page starts below the top of the view by
+/// as much as the view is taller than the page's height.
+///
+/// # Safety
+///
+/// `view` must be a live WKWebView, used on the main thread.
+#[cfg(target_os = "macos")]
+unsafe fn right_click(view: &objc2::runtime::AnyObject, x: f64, y: f64, page_height: f64) {
+    use objc2::runtime::{AnyObject, Bool};
+    use objc2::{class, msg_send};
+    use objc2_foundation::{NSPoint, NSRect};
+    const RIGHT_MOUSE_DOWN: usize = 3;
+    const RIGHT_MOUSE_UP: usize = 4;
+    // Safe: the caller passes a live WKWebView on the main thread.
+    unsafe {
+        let window: *mut AnyObject = msg_send![view, window];
+        if window.is_null() {
+            return;
+        }
+        let bounds: NSRect = msg_send![view, bounds];
+        let top = if page_height > 0.0 {
+            (bounds.size.height - page_height).max(0.0)
+        } else {
+            0.0
+        };
+        let flipped: Bool = msg_send![view, isFlipped];
+        let from_top = y + top;
+        let in_view = NSPoint::new(
+            x,
+            if flipped.as_bool() {
+                from_top
+            } else {
+                bounds.size.height - from_top
+            },
+        );
+        let nowhere = std::ptr::null_mut::<AnyObject>();
+        let in_window: NSPoint = msg_send![view, convertPoint: in_view, toView: nowhere];
+        let number: isize = msg_send![window, windowNumber];
+        for kind in [RIGHT_MOUSE_DOWN, RIGHT_MOUSE_UP] {
+            let event: *mut AnyObject = msg_send![
+                class!(NSEvent),
+                mouseEventWithType: kind,
+                location: in_window,
+                modifierFlags: 0usize,
+                timestamp: 0.0f64,
+                windowNumber: number,
+                context: nowhere,
+                eventNumber: 0isize,
+                clickCount: 1isize,
+                pressure: 1.0f32
+            ];
+            if event.is_null() {
+                continue;
+            }
+            if kind == RIGHT_MOUSE_DOWN {
+                let _: () = msg_send![view, rightMouseDown: event];
+            } else {
+                let _: () = msg_send![view, rightMouseUp: event];
+            }
+        }
+    }
+}
+
+/// WebKit's request for the menu of a right-click the page let through,
+/// which comes only when an Inspect Element waits: the menu WebKit proposes
+/// has its Inspect Element item run, which opens DevTools on the element at
+/// the menu's point, and no menu is shown.
+#[cfg(target_os = "macos")]
+extern "C-unwind" fn context_menu_from_proposed_menu(
+    _delegate: *mut objc2::runtime::AnyObject,
+    _selector: objc2::runtime::Sel,
+    _view: *mut objc2::runtime::AnyObject,
+    menu: *mut objc2::runtime::AnyObject,
+    _element: *mut objc2::runtime::AnyObject,
+    _user_info: *mut objc2::runtime::AnyObject,
+    handler: *mut block2::Block<dyn Fn(*mut objc2::runtime::AnyObject)>,
+) {
+    use objc2::msg_send;
+    use objc2::runtime::AnyObject;
+    use objc2_foundation::NSString;
+    let inspect_at = INSPECT_AT.lock().expect("inspect lock").take();
+    // Safe: WebKit passes a live menu, or none, and a live block, on the
+    // main thread.
+    unsafe {
+        if let (Some((x, y)), Some(menu)) = (inspect_at, menu.as_ref()) {
+            let count: isize = msg_send![menu, numberOfItems];
+            for index in 0..count {
+                let item: *mut AnyObject = msg_send![menu, itemAtIndex: index];
+                let Some(item) = item.as_ref() else {
+                    continue;
+                };
+                let identifier: *mut NSString = msg_send![item, identifier];
+                let inspect = identifier.as_ref().is_some_and(|identifier| {
+                    identifier.to_string() == "WKMenuItemIdentifierInspectElement"
+                });
+                if inspect {
+                    let _: () = msg_send![menu, performActionForItemAtIndex: index];
+                    #[cfg(feature = "test-hooks")]
+                    crate::test_hooks::record_inspection(x, y);
+                    break;
+                }
+            }
+            let _ = (x, y);
+        }
+        if let Some(handler) = handler.as_ref() {
+            handler.call((std::ptr::null_mut(),));
+        }
+    }
+}
 
 /// Opens DevTools on the element at a point of the page. WebView2 has no call for this, but its own
 /// context menu's Inspect command does it for the point the menu was
@@ -594,6 +743,12 @@ pub fn handle_page_requests(window: &tauri::WebviewWindow) -> tauri::Result<()> 
                 sel!(webView:runJavaScriptConfirmPanelWithMessage:initiatedByFrame:completionHandler:),
                 std::mem::transmute::<*const (), Imp>(run_confirm_panel as *const ()),
                 PANEL_TYPES.as_ptr(),
+            );
+            objc2::ffi::class_addMethod(
+                class,
+                sel!(_webView:getContextMenuFromProposedMenu:forElement:userInfo:completionHandler:),
+                std::mem::transmute::<*const (), Imp>(context_menu_from_proposed_menu as *const ()),
+                c"v@:@@@@@?".as_ptr(),
             );
             view.setUIDelegate(Some(&delegate));
         }

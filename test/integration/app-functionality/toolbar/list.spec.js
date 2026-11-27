@@ -15,6 +15,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { expect, test } from '@playwright/test';
 import {
+  END,
   HOME,
   MOD,
   clickWritingViewBetween,
@@ -188,6 +189,42 @@ test(`heading button on list item converts to heading`, async () => {
   expect(first).toMatch(/^- Item before/);
   expect(second).toMatch(/^## Target item/);
   expect(third).toMatch(/^- Item after/);
+});
+
+test(`bullet list button on a paragraph written directly under a heading keeps it directly under the heading`, async () => {
+  await loadContent(page, `# Title\ntext`);
+  await setWritingView(page);
+  await clickWritingViewBetween(page, `te`, `xt`);
+
+  await page.locator(`.toolbar-button[data-button-id="unordered-list"]`).click();
+
+  await expect
+    .poll(() => page.evaluate(() => window.editorAPI?.getContent()))
+    .toBe(`# Title\n- text`);
+});
+
+test(`Enter at the end of the first line of a list item moves the line under it into a new item`, async () => {
+  await loadContent(page, `- Bamboo:\n  more text`);
+  await setWritingView(page);
+  await clickWritingViewBetween(page, `Bamb`, `oo`);
+  await page.keyboard.press(END);
+  await page.keyboard.press(`Enter`);
+
+  await expect
+    .poll(() => page.evaluate(() => window.editorAPI?.getContent()))
+    .toBe(`- Bamboo:\n- more text`);
+});
+
+test(`Enter at the start of the line under the first line of a list item moves that line into a new item`, async () => {
+  await loadContent(page, `- Bamboo:\n  more text`);
+  await setWritingView(page);
+  await clickWritingViewBetween(page, `mo`, `re`);
+  await page.keyboard.press(HOME);
+  await page.keyboard.press(`Enter`);
+
+  await expect
+    .poll(() => page.evaluate(() => window.editorAPI?.getContent()))
+    .toBe(`- Bamboo:\n- more text`);
 });
 
 test(`Enter in ordered list creates an item, and every item is written as 1.`, async () => {

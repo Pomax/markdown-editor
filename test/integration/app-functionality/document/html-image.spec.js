@@ -76,7 +76,7 @@ test(`editing style via modal updates the parse tree`, async () => {
 
   // Click the image preview element directly — the event handler requires
   // event.target to be the <img>, not the wrapper div.
-  const image = page.locator(`.md-image img`);
+  const image = page.locator(`#editor p.md-paragraph img`);
   await expect(image).toBeVisible();
   await clickInEditor(page, image);
 
@@ -103,7 +103,7 @@ test(`clearing style converts HTML img to markdown syntax`, async () => {
 
   // Click the image preview element directly — the event handler requires
   // event.target to be the <img>, not the wrapper div.
-  const image = page.locator(`.md-image img`);
+  const image = page.locator(`#editor p.md-paragraph img`);
   await expect(image).toBeVisible();
   await clickInEditor(page, image);
 
@@ -155,7 +155,7 @@ test(`edit modal shows the class of an HTML img`, async () => {
   await loadContent(page, HTML_IMG_CLASS_STYLE);
   await setWritingView(page);
 
-  const image = page.locator(`.md-image img`);
+  const image = page.locator(`#editor p.md-paragraph img`);
   await expect(image).toBeVisible();
   await clickInEditor(page, image);
 
@@ -196,7 +196,7 @@ test(`editing class via modal updates the parse tree and the rendered image`, as
   await loadContent(page, HTML_IMG_CLASS);
   await setWritingView(page);
 
-  const image = page.locator(`.md-image img`);
+  const image = page.locator(`#editor p.md-paragraph img`);
   await expect(image).toBeVisible();
   await clickInEditor(page, image);
 
@@ -212,14 +212,14 @@ test(`editing class via modal updates the parse tree and the rendered image`, as
   const markdown = await page.evaluate(() => window.editorAPI?.getContent() ?? ``);
   expect(markdown).toContain(`<img src=`);
   expect(markdown).toContain(`class="narrow"`);
-  await expect(page.locator(`.md-image img`)).toHaveClass(`narrow`);
+  await expect(page.locator(`#editor p.md-paragraph img`)).toHaveClass(`narrow`);
 });
 
 test(`adding a class to a markdown image converts it to an HTML img`, async () => {
   await loadContent(page, `![Photo](${FIXTURE_IMAGE})`);
   await setWritingView(page);
 
-  const image = page.locator(`.md-image img`);
+  const image = page.locator(`#editor p.md-paragraph img`);
   await expect(image).toBeVisible();
   await clickInEditor(page, image);
 
@@ -241,7 +241,7 @@ test(`clearing style keeps the HTML img when a class is set`, async () => {
   await loadContent(page, HTML_IMG_CLASS_STYLE);
   await setWritingView(page);
 
-  const image = page.locator(`.md-image img`);
+  const image = page.locator(`#editor p.md-paragraph img`);
   await expect(image).toBeVisible();
   await clickInEditor(page, image);
 
@@ -263,7 +263,7 @@ test(`clearing class converts HTML img to markdown syntax`, async () => {
   await loadContent(page, HTML_IMG_CLASS);
   await setWritingView(page);
 
-  const image = page.locator(`.md-image img`);
+  const image = page.locator(`#editor p.md-paragraph img`);
   await expect(image).toBeVisible();
   await clickInEditor(page, image);
 

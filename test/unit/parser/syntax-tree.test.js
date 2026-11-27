@@ -137,20 +137,18 @@ describe(`SyntaxNode`, () => {
       assert.strictEqual(node.toMarkdown(), `---`);
     });
 
-    it(`should convert bare image to markdown`, () => {
-      const node = new SyntaxNode(`image`, `alt text`);
-      node.attributes = { alt: `alt text`, url: `image.png` };
-      assert.strictEqual(node.toMarkdown(), `![alt text](image.png)`);
+    it(`should write a bare image as markdown`, () => {
+      assert.strictEqual(
+        SyntaxNode.imageMarkup({ alt: `alt text`, src: `image.png` }),
+        `![alt text](image.png)`,
+      );
     });
 
-    it(`should convert linked image to markdown`, () => {
-      const node = new SyntaxNode(`image`, `logo`);
-      node.attributes = {
-        alt: `logo`,
-        url: `logo.png`,
-        href: `https://example.com`,
-      };
-      assert.strictEqual(node.toMarkdown(), `[![logo](logo.png)](https://example.com)`);
+    it(`should write a linked image as markdown`, () => {
+      assert.strictEqual(
+        SyntaxNode.imageMarkup({ alt: `logo`, src: `logo.png`, href: `https://example.com` }),
+        `[![logo](logo.png)](https://example.com)`,
+      );
     });
   });
 
@@ -325,9 +323,8 @@ describe(`SyntaxNode.toBareText`, () => {
     assert.strictEqual(node.toBareText(), `const x = 1;\nconsole.log(x);`);
   });
 
-  it(`returns empty string for image nodes`, () => {
-    const node = new SyntaxNode(`image`, ``);
-    node.attributes = { alt: `photo`, url: `pic.png` };
+  it(`returns empty string for a paragraph holding only an image`, () => {
+    const node = new SyntaxNode(`paragraph`, `![photo](pic.png)`);
     assert.strictEqual(node.toBareText(), ``);
   });
 
@@ -382,9 +379,7 @@ describe(`SyntaxTree.toBareText`, () => {
   it(`skips nodes with empty bare text`, () => {
     const tree = new SyntaxTree();
     tree.appendChild(new SyntaxNode(`heading1`, `Title`));
-    const img = new SyntaxNode(`image`, ``);
-    img.attributes = { alt: `x`, url: `y` };
-    tree.appendChild(img);
+    tree.appendChild(new SyntaxNode(`paragraph`, `![x](y)`));
     tree.appendChild(new SyntaxNode(`paragraph`, `End`));
     assert.strictEqual(tree.toBareText(), `Title\n\nEnd`);
   });

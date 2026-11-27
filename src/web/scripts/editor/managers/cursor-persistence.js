@@ -192,7 +192,7 @@ export function cursorToAbsoluteOffset(tree, cursor, buildMarkdownLine, getPrefi
           return pos + cursor.prefixOffset;
         } else {
           const prefix = getPrefixLength(node.type, node.attributes);
-          return pos + prefix + contentOffsetOf(node, cursor);
+          return pos + prefix + node.markdownOffset(contentOffsetOf(node, cursor));
         }
       }
 
@@ -218,16 +218,15 @@ export function cursorToAbsoluteOffset(tree, cursor, buildMarkdownLine, getPrefi
           const child = node.children[0];
           if (child.id === cursor.nodeId) {
             // <tag>content</tag> — cursor is inside the content
-            const tag = node.attributes.tagName || `div`;
-            return pos + `<${tag}>`.length + cursor.offset;
+            return pos + openingTag.length + cursor.offset;
           }
           // Not found here; advance past this node's markdown
           pos += node.toMarkdown().length;
           continue;
         }
 
-        // Multi-child html-block: opening tag \n\n child1 \n\n child2 ... \n\n closing tag
-        pos += openingTag.length;
+        // Multi-child html-block: opening tag, own HTML \n\n child1 \n\n child2 ... \n\n closing tag
+        pos += openingTag.length + (node.attributes.html ?? ``).length;
         // Separator between opening tag and first child
         pos += `\n\n`.length;
 
@@ -296,8 +295,7 @@ export function absoluteOffsetToCursor(tree, absoluteOffset, getPrefixLength) {
             node.children[0].type === `paragraph`
           ) {
             const child = node.children[0];
-            const tag = node.attributes.tagName || `div`;
-            const openLen = `<${tag}>`.length;
+            const openLen = (node.attributes.openingTag ?? ``).length;
             const contentOffset = absoluteOffset - pos - openLen;
             return {
               nodeId: child.id,
@@ -305,8 +303,8 @@ export function absoluteOffsetToCursor(tree, absoluteOffset, getPrefixLength) {
             };
           }
 
-          // Multi-child: opening tag \n\n children \n\n closing tag
-          const openingTag = node.attributes.openingTag ?? ``;
+          // Multi-child: opening tag, own HTML \n\n children \n\n closing tag
+          const openingTag = `${node.attributes.openingTag ?? ``}${node.attributes.html ?? ``}`;
           const afterOpen = pos + openingTag.length + `\n\n`.length;
 
           if (absoluteOffset < afterOpen) {
@@ -349,7 +347,7 @@ export function absoluteOffsetToCursor(tree, absoluteOffset, getPrefixLength) {
         }
         const contentOffset = Math.max(
           0,
-          Math.min(absoluteOffset - pos - prefix, node.content.length),
+          Math.min(node.contentOffset(absoluteOffset - pos - prefix), node.content.length),
         );
         if (node.type === `table`) return tableCellCursor(node, contentOffset);
         return { nodeId: node.id, offset: contentOffset };

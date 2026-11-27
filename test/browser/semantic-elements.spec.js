@@ -35,6 +35,16 @@ test(`headings render as h1 to h6 with the text directly inside`, async () => {
   }
 });
 
+test(`an HTML element with nothing in it renders as that element with nothing in it`, async () => {
+  await loadContent(page, `<video controls></video>\n\n<div class="empty"></div>\n`);
+  await setWritingView(page);
+
+  await expect(page.locator(`#editor > video[data-node-id][controls]`)).toHaveCount(1);
+  await expect(page.locator(`#editor > video > *`)).toHaveCount(0);
+  await expect(page.locator(`#editor > div.empty[data-node-id]`)).toHaveCount(1);
+  await expect(page.locator(`#editor > div.empty > *`)).toHaveCount(0);
+});
+
 test(`paragraph renders as p`, async () => {
   await loadContent(page, `Just a paragraph\n`);
   await setWritingView(page);
@@ -67,21 +77,21 @@ test(`a quote renders its content as blocks, with each nested quote a blockquote
   await expect(outer.locator(`> ul > li.md-list-item[data-node-id]`)).toHaveText(`item`);
 });
 
-test(`image renders as p containing img`, async () => {
+test(`image renders as a paragraph containing img`, async () => {
   await loadContent(page, `![Photo](image.png)\n`);
   await setWritingView(page);
 
-  await expect(page.locator(`#editor > p.md-image[data-node-id] > img[alt="Photo"]`)).toHaveCount(
-    1,
-  );
+  await expect(
+    page.locator(`#editor > p.md-paragraph[data-node-id] > img[alt="Photo"]`),
+  ).toHaveCount(1);
 });
 
-test(`linked image renders as p containing a containing img`, async () => {
+test(`linked image renders as a paragraph containing a containing img`, async () => {
   await loadContent(page, `[![Photo](image.png)](https://example.com)\n`);
   await setWritingView(page);
 
   await expect(
-    page.locator(`#editor > p.md-image[data-node-id] > a > img[alt="Photo"]`),
+    page.locator(`#editor > p.md-paragraph[data-node-id] > a > img[alt="Photo"]`),
   ).toHaveCount(1);
 });
 
@@ -150,6 +160,38 @@ test(`ordered item after a nested list is the second li of the ol`, async () => 
   await expect(page.locator(`#editor > ol > li:first-child > ol > li`)).toHaveText(`Nested`);
   await expect(page.locator(`#editor > ol > li:nth-child(2)`)).toHaveText(`Beta`);
   await expect(page.locator(`#editor > ol > li`)).toHaveCount(2);
+});
+
+test(`nested list items around a line written directly under the first of them are one list`, async () => {
+  await loadContent(page, `- Tiles\n  1. Bamboo:\n  text under bamboo\n  1. Characters:\n`);
+  await setWritingView(page);
+
+  await expect(page.locator(`#editor > ul > li > ol > li`)).toHaveCount(2);
+});
+
+test(`a line written under a list item starts where the item's text starts`, async () => {
+  await loadContent(page, `- Bamboo:\n  more text\n`);
+  await setWritingView(page);
+
+  const item = page.locator(`#editor > ul > li.md-list-item[data-node-id]`);
+  await expect(item).toHaveCount(1);
+  const [bamboo, more] = await item.evaluate((li) => {
+    /** @param {string} word */
+    const left = (word) => {
+      const walker = document.createTreeWalker(li, NodeFilter.SHOW_TEXT);
+      for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+        const at = node.textContent?.indexOf(word) ?? -1;
+        if (at === -1) continue;
+        const range = document.createRange();
+        range.setStart(node, at);
+        range.setEnd(node, at + 1);
+        return range.getBoundingClientRect().left;
+      }
+      return Number.NaN;
+    };
+    return [left(`Bamboo`), left(`more`)];
+  });
+  expect(more).toBeCloseTo(bamboo, 0);
 });
 
 test(`changing list type at the same level starts a new list`, async () => {

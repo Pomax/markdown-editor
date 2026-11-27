@@ -47,12 +47,12 @@ pub fn record_keystroke(keys: &str) {
     }
 }
 
-/// The points of the page, in CSS pixels, WebView2's own Inspect command
+/// The points of the page, in CSS pixels, the webview's own Inspect command
 /// was run at.
 static INSPECTIONS: Mutex<Vec<(f64, f64)>> = Mutex::new(Vec::new());
 
-/// Records a point WebView2's own Inspect command was run at.
-#[cfg_attr(not(windows), allow(dead_code))]
+/// Records a point the webview's own Inspect command was run at.
+#[cfg_attr(not(any(windows, target_os = "macos")), allow(dead_code))]
 pub fn record_inspection(x: f64, y: f64) {
     if let Ok(mut points) = INSPECTIONS.lock() {
         points.push((x, y));

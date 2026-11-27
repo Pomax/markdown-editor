@@ -17,14 +17,17 @@ const INLINE_CONTENT_TYPES = new Set([
 ]);
 
 /**
- * The text between two sibling blocks in markdown: a newline between
- * two list items, a blank line between anything else.
+ * The text between two sibling blocks in markdown: a newline between two
+ * list items, and before a block written directly under the one before it
+ * unless both are paragraphs; a blank line between anything else.
  * @param {SyntaxNode} previous
  * @param {SyntaxNode} next
  * @returns {string}
  */
 export function separatorBetween(previous, next) {
-  return previous.type === `list-item` && next.type === `list-item` ? `\n` : `\n\n`;
+  if (previous.type === `list-item` && next.type === `list-item`) return `\n`;
+  const twoParagraphs = previous.type === `paragraph` && next.type === `paragraph`;
+  return next.noBlankLineBefore && !twoParagraphs ? `\n` : `\n\n`;
 }
 
 /**
@@ -101,6 +104,20 @@ export class SyntaxNode {
      */
     this.endLine = 0;
 
+    /**
+     * Whether the block was written directly under the block before it,
+     * with no blank line between them.
+     * @type {boolean}
+     */
+    this.noBlankLineBefore = false;
+
+    /**
+     * The indentation a list item was written with before each line of
+     * its content after the first.
+     * @type {string}
+     */
+    this.lineIndent = ``;
+
     // Build inline children for types that contain inline formatting.
     if (content && INLINE_CONTENT_TYPES.has(type)) {
       this.buildInlineChildren();
@@ -158,6 +175,7 @@ export class SyntaxNode {
         const node = new SyntaxNode(segment.type, ``);
         if (segment.href) node.attributes.href = segment.href;
         if (segment.tag) node.attributes.tag = segment.tag;
+        if (segment.attrs) node.attributes.attrs = { ...segment.attrs };
         if (segment.children) {
           for (const child of segment.children) {
             node.appendChild(SyntaxNode.segmentToNode(child));
@@ -317,26 +335,10 @@ export class SyntaxNode {
               ? `[x] `
               : `[ ] `
             : ``;
-        return `${indent}${marker}${checkbox}${this.content}`;
+        return `${indent}${marker}${checkbox}${SyntaxNode.indentLines(this.content, this.continuationIndent())}`;
       }
       case `horizontal-rule`:
         return `---`;
-      case `image`: {
-        const imgAlt = this.attributes.alt ?? this.content;
-        const imgSrc = this.attributes.url ?? ``;
-        const imgStyle = this.attributes.style ?? ``;
-        const imgClass = this.attributes.className ?? ``;
-        if (imgStyle || imgClass) {
-          const altAttr = imgAlt ? ` alt="${imgAlt}"` : ``;
-          const classAttr = imgClass ? ` class="${imgClass}"` : ``;
-          const styleAttr = imgStyle ? ` style="${imgStyle}"` : ``;
-          return `<img src="${imgSrc}"${altAttr}${classAttr}${styleAttr} />`;
-        }
-        if (this.attributes.href) {
-          return `[![${imgAlt}](${imgSrc})](${this.attributes.href})`;
-        }
-        return `![${imgAlt}](${imgSrc})`;
-      }
       case `table`:
         return this.content;
       case `html-block`: {
@@ -368,7 +370,7 @@ export class SyntaxNode {
           return `${this.attributes.openingTag}${this.children[0].content}${this.attributes.closingTag}`;
         }
 
-        const parts = [this.attributes.openingTag || ``];
+        const parts = [`${this.attributes.openingTag || ``}${this.attributes.html ?? ``}`];
         for (const child of this.children) {
           parts.push(child.toMarkdown());
         }
@@ -426,10 +428,6 @@ export class SyntaxNode {
         return textLines.join(`\n`);
       }
 
-      case `image`:
-        // Images are purely visual – no searchable text.
-        return ``;
-
       case `horizontal-rule`:
         return ``;
 
@@ -450,6 +448,107 @@ export class SyntaxNode {
       default:
         return SyntaxNode.extractInlineText(this.content);
     }
+  }
+
+  /**
+   * The indentation of the lines of a list item's content after the first
+   * when it has none it was written with: two spaces more than the item.
+   * @param {number} [indent] - The item's nesting level.
+   * @returns {string}
+   */
+  static listLineIndent(indent = 0) {
+    return `  `.repeat(indent + 1);
+  }
+
+  /**
+   * A list item's content as its markdown writes it, with the given
+   * indentation before each line after the first.
+   * @param {string} content
+   * @param {string} lineIndent
+   * @returns {string}
+   */
+  static indentLines(content, lineIndent) {
+    return content.replaceAll(`\n`, `\n${lineIndent}`);
+  }
+
+  /**
+   * The indentation this list item's markdown puts before each line of its
+   * content after the first.
+   * @returns {string}
+   */
+  continuationIndent() {
+    return this.lineIndent || SyntaxNode.listLineIndent(this.attributes.indent);
+  }
+
+  /**
+   * The offset into this block's markdown, after its syntax prefix, of an
+   * offset into its content.
+   * @param {number} contentOffset
+   * @returns {number}
+   */
+  markdownOffset(contentOffset) {
+    if (this.type !== `list-item`) return contentOffset;
+    const lineBreaks = this.content.slice(0, contentOffset).split(`\n`).length - 1;
+    return contentOffset + lineBreaks * this.continuationIndent().length;
+  }
+
+  /**
+   * The offset into this block's content of an offset into its markdown
+   * after its syntax prefix.  An offset in the indentation before a line
+   * gives the start of that line.
+   * @param {number} markdownOffset
+   * @returns {number}
+   */
+  contentOffset(markdownOffset) {
+    if (this.type !== `list-item`) return markdownOffset;
+    const indent = this.continuationIndent().length;
+    const lines = this.content.split(`\n`);
+    let markdownStart = 0;
+    let contentStart = 0;
+    for (let i = 0; i < lines.length; i++) {
+      const lead = i === 0 ? 0 : indent;
+      if (markdownOffset <= markdownStart + lead + lines[i].length || i === lines.length - 1) {
+        const column = Math.min(markdownOffset - markdownStart - lead, lines[i].length);
+        return contentStart + Math.max(0, column);
+      }
+      markdownStart += lead + lines[i].length + 1;
+      contentStart += lines[i].length + 1;
+    }
+    return contentStart;
+  }
+
+  /**
+   * The markup of an image: markdown image syntax when it has no attributes
+   * besides its source and alt text, and an `<img>` tag otherwise, which
+   * keeps the attributes of the tag it was written as that `data` does not
+   * set.  A link URL puts the image inside a markdown link.
+   * @param {{ alt?: string, src?: string, href?: string, style?: string, className?: string }} data
+   * @param {Record<string, string>} [written] - The attributes of the `<img>`
+   *     tag the image was written as.
+   * @returns {string}
+   */
+  static imageMarkup(data, written = {}) {
+    const src = data.src ?? ``;
+    const alt = data.alt ?? ``;
+    /** @type {[string, string][]} */
+    const extra = [];
+    if (data.className) extra.push([`class`, data.className]);
+    if (data.style) extra.push([`style`, data.style]);
+    for (const [name, value] of Object.entries(written)) {
+      if (![`src`, `alt`, `class`, `style`].includes(name)) extra.push([name, value]);
+    }
+    let markup = `![${alt}](${src})`;
+    if (extra.length > 0) {
+      /** @type {[string, string][]} */
+      const attrs = [[`src`, src]];
+      if (alt) attrs.push([`alt`, alt]);
+      attrs.push(...extra);
+      const parts = attrs.map(([name, value]) =>
+        value === `` && name !== `src` ? name : `${name}="${value}"`,
+      );
+      markup = `<img ${parts.join(` `)} />`;
+    }
+    return data.href ? `[${markup}](${data.href})` : markup;
   }
 
   /**
@@ -602,6 +701,8 @@ export class SyntaxNode {
     cloned.attributes = { ...this.attributes };
     cloned.startLine = this.startLine;
     cloned.endLine = this.endLine;
+    cloned.noBlankLineBefore = this.noBlankLineBefore;
+    cloned.lineIndent = this.lineIndent;
 
     for (const child of this.children) {
       cloned.appendChild(child.clone());
