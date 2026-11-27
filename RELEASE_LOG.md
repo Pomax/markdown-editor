@@ -1,5 +1,9 @@
 # Release Log
 
+## v3.2.2
+
+Fix the MacOS build so it can actually run from Applications.
+
 ## v3.2.1
 
 The windows release is now a compressed .exe, to bring its size in line with MacOS and Linux.
